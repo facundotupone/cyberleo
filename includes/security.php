@@ -25,3 +25,14 @@ function require_csrf($json = false) {
         exit;
     }
 }
+function enforce_auth_rate_limit(PDO $pdo, $context) {
+    if (APP_SECRET === '') throw new RuntimeException('Missing application secret.');
+    $hash = hash_hmac('sha256', ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . '|' . $context, APP_SECRET);
+    $pdo->prepare('DELETE FROM auth_rate_limits WHERE requested_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)')->execute();
+    $s = $pdo->prepare('SELECT COUNT(*) FROM auth_rate_limits WHERE context_hash=? AND requested_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)');
+    $s->execute([$hash]);
+    if ((int)$s->fetchColumn() >= 5) { http_response_code(429); header('Retry-After: 900'); exit('Demasiados intentos.'); }
+    $pdo->prepare('INSERT INTO auth_rate_limits (context_hash, requested_at) VALUES (?, NOW())')->execute([$hash]);
+    return $hash;
+}
+function clear_auth_rate_limit(PDO $pdo, $hash) { $pdo->prepare('DELETE FROM auth_rate_limits WHERE context_hash=?')->execute([$hash]); }

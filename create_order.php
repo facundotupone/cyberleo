@@ -23,7 +23,6 @@ if (!$cart) {
     echo json_encode(['success' => false, 'message' => 'El carrito está vacío.']);
     exit;
 }
-if (count($cart) > 50) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'El carrito supera el límite permitido.']); exit; }
 
 // Se acumulan cantidades por producto: el precio y el nombre siempre se obtienen de la base.
 $quantities = [];
@@ -39,6 +38,7 @@ foreach ($cart as $item) {
     if ($quantities[$id] > 20) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'Cantidad no permitida.']); exit; }
 }
 if (array_sum($quantities) > 100) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'El carrito supera el límite permitido.']); exit; }
+if (count($quantities) > 50) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'El carrito supera el límite permitido.']); exit; }
 
 try {
     $storeSettings = get_store_settings();
@@ -88,7 +88,8 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
-    http_response_code(422);
+    http_response_code($e instanceof RateLimitException ? 429 : 422);
+    if ($e instanceof RateLimitException) header('Retry-After: 900');
     error_log('Order creation failed: ' . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'No fue posible registrar el pedido. Verificá el stock e intentá nuevamente.']);
 }

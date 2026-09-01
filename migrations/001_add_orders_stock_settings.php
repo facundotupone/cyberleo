@@ -276,7 +276,11 @@ try {
     if (column($pdo, 'orders', 'expires_at') === null) $pdo->exec("ALTER TABLE `orders` ADD COLUMN `expires_at` DATETIME NULL");
     $legacy = $pdo->query("SELECT id FROM orders WHERE idempotency_key IS NULL OR idempotency_key = ''")->fetchAll(PDO::FETCH_COLUMN);
     $setKey = $pdo->prepare('UPDATE orders SET idempotency_key = ? WHERE id = ?');
-    foreach ($legacy as $legacyId) $setKey->execute([hash('sha256', 'legacy-order-' . $legacyId), $legacyId]);
+    $keyExists = $pdo->prepare('SELECT 1 FROM orders WHERE idempotency_key = ? LIMIT 1');
+    foreach ($legacy as $legacyId) {
+        do { $key = bin2hex(random_bytes(32)); $keyExists->execute([$key]); } while ($keyExists->fetchColumn());
+        $setKey->execute([$key, $legacyId]);
+    }
     $pdo->exec("UPDATE orders SET expires_at = DATE_ADD(NOW(), INTERVAL 120 MINUTE) WHERE expires_at IS NULL");
     $duplicates = $pdo->query("SELECT idempotency_key FROM orders GROUP BY idempotency_key HAVING COUNT(*) > 1 LIMIT 1")->fetchColumn();
     if ($duplicates) fail('Incompatibilidad: existen claves de idempotencia duplicadas.');

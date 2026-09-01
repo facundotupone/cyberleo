@@ -14,3 +14,4 @@ defined('SITE_URL') || define('SITE_URL', config_value('SITE_URL', 'http://local
 defined('STORE_NAME') || define('STORE_NAME', config_value('STORE_NAME', 'CyberLeo'));
 defined('WHATSAPP_NUMBER') || define('WHATSAPP_NUMBER', config_value('WHATSAPP_NUMBER', '5491100000000'));
 defined('STORE_INSTAGRAM') || define('STORE_INSTAGRAM', config_value('STORE_INSTAGRAM', ''));
+defined('APP_SECRET') || define('APP_SECRET', config_value('APP_SECRET', ''));

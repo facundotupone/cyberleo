@@ -124,6 +124,7 @@ run_fixture() {
     if [[ "$fixture_name" == "pre_5c8bdb2_orders" ]]; then
         assert_scalar 3 "SELECT COUNT(*) FROM orders" "legacy orders preserved"
         assert_scalar 3 "SELECT COUNT(DISTINCT idempotency_key) FROM orders WHERE CHAR_LENGTH(idempotency_key)=64 AND expires_at IS NOT NULL" "legacy keys and expiry"
+        assert_scalar 0 "SELECT COUNT(*) FROM orders WHERE idempotency_key = SHA2(CONCAT('legacy-order-', id), 256)" "legacy keys are not predictable"
         assert_scalar 7 "SELECT stock FROM products WHERE id=1" "legacy stock preserved"
     fi
     DB_HOST="localhost;unix_socket=$SOCKET" DB_NAME="$TEST_DB" DB_USER=root DB_PASS='' \

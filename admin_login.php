@@ -16,11 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username']);
     $password = $_POST['password'];
 
-    $key = hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '') . '|' . strtolower($username));
-    $attempt = $_SESSION['login_attempts'][$key] ?? ['count' => 0, 'until' => 0];
-    if ($attempt['until'] > time()) {
-        $error = 'Usuario o contraseña incorrectos';
-    } elseif (!empty($username) && !empty($password)) {
+    $key = enforce_auth_rate_limit($pdo, 'login|' . strtolower($username));
+    if (!empty($username) && !empty($password)) {
         $stmt = $pdo->prepare("SELECT id, password FROM users WHERE username = ?");
         $stmt->execute([$username]);
         $user = $stmt->fetch();
@@ -34,14 +31,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$user['id']]);
         
             $_SESSION['admin_id'] = $user['id'];
-            unset($_SESSION['login_attempts'][$key]);
+            clear_auth_rate_limit($pdo, $key);
             header('Location: admin_products.php');
             exit;
         }
         else {
-            $attempt['count']++;
-            if ($attempt['count'] >= 5) { $attempt = ['count' => 0, 'until' => time() + 900]; }
-            $_SESSION['login_attempts'][$key] = $attempt;
             $error = 'Usuario o contraseña incorrectos';
         }
     } else {
