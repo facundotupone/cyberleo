@@ -14,6 +14,9 @@ Catálogo autoadministrable de productos informáticos con carrito, control de s
    ```
 3. Completar las credenciales, dominio público y número del dueño en `includes/config.php`.
    `WHATSAPP_NUMBER` debe llevar código de país y número, sin `+`, espacios ni guiones.
+   Para limitar pedidos e intentos de acceso, definí también `APP_SECRET` como un valor
+   aleatorio de al menos 32 bytes (`php -r "echo bin2hex(random_bytes(32));"`). Guardalo
+   solamente en variables de entorno o en `includes/config.local.php`.
 4. Crear el primer usuario administrador en la tabla `users`. La contraseña debe almacenarse con `password_hash()` de PHP.
 5. Dar permisos de escritura al servidor web sobre `assets/images/products/`.
 6. Abrir `admin_login.php`, cargar categorías y productos, incluyendo el stock inicial.
