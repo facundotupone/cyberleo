@@ -19,6 +19,7 @@ HTTP_COOKIE="$HTTP_TMP/cookies"
 MAIL_LOG="$HTTP_TMP/mail.log"
 SERVER_LOG="$HTTP_TMP/php-server.log"
 SERVER_PID=""
+CHROME_PID=""
 UPLOAD_DIR="$ROOT/assets/images/products"
 mkdir -p "$UPLOAD_DIR"
 
@@ -36,6 +37,10 @@ cleanup() {
     if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
         kill -- "-$SERVER_PID" 2>/dev/null || kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$CHROME_PID" ]]; then
+        kill -- "-$CHROME_PID" 2>/dev/null || kill "$CHROME_PID" 2>/dev/null || true
+        wait "$CHROME_PID" 2>/dev/null || true
     fi
     if [[ $status -ne 0 && -s "$SERVER_LOG" ]]; then
         printf '\nPHP server log (%s):\n' "$SERVER_LOG" >&2
@@ -73,6 +78,7 @@ export HTTP_TMP HTTP_COOKIE HTTP_BASE_URL
     cd "$ROOT"
     exec env \
         PHP_CLI_SERVER_WORKERS=4 \
+        APP_ENV=test \
         APP_SECRET='http-suite-secret-that-is-not-used-outside-tests' \
         SITE_URL="$HTTP_BASE_URL" \
         DB_HOST="localhost;unix_socket=$TEST_DB_SOCKET" \
@@ -137,6 +143,31 @@ image_file_count() {
         [[ "$name" =~ ^[a-f0-9]{32}\.(jpg|png|webp)$ ]] && ((count+=1))
     done
     printf '%s' "$count"
+}
+settings_image_file_count() {
+    local count=0 path name directory="$ROOT/assets/images/settings"
+    for path in "$directory"/*; do
+        [[ -e "$path" ]] || continue
+        name="${path##*/}"
+        [[ "$name" =~ ^[a-f0-9]{32}\.(jpg|png|webp)$ ]] && ((count+=1))
+    done
+    printf '%s' "$count"
+}
+settings_form() {
+    local store_name=${1:-HTTP Test Store}
+    shift || true
+    request POST admin_settings.php \
+        -F "csrf_token=$CSRF_TOKEN" \
+        -F "store_name=$store_name" \
+        -F 'whatsapp_number=5491100000000' \
+        -F 'instagram_url=' \
+        -F 'hero_title=HTTP hero' \
+        -F 'hero_subtitle=HTTP subtitle' \
+        -F 'reservation_minutes=120' \
+        -F 'admin_email=admin-http@example.test' \
+        -F 'mail_from=store-http@example.test' \
+        -F 'payment_methods=Efectivo' \
+        "$@"
 }
 cli_env=(
     env APP_SECRET='http-suite-secret-that-is-not-used-outside-tests'
@@ -252,6 +283,95 @@ assert_sql H-ORDER-05 expired "SELECT status FROM orders WHERE id=$ORDER05_ID"
 assert_sql H-ORDER-05 2 'SELECT stock FROM products WHERE id=1'
 pass H-ORDER-05
 
+printf 'Prueba de límite HTTP de pedidos...\n'
+reset_orders
+sql 'UPDATE products SET stock=3 WHERE id=1'
+RATE_ORDER_KEY="$(printf '3%.0s' {1..64})"
+RATE_ORDER_PAYLOAD="{\"idempotencyKey\":\"$RATE_ORDER_KEY\",\"items\":[{\"productId\":1,\"quantity\":1}]}"
+for attempt in {1..10}; do
+    HTTP_COOKIE="$HTTP_TMP/rate-order-$attempt.cookie"
+    request POST create_order.php -H 'Content-Type: application/json' --data "$RATE_ORDER_PAYLOAD"
+    assert_status H-RATE-ORDER 200
+done
+assert_sql H-RATE-ORDER 10 'SELECT COUNT(*) FROM order_rate_limits'
+assert_sql H-RATE-ORDER 1 "SELECT COUNT(*) FROM orders WHERE idempotency_key='$RATE_ORDER_KEY'"
+assert_sql H-RATE-ORDER 2 'SELECT stock FROM products WHERE id=1'
+RATE_ORDER_ID="$(sql "SELECT id FROM orders WHERE idempotency_key='$RATE_ORDER_KEY'")"
+HTTP_COOKIE="$HTTP_TMP/rate-order-11.cookie"
+request POST create_order.php -H 'Content-Type: application/json' \
+    --data "{\"idempotencyKey\":\"$(printf '4%.0s' {1..64})\",\"items\":[{\"productId\":1,\"quantity\":1}]}"
+assert_status H-RATE-ORDER 429
+assert_header_contains H-RATE-ORDER 'Retry-After: 900'
+assert_sql H-RATE-ORDER 1 'SELECT COUNT(*) FROM orders'
+assert_sql H-RATE-ORDER 1 "SELECT COUNT(*) FROM order_items WHERE order_id=$RATE_ORDER_ID"
+assert_sql H-RATE-ORDER 2 'SELECT stock FROM products WHERE id=1'
+pass H-RATE-ORDER
+
+printf 'Pruebas de estrés HTTP de pedidos (20 iteraciones)...\n'
+for iteration in {1..20}; do
+    reset_orders
+    sql 'UPDATE products SET stock=8 WHERE id=1'
+    key="$(printf '%064x' "$((0x1000 + iteration))")"
+    payload="{\"idempotencyKey\":\"$key\",\"items\":[{\"productId\":1,\"quantity\":2}]}"
+    prefixes=()
+    pids=()
+    for worker in {1..4}; do
+        prefix="$HTTP_TMP/stress-idempotency-$iteration-$worker"
+        prefixes+=("$prefix")
+        order_curl "$prefix" "$payload" &
+        pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do wait "$pid" || fail H-STRESS-IDEMPOTENCY "iteración $iteration: curl falló"; done
+    assert_parallel_statuses H-STRESS-IDEMPOTENCY '200,200,200,200' "${prefixes[@]}"
+    order_id="$(json_file_value "${prefixes[0]}.body" orderId)"
+    for prefix in "${prefixes[@]}"; do
+        [[ "$(json_file_value "$prefix.body" orderId)" == "$order_id" ]] ||
+            fail H-STRESS-IDEMPOTENCY "iteración $iteration: respuestas con pedidos distintos"
+    done
+    assert_sql H-STRESS-IDEMPOTENCY 1 "SELECT COUNT(*) FROM orders WHERE idempotency_key='$key'"
+    assert_sql H-STRESS-IDEMPOTENCY 1 "SELECT COUNT(*) FROM order_items WHERE order_id=$order_id AND product_id=1 AND quantity=2"
+    assert_sql H-STRESS-IDEMPOTENCY 6 'SELECT stock FROM products WHERE id=1'
+done
+pass H-STRESS-IDEMPOTENCY
+
+for iteration in {1..20}; do
+    reset_orders
+    sql 'UPDATE products SET stock=1 WHERE id=1'
+    key_a="$(printf '%064x' "$((0x2000 + iteration * 2))")"
+    key_b="$(printf '%064x' "$((0x2001 + iteration * 2))")"
+    prefix_a="$HTTP_TMP/stress-last-$iteration-a"
+    prefix_b="$HTTP_TMP/stress-last-$iteration-b"
+    order_curl "$prefix_a" "{\"idempotencyKey\":\"$key_a\",\"items\":[{\"productId\":1,\"quantity\":1}]}" & p1=$!
+    order_curl "$prefix_b" "{\"idempotencyKey\":\"$key_b\",\"items\":[{\"productId\":1,\"quantity\":1}]}" & p2=$!
+    wait "$p1" || fail H-STRESS-LAST-UNIT "iteración $iteration: primer curl falló"
+    wait "$p2" || fail H-STRESS-LAST-UNIT "iteración $iteration: segundo curl falló"
+    assert_parallel_statuses H-STRESS-LAST-UNIT '200,422' "$prefix_a" "$prefix_b"
+    assert_sql H-STRESS-LAST-UNIT 1 'SELECT COUNT(*) FROM orders'
+    assert_sql H-STRESS-LAST-UNIT 1 'SELECT COALESCE(SUM(quantity),0) FROM order_items WHERE product_id=1'
+    assert_sql H-STRESS-LAST-UNIT 0 'SELECT stock FROM products WHERE id=1'
+done
+pass H-STRESS-LAST-UNIT
+
+for iteration in {1..20}; do
+    reset_orders
+    sql 'UPDATE products SET stock=2 WHERE id IN (1,2)'
+    key_a="$(printf '%064x' "$((0x3000 + iteration * 2))")"
+    key_b="$(printf '%064x' "$((0x3001 + iteration * 2))")"
+    prefix_a="$HTTP_TMP/stress-reverse-$iteration-a"
+    prefix_b="$HTTP_TMP/stress-reverse-$iteration-b"
+    order_curl "$prefix_a" "{\"idempotencyKey\":\"$key_a\",\"items\":[{\"productId\":1,\"quantity\":1},{\"productId\":2,\"quantity\":1}]}" & p1=$!
+    order_curl "$prefix_b" "{\"idempotencyKey\":\"$key_b\",\"items\":[{\"productId\":2,\"quantity\":1},{\"productId\":1,\"quantity\":1}]}" & p2=$!
+    wait "$p1" || fail H-STRESS-REVERSE "iteración $iteration: primer curl falló"
+    wait "$p2" || fail H-STRESS-REVERSE "iteración $iteration: segundo curl falló"
+    assert_parallel_statuses H-STRESS-REVERSE '200,200' "$prefix_a" "$prefix_b"
+    assert_sql H-STRESS-REVERSE 2 'SELECT COUNT(*) FROM orders'
+    assert_sql H-STRESS-REVERSE 2 'SELECT COUNT(*) FROM order_items WHERE product_id=1 AND quantity=1'
+    assert_sql H-STRESS-REVERSE 2 'SELECT COUNT(*) FROM order_items WHERE product_id=2 AND quantity=1'
+    assert_sql H-STRESS-REVERSE 0 'SELECT stock FROM products WHERE id=1'
+    assert_sql H-STRESS-REVERSE 0 'SELECT stock FROM products WHERE id=2'
+done
+pass H-STRESS-REVERSE
+
 printf 'Pruebas HTTP de autenticación...\n'
 sql 'TRUNCATE auth_rate_limits'
 for attempt in {1..5}; do
@@ -301,6 +421,26 @@ RESET_TOKEN="$(sql 'SELECT reset_token FROM users WHERE id=1')"
 
 sql 'UPDATE users SET reset_token=NULL,reset_expires=NULL WHERE id=1; TRUNCATE auth_rate_limits'
 rm -f "$MAIL_LOG"
+for attempt in {1..5}; do
+    HTTP_COOKIE="$HTTP_TMP/rate-forgot-$attempt.cookie"
+    request POST forgot_password.php --data-urlencode 'email=admin-http@example.test'
+    assert_status H-RATE-FORGOT 302
+done
+[[ "$(wc -l < "$MAIL_LOG")" == 5 ]] ||
+    fail H-RATE-FORGOT 'los cinco intentos permitidos no generaron exactamente cinco correos'
+assert_sql H-RATE-FORGOT 5 'SELECT COUNT(*) FROM auth_rate_limits'
+RATE_FORGOT_TOKEN="$(sql 'SELECT reset_token FROM users WHERE id=1')"
+HTTP_COOKIE="$HTTP_TMP/rate-forgot-6.cookie"
+request POST forgot_password.php --data-urlencode 'email=admin-http@example.test'
+assert_status H-RATE-FORGOT 429
+assert_header_contains H-RATE-FORGOT 'Retry-After: 900'
+[[ "$(wc -l < "$MAIL_LOG")" == 5 ]] || fail H-RATE-FORGOT 'el intento limitado generó un correo'
+assert_sql H-RATE-FORGOT "$RATE_FORGOT_TOKEN" 'SELECT reset_token FROM users WHERE id=1'
+assert_sql H-RATE-FORGOT 5 'SELECT COUNT(*) FROM auth_rate_limits'
+pass H-RATE-FORGOT
+
+sql 'UPDATE users SET reset_token=NULL,reset_expires=NULL WHERE id=1; TRUNCATE auth_rate_limits'
+rm -f "$MAIL_LOG"
 mkdir "$MAIL_LOG"
 HTTP_COOKIE="$HTTP_TMP/auth03.cookie"
 request POST forgot_password.php --data-urlencode 'email=admin-http@example.test'
@@ -344,11 +484,19 @@ pass H-AUTH-04
 sql 'UPDATE users SET reset_token=NULL,reset_expires=NULL WHERE id=1; TRUNCATE auth_rate_limits'
 rm -f "$MAIL_LOG"
 HTTP_COOKIE="$HTTP_TMP/auth05.cookie"
-request POST forgot_password.php \
-    --data-urlencode $'email=admin-http@example.test\r\nBcc: injected@example.test'
+sql "UPDATE store_settings SET setting_value=CONCAT('CyberLeo',CHAR(13),CHAR(10),'Bcc: injected@example.test<script>globalThis.mailXss=1</script>') WHERE setting_key='store_name'"
+request POST forgot_password.php --data-urlencode 'email=admin-http@example.test'
 assert_status H-AUTH-05 302
-assert_sql H-AUTH-05 NULL 'SELECT COALESCE(reset_token,"NULL") FROM users WHERE id=1'
-[[ ! -e "$MAIL_LOG" ]] || fail H-AUTH-05 'una dirección con CRLF produjo correo'
+[[ "$(wc -l < "$MAIL_LOG")" == 1 ]] || fail H-AUTH-05 'no se generó exactamente un correo'
+php -r '
+$m=json_decode(trim(file_get_contents($argv[1])),true,512,JSON_THROW_ON_ERROR);
+if ($m["to"]!=="admin-http@example.test") exit(1);
+if (preg_match("/[\r\n]/",$m["subject"])) exit(2);
+if (preg_match("/\r?\n(?:Bcc|Cc|To|Subject):/i",$m["headers"])) exit(3);
+if (stripos($m["subject"],"Bcc:")!==false || str_contains($m["subject"],"<script>")) exit(4);
+if (!str_contains($m["html"],"&lt;script&gt;globalThis.mailXss=1&lt;/script&gt;")) exit(5);
+' "$MAIL_LOG" || fail H-AUTH-05 'encabezados o HTML del correo no fueron normalizados'
+sql "UPDATE store_settings SET setting_value='HTTP Test Store' WHERE setting_key='store_name'"
 pass H-AUTH-05
 
 printf 'Pruebas CSRF de endpoints mutables...\n'
@@ -356,6 +504,9 @@ HTTP_COOKIE="$HTTP_TMP/admin.cookie"
 request POST admin_login.php --data-urlencode 'username=http-admin' --data-urlencode "password=$WINNING_PASSWORD"
 assert_status H-CSRF-LOGIN 302
 ADMIN_COOKIE="$HTTP_COOKIE"
+request GET admin_products.php
+assert_status H-CSRF-LOGIN 200
+CSRF_TOKEN="$(csrf_from_body)"
 
 sql 'UPDATE products SET stock=4 WHERE id=1'
 request POST admin_products.php --data 'action=set_stock&id=1&new_stock=99'
@@ -394,6 +545,99 @@ pass H-CSRF-ORDERS
 request POST delete_image.php --data 'image_id=999999'
 assert_status H-CSRF-IMAGE 403
 pass H-CSRF-IMAGE
+
+printf 'Pruebas CSRF válidas y reversibles...\n'
+HTTP_COOKIE="$ADMIN_COOKIE"
+request POST admin_categories.php \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+    --data-urlencode 'action=add_category' \
+    --data-urlencode 'name=HTTP CSRF reversible' \
+    --data-urlencode 'icon=bi bi-star'
+assert_status H-CSRF-VALID-CATEGORIES 200
+CSRF_CATEGORY_ID="$(sql "SELECT id FROM categories WHERE name='HTTP CSRF reversible'")"
+[[ -n "$CSRF_CATEGORY_ID" ]] || fail H-CSRF-VALID-CATEGORIES 'el token válido no creó la categoría'
+request POST admin_categories.php \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+    --data-urlencode 'action=delete_category' \
+    --data-urlencode "id=$CSRF_CATEGORY_ID"
+assert_status H-CSRF-VALID-CATEGORIES 200
+assert_sql H-CSRF-VALID-CATEGORIES 0 "SELECT COUNT(*) FROM categories WHERE name='HTTP CSRF reversible'"
+pass H-CSRF-VALID-CATEGORIES
+
+settings_form 'HTTP CSRF changed'
+assert_status H-CSRF-VALID-SETTINGS 302
+assert_sql H-CSRF-VALID-SETTINGS 'HTTP CSRF changed' "SELECT setting_value FROM store_settings WHERE setting_key='store_name'"
+settings_form 'HTTP Test Store'
+assert_status H-CSRF-VALID-SETTINGS 302
+assert_sql H-CSRF-VALID-SETTINGS 'HTTP Test Store' "SELECT setting_value FROM store_settings WHERE setting_key='store_name'"
+pass H-CSRF-VALID-SETTINGS
+
+reset_orders
+sql 'UPDATE products SET stock=2 WHERE id=1'
+HTTP_COOKIE="$HTTP_TMP/csrf-valid-order-client.cookie"
+request POST create_order.php -H 'Content-Type: application/json' \
+    --data "{\"idempotencyKey\":\"$(printf '5%.0s' {1..64})\",\"items\":[{\"productId\":1,\"quantity\":1}]}"
+assert_status H-CSRF-VALID-ORDERS 200
+CSRF_VALID_ORDER_ID="$(json_value orderId)"
+HTTP_COOKIE="$ADMIN_COOKIE"
+request POST admin_orders.php \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+    --data-urlencode "order_id=$CSRF_VALID_ORDER_ID" \
+    --data-urlencode 'status=cancelled'
+assert_status H-CSRF-VALID-ORDERS 200
+assert_sql H-CSRF-VALID-ORDERS cancelled "SELECT status FROM orders WHERE id=$CSRF_VALID_ORDER_ID"
+assert_sql H-CSRF-VALID-ORDERS 2 'SELECT stock FROM products WHERE id=1'
+reset_orders
+pass H-CSRF-VALID-ORDERS
+
+CSRF_IMAGE_NAME="$(printf '6%.0s' {1..32}).png"
+CSRF_IMAGE_PATH="assets/images/products/$CSRF_IMAGE_NAME"
+cp "$HTTP_TMP/tiny.png" "$ROOT/$CSRF_IMAGE_PATH"
+CREATED_IMAGES+=("$CSRF_IMAGE_PATH")
+sql "INSERT INTO products(name,description,price,stock,category_id,subcategory_id,image) VALUES('HTTP CSRF image','temporary',10,1,1,1,'$CSRF_IMAGE_PATH')"
+CSRF_IMAGE_PRODUCT="$(sql "SELECT id FROM products WHERE name='HTTP CSRF image'")"
+sql "INSERT INTO product_images(product_id,image_path,is_main) VALUES($CSRF_IMAGE_PRODUCT,'$CSRF_IMAGE_PATH',1)"
+CSRF_IMAGE_ID="$(sql "SELECT id FROM product_images WHERE product_id=$CSRF_IMAGE_PRODUCT")"
+request POST delete_image.php \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+    --data-urlencode "image_id=$CSRF_IMAGE_ID"
+assert_status H-CSRF-VALID-IMAGE 200
+assert_sql H-CSRF-VALID-IMAGE 0 "SELECT COUNT(*) FROM product_images WHERE id=$CSRF_IMAGE_ID"
+assert_sql H-CSRF-VALID-IMAGE NULL "SELECT COALESCE(image,'NULL') FROM products WHERE id=$CSRF_IMAGE_PRODUCT"
+[[ ! -e "$ROOT/$CSRF_IMAGE_PATH" ]] || fail H-CSRF-VALID-IMAGE 'el archivo eliminado sigue presente'
+sql "DELETE FROM products WHERE id=$CSRF_IMAGE_PRODUCT"
+pass H-CSRF-VALID-IMAGE
+
+printf 'Pruebas de rutas maliciosas en delete_image...\n'
+MALICIOUS_SENTINEL="$HTTP_TMP/delete-image-sentinel"
+printf 'do-not-delete\n' > "$MALICIOUS_SENTINEL"
+MALICIOUS_LINK_PATH="assets/images/products/$(printf '7%.0s' {1..32}).png"
+ln -s "$MALICIOUS_SENTINEL" "$ROOT/$MALICIOUS_LINK_PATH"
+CREATED_IMAGES+=("$MALICIOUS_LINK_PATH")
+sql "INSERT INTO products(name,description,price,stock,category_id,subcategory_id,image) VALUES('HTTP malicious paths','temporary',10,1,1,1,NULL)"
+MALICIOUS_PRODUCT="$(sql "SELECT id FROM products WHERE name='HTTP malicious paths'")"
+MALICIOUS_PATHS=(
+    '../../delete-image-sentinel'
+    '/etc/passwd'
+    'assets/images/products/../../../../etc/passwd'
+    "$MALICIOUS_LINK_PATH"
+)
+for path in "${MALICIOUS_PATHS[@]}"; do
+    escaped_path="${path//\'/\'\'}"
+    sql "INSERT INTO product_images(product_id,image_path,is_main) VALUES($MALICIOUS_PRODUCT,'$escaped_path',0)"
+    malicious_id="$(sql "SELECT MAX(id) FROM product_images WHERE product_id=$MALICIOUS_PRODUCT")"
+    request POST delete_image.php \
+        --data-urlencode "csrf_token=$CSRF_TOKEN" \
+        --data-urlencode "image_id=$malicious_id"
+    assert_status H-IMAGE-PATHS 200
+    assert_sql H-IMAGE-PATHS 0 "SELECT COUNT(*) FROM product_images WHERE id=$malicious_id"
+    [[ "$(<"$MALICIOUS_SENTINEL")" == 'do-not-delete' ]] ||
+        fail H-IMAGE-PATHS "la ruta maliciosa <$path> alteró el archivo externo"
+done
+[[ -L "$ROOT/$MALICIOUS_LINK_PATH" ]] ||
+    fail H-IMAGE-PATHS 'la limpieza siguió un enlace simbólico válido en apariencia'
+sql "DELETE FROM products WHERE id=$MALICIOUS_PRODUCT"
+pass H-IMAGE-PATHS
 
 sql "UPDATE users SET reset_token='$RESET_TOKEN',reset_expires=DATE_ADD(NOW(),INTERVAL 1 HOUR) WHERE id=1"
 HTTP_COOKIE="$HTTP_TMP/csrf-reset.cookie"
@@ -486,6 +730,81 @@ assert_sql H-IMAGE-05 1 "SELECT COUNT(*) FROM product_images WHERE product_id=$I
 [[ -f "$ROOT/$IMAGE05_PATH" ]] || fail H-IMAGE-05 'la primera imagen del producto no quedó almacenada'
 pass H-IMAGE-05
 
+printf 'Pruebas HTTP de fondos configurables...\n'
+HTTP_COOKIE="$ADMIN_COOKIE"
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+SETTINGS_COUNT_BEFORE="$(settings_image_file_count)"
+
+settings_form 'HTTP Test Store' -F "hero_background_file=@$HTTP_TMP/tiny.png;type=image/png"
+assert_status H-BACKGROUND-UPLOAD 302
+BACKGROUND_HERO="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'")"
+CREATED_IMAGES+=("$BACKGROUND_HERO")
+[[ "$BACKGROUND_HERO" =~ ^assets/images/settings/[a-f0-9]{32}\.png$ && -f "$ROOT/$BACKGROUND_HERO" ]] ||
+    fail H-BACKGROUND-UPLOAD 'el fondo subido no quedó almacenado con una ruta segura'
+[[ "$(settings_image_file_count)" == "$((SETTINGS_COUNT_BEFORE + 1))" ]] ||
+    fail H-BACKGROUND-UPLOAD 'la carga no creó exactamente un archivo'
+pass H-BACKGROUND-UPLOAD
+
+BACKGROUND_OLD="$BACKGROUND_HERO"
+settings_form 'HTTP Test Store' -F "hero_background_file=@$HTTP_TMP/tiny.png;type=image/png"
+assert_status H-BACKGROUND-REPLACE 302
+BACKGROUND_HERO="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'")"
+CREATED_IMAGES+=("$BACKGROUND_HERO")
+[[ "$BACKGROUND_HERO" != "$BACKGROUND_OLD" && -f "$ROOT/$BACKGROUND_HERO" && ! -e "$ROOT/$BACKGROUND_OLD" ]] ||
+    fail H-BACKGROUND-REPLACE 'el reemplazo no creó el nuevo fondo o no retiró el anterior'
+pass H-BACKGROUND-REPLACE
+
+settings_form 'HTTP Test Store' -F 'remove_hero_background=1'
+assert_status H-BACKGROUND-DELETE 302
+assert_sql H-BACKGROUND-DELETE '' "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'"
+[[ ! -e "$ROOT/$BACKGROUND_HERO" ]] || fail H-BACKGROUND-DELETE 'el fondo quitado sigue en disco'
+pass H-BACKGROUND-DELETE
+
+BACKGROUND_SHARED="assets/images/settings/$(printf '8%.0s' {1..32}).png"
+mkdir -p "$ROOT/assets/images/settings"
+cp "$HTTP_TMP/tiny.png" "$ROOT/$BACKGROUND_SHARED"
+CREATED_IMAGES+=("$BACKGROUND_SHARED")
+sql "INSERT INTO store_settings(setting_key,setting_value) VALUES('hero_background','$BACKGROUND_SHARED'),('body_background','$BACKGROUND_SHARED') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)"
+settings_form 'HTTP Test Store' -F "hero_background_file=@$HTTP_TMP/tiny.png;type=image/png"
+assert_status H-BACKGROUND-SHARED 302
+BACKGROUND_SHARED_REPLACEMENT="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'")"
+CREATED_IMAGES+=("$BACKGROUND_SHARED_REPLACEMENT")
+assert_sql H-BACKGROUND-SHARED "$BACKGROUND_SHARED" "SELECT setting_value FROM store_settings WHERE setting_key='body_background'"
+[[ -f "$ROOT/$BACKGROUND_SHARED" && -f "$ROOT/$BACKGROUND_SHARED_REPLACEMENT" ]] ||
+    fail H-BACKGROUND-SHARED 'el reemplazo eliminó un fondo aún compartido'
+pass H-BACKGROUND-SHARED
+
+BACKGROUND_CONFLICT="$BACKGROUND_SHARED_REPLACEMENT"
+settings_form 'HTTP Test Store' \
+    -F "hero_background_file=@$HTTP_TMP/tiny.png;type=image/png" \
+    -F 'remove_hero_background=1'
+assert_status H-BACKGROUND-CONFLICT 200
+assert_sql H-BACKGROUND-CONFLICT "$BACKGROUND_CONFLICT" "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'"
+[[ -f "$ROOT/$BACKGROUND_CONFLICT" ]] || fail H-BACKGROUND-CONFLICT 'el conflicto retiró el fondo existente'
+pass H-BACKGROUND-CONFLICT
+
+BACKGROUND_COUNT_BEFORE_FAILURE="$(settings_image_file_count)"
+BACKGROUND_HERO_BEFORE_FAILURE="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'")"
+BACKGROUND_BODY_BEFORE_FAILURE="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='body_background'")"
+settings_form 'HTTP Test Store' \
+    -F "hero_background_file=@$HTTP_TMP/tiny.png;type=image/png" \
+    -F "body_background_file=@$HTTP_TMP/too-large.png;type=image/png"
+assert_status H-BACKGROUND-SECOND-FAILURE 200
+assert_sql H-BACKGROUND-SECOND-FAILURE "$BACKGROUND_HERO_BEFORE_FAILURE" "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'"
+assert_sql H-BACKGROUND-SECOND-FAILURE "$BACKGROUND_BODY_BEFORE_FAILURE" "SELECT setting_value FROM store_settings WHERE setting_key='body_background'"
+[[ "$(settings_image_file_count)" == "$BACKGROUND_COUNT_BEFORE_FAILURE" ]] ||
+    fail H-BACKGROUND-SECOND-FAILURE 'el fallo del segundo fondo dejó el primer archivo nuevo'
+pass H-BACKGROUND-SECOND-FAILURE
+
+settings_form 'HTTP Test Store' -F 'remove_hero_background=1' -F 'remove_body_background=1'
+assert_status H-BACKGROUND-CLEANUP 302
+assert_sql H-BACKGROUND-CLEANUP '' "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'"
+assert_sql H-BACKGROUND-CLEANUP '' "SELECT setting_value FROM store_settings WHERE setting_key='body_background'"
+[[ ! -e "$ROOT/$BACKGROUND_SHARED" && ! -e "$ROOT/$BACKGROUND_SHARED_REPLACEMENT" ]] ||
+    fail H-BACKGROUND-CLEANUP 'la restauración final dejó fondos de prueba'
+pass H-BACKGROUND-CLEANUP
+
 printf 'Prueba XSS por HTTP...\n'
 request GET index.php
 assert_status H-XSS-HTTP 200
@@ -493,12 +812,23 @@ assert_body_excludes H-XSS-HTTP '<script>globalThis.xssExecuted=1;document.title
 assert_body_excludes H-XSS-HTTP '"><img src=x onerror=globalThis.xssExecuted=2>'
 assert_body_contains H-XSS-HTTP '&lt;script&gt;globalThis.xssExecuted=1;document.title=&quot;XSS_EXECUTED&quot;&lt;/script&gt;'
 pass H-XSS-HTTP
-if command -v google-chrome >/dev/null 2>&1; then
-    if timeout 30 google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom "$HTTP_BASE_URL/index.php" >"$HTTP_TMP/browser-dom.html" 2>"$HTTP_TMP/chrome.log"; then
-        ! rg --quiet '<title>XSS_EXECUTED</title>|<script>globalThis\\.xssExecuted|onerror="globalThis\\.xssExecuted' "$HTTP_TMP/browser-dom.html" ||
-            fail H-XSS-BROWSER 'Chromium creó o ejecutó nodos del payload'
+CHROME_BIN="$(command -v google-chrome-stable || command -v google-chrome || true)"
+if [[ -n "$CHROME_BIN" ]] && command -v node >/dev/null 2>&1; then
+    CHROME_PORT="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    CHROME_COMMAND=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$CHROME_PORT"
+        "--user-data-dir=$HTTP_TMP/chrome-profile"
+        "--host-resolver-rules=MAP * 127.0.0.1, EXCLUDE 127.0.0.1"
+        about:blank)
+    setsid "${CHROME_COMMAND[@]}" >"$HTTP_TMP/chrome.out" 2>"$HTTP_TMP/chrome.log" & CHROME_PID=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$CHROME_PORT/json/list" >/dev/null && break; sleep .05; done
+    if timeout 20 node "$ROOT/tests/helpers/chrome_xss.mjs" "$CHROME_PORT" "$HTTP_BASE_URL" >"$HTTP_TMP/chrome-test.out" 2>>"$HTTP_TMP/chrome.log"; then
         pass H-XSS-BROWSER
     else
+        cp "$HTTP_TMP/chrome.log" /tmp/cyberleo-chrome.log
+        printf '  Chromium command: timeout 30 %q ' "${CHROME_COMMAND[@]}"
+        printf '\n'
         printf '  BLOCKED H-XSS-BROWSER - Chromium headless no terminó correctamente\n'
     fi
 else

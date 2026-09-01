@@ -7,11 +7,12 @@ require_once 'includes/functions.php';
 require_once 'includes/mailer.php';
 
 $notice = '';
+$rateLimited = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email']);
     try { enforce_auth_rate_limit($pdo, 'reset|' . strtolower($email)); }
-    catch (RateLimitException $e) { http_response_code(429); header('Retry-After: 900'); $notice = 'Demasiados intentos. Intentá más tarde.'; }
+    catch (RateLimitException $e) { $rateLimited = true; http_response_code(429); header('Retry-After: 900'); $notice = 'Demasiados intentos. Intentá más tarde.'; }
     catch (Throwable $e) { error_log($e->getMessage()); $notice = 'Si el correo está registrado, recibirás instrucciones.'; }
 
     // Validación básica
@@ -41,7 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Email
             $to = $user['mail'];
-            $subject = "Recuperación de contraseña - " . $settings['store_name'];
+            $safeHeaderStore = safe_mail_header_value($settings['store_name']);
+            $subject = "Recuperación de contraseña - " . $safeHeaderStore;
 
             $safeStore = htmlspecialchars($settings['store_name'], ENT_QUOTES, 'UTF-8');
             $safeUser = htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8');
@@ -50,47 +52,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <!DOCTYPE html>
             <html>
             <body style='background:#f2f4f7;font-family:Arial,sans-serif;padding:20px;margin:0;'>
-            
+
             <div style='max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;padding:30px;box-shadow:0 4px 18px rgba(0,0,0,0.08);'>
-            
+
                 <h1 style='color:#2BBFBD;text-align:center;font-size:24px;'>" . $safeStore . "</h1>
-            
+
                 <h2 style='color:#333;margin:0 0 10px;font-size:20px;font-weight:600;text-align:center;'>
                     Recuperar contraseña
                 </h2>
-            
+
                 <p style='color:#555;font-size:15px;line-height:1.6;'>
                     Hola <strong>{$safeUser}</strong>,<br><br>
                     Solicitaste restablecer tu contraseña. Hacé click en el siguiente botón para continuar.
                 </p>
-            
+
                 <div style='text-align:center;margin:30px 0;'>
-                    <a href='$safeLink' 
+                    <a href='$safeLink'
                        style='background:#6c63ff;color:#fff;text-decoration:none;font-weight:600;
                               padding:14px 24px;border-radius:8px;display:inline-block;font-size:15px;'>
                         Restablecer contraseña
                     </a>
                 </div>
-            
+
                 <p style='color:#555;font-size:14px;line-height:1.6;'>
                     Si no fuiste vos, simplemente ignorá este mensaje.
                 </p>
-            
+
                 <hr style='border:none;border-top:1px solid #eee;margin:25px 0;'>
-            
+
                 <p style='color:#888;font-size:12px;text-align:center;line-height:1.5;margin:0;'>
                     Este enlace es válido por 1 hora.<br>
                     " . $safeStore . " © " . date('Y') . "
                 </p>
-            
+
             </div>
-            
+
             </body>
             </html>
             ";
 
             // Headers correctos
-            $headers  = "From: " . $settings['store_name'] . " <{$settings['mail_from']}>\r\n";
+            $headers  = "From: " . $safeHeaderStore . " <{$settings['mail_from']}>\r\n";
             $headers .= "Reply-To: " . ($settings['admin_email'] ?: $settings['mail_from']) . "\r\n";
             $headers .= "MIME-Version: 1.0\r\n";
             $headers .= "Content-type: text/html; charset=UTF-8\r\n";
@@ -107,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['password_reset_notice'] = "Si el correo está registrado, recibirás instrucciones.";
         header('Location: forgot_password.php'); exit;
     }
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $notice) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $notice && !$rateLimited) {
         $_SESSION['password_reset_notice'] = $notice;
         header('Location: forgot_password.php'); exit;
     }

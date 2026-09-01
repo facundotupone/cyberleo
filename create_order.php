@@ -40,21 +40,26 @@ foreach ($cart as $item) {
 }
 if (array_sum($quantities) > 100) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'El carrito supera el límite permitido.']); exit; }
 if (count($quantities) > 50) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'El carrito supera el límite permitido.']); exit; }
+ksort($quantities, SORT_NUMERIC);
 
+$idempotencyLock = 'cyberleo:checkout:' . substr(hash_hmac('sha256', $idempotencyKey, APP_SECRET), 0, 45);
 try {
     $storeSettings = get_store_settings();
     enforce_order_rate_limit($pdo);
     expire_pending_orders($pdo);
+    $lock = $pdo->prepare('SELECT GET_LOCK(?, 10)'); $lock->execute([$idempotencyLock]);
+    if ((int)$lock->fetchColumn() !== 1) throw new RuntimeException('Checkout lock unavailable.');
     $pdo->beginTransaction();
-    $existing = $pdo->prepare('SELECT id FROM orders WHERE idempotency_key = ? FOR UPDATE');
+    // The per-key named lock serializes equal keys; a locking read on a
+    // missing unique key would create InnoDB gap locks across different keys.
+    $existing = $pdo->prepare('SELECT id FROM orders WHERE idempotency_key = ?');
     $existing->execute([$idempotencyKey]);
     if ($existingId = $existing->fetchColumn()) {
         $pdo->commit();
         echo json_encode(['success' => true, 'orderId' => (int)$existingId, 'whatsappUrl' => order_whatsapp_url($pdo, $existingId, $storeSettings), 'message' => 'Pedido ya registrado.']);
-        exit;
-    }
-    $orderItems = [];
-    $total = 0;
+    } else {
+        $orderItems = [];
+        $total = 0;
 
     foreach ($quantities as $productId => $quantity) {
         $stmt = $pdo->prepare('SELECT id, name, price, price_sale, stock FROM products WHERE id = ? AND is_active = 1 FOR UPDATE');
@@ -85,6 +90,7 @@ try {
     $pdo->commit();
 
     echo json_encode(['success' => true, 'orderId' => $orderId, 'whatsappUrl' => order_whatsapp_url($pdo, $orderId, $storeSettings)]);
+    }
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
@@ -93,4 +99,6 @@ try {
     if ($e instanceof RateLimitException) header('Retry-After: 900');
     error_log('Order creation failed: ' . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'No fue posible registrar el pedido. Verificá el stock e intentá nuevamente.']);
+} finally {
+    if (isset($lock)) $pdo->prepare('DO RELEASE_LOCK(?)')->execute([$idempotencyLock]);
 }
