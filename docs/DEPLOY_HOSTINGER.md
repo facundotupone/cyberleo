@@ -44,7 +44,8 @@ Orden obligatorio de staging:
 1. Copiar la base de producción a una base exclusiva de staging.
 2. Copiar los uploads actuales de productos y settings a staging.
 3. Ejecutar la migración sobre la base de staging.
-4. Ejecutar `scripts/verify_production_images.php` en staging.
+4. Ejecutar `scripts/verify_production_images.php --root` indicando la raíz
+   pública real de staging.
 5. Desplegar el ZIP en un directorio nuevo de staging.
 6. Restaurar los uploads en ese directorio, conservando los `.htaccess` nuevos.
 7. Ejecutar nuevamente el verificador.
@@ -91,12 +92,19 @@ extensiones distintas de JPG, JPEG, PNG y WebP.
 Ejecutar el verificador privado contra la base correspondiente:
 
 ```bash
-php /ruta/privada/al/proyecto/scripts/verify_production_images.php
+# Ejecutar estas líneas estando ya en la raíz pública que muestra el hosting.
+PUBLIC_ROOT="$(pwd -P)"
+php /ruta/privada/al/proyecto/scripts/verify_production_images.php \
+  --root "$PUBLIC_ROOT"
 ```
 
-Debe finalizar con código 0. Comparar referencias de base con archivos físicos
-y recién entonces intercambiar el directorio nuevo por el `public_html`
-activo. Conservar el directorio anterior para rollback.
+Usar la ruta que muestre el hosting, sin suponer el nombre ni la ubicación del
+directorio. `--root` no acepta `/`, rutas relativas, formas no canónicas,
+enlaces simbólicos ni raíces que no contengan los directorios reales
+`assets/images/products` y `assets/images/settings`. Debe finalizar con código
+0. Comparar referencias de base con archivos físicos y recién entonces
+intercambiar el directorio nuevo por el `public_html` activo. Conservar el
+directorio anterior para rollback.
 
 Crear manualmente `public_html/includes/config.local.php`; nunca agregarlo al
 ZIP. Plantilla:

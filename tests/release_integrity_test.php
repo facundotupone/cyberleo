@@ -7,11 +7,36 @@ if ($root === '' || !is_dir($root)) {
     exit(2);
 }
 $root = realpath($root);
+if ($root === false) {
+    fwrite(STDERR, "No se pudo resolver el directorio extraído.\n");
+    exit(2);
+}
+
+function release_path_has_symlink(string $path): bool {
+    $current = str_starts_with($path, DIRECTORY_SEPARATOR) ? DIRECTORY_SEPARATOR : '';
+    foreach (explode(DIRECTORY_SEPARATOR, trim($path, DIRECTORY_SEPARATOR)) as $segment) {
+        if ($segment === '') continue;
+        $current .= ($current === '' || $current === DIRECTORY_SEPARATOR ? '' : DIRECTORY_SEPARATOR) . $segment;
+        if (is_link($current)) return true;
+    }
+    return false;
+}
+
+function is_regular_release_path(string $candidate, string $root): bool {
+    if (release_path_has_symlink($candidate) || !is_file($candidate) || is_link($candidate)) return false;
+    $realCandidate = realpath($candidate);
+    return $realCandidate !== false
+        && ($realCandidate === $root || str_starts_with($realCandidate, $root . DIRECTORY_SEPARATOR))
+        && is_file($realCandidate)
+        && !is_link($realCandidate);
+}
+
 $broken = [];
 $references = 0;
 $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
 foreach ($iterator as $file) {
-    if (!$file->isFile() || !in_array(strtolower($file->getExtension()), ['css','php','html'], true)) continue;
+    if (!$file->isFile() || $file->isLink()
+        || !in_array(strtolower($file->getExtension()), ['css','php','html'], true)) continue;
     $relativeSource = ltrim(str_replace('\\', '/', substr($file->getPathname(), strlen($root))), '/');
     foreach (file($file->getPathname()) ?: [] as $lineNumber => $line) {
         $candidates = [];
@@ -33,7 +58,9 @@ foreach ($iterator as $file) {
                 : ($file->getExtension() === 'css'
                     ? dirname($file->getPathname()) . '/' . $path
                     : $root . '/' . $path);
-            if (!file_exists($candidate)) $broken[] = "{$relativeSource}:" . ($lineNumber + 1) . " -> {$reference}";
+            if (!is_regular_release_path($candidate, $root)) {
+                $broken[] = "{$relativeSource}:" . ($lineNumber + 1) . " -> {$reference}";
+            }
         }
     }
 }

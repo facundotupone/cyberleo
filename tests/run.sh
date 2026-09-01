@@ -36,6 +36,7 @@ require_command() {
 
 require_command php
 php "$ROOT/tests/htaccess_security_test.php"
+bash "$ROOT/tests/release_integrity_cases.sh"
 
 for command in mysql mysqladmin mariadbd mariadb-install-db; do
     require_command "$command"
@@ -161,12 +162,47 @@ INSERT INTO categories(id,name,icon) VALUES(1,'Inventory','bi-image');
 INSERT INTO products(id,name,description,price,stock,image,category_id) VALUES(1,'Fixture','Fixture',1,1,'$PRODUCT_FIXTURE',1);
 INSERT INTO product_images(product_id,image_path,is_main) VALUES(1,'$PRODUCT_FIXTURE',1);
 INSERT INTO store_settings(setting_key,setting_value) VALUES('hero_background','$SETTING_FIXTURE');"
-INVENTORY_OUTPUT="$(APP_ENV=test IMAGE_STORAGE_ROOT="$INVENTORY_ROOT" DB_HOST="localhost;unix_socket=$SOCKET" DB_NAME="$TEST_DB" DB_USER=root DB_PASS='' php "$ROOT/scripts/verify_production_images.php")"
-[[ "$INVENTORY_OUTPUT" == $'total: 3\ncorrect: 3\nmissing: 0\nunsafe: 0\nmain_inconsistencies: 0' ]] || {
-    printf 'Inventario inesperado:\n%s\n' "$INVENTORY_OUTPUT" >&2
-    exit 1
+VERIFY_ENV=(env DB_HOST="localhost;unix_socket=$SOCKET" DB_NAME="$TEST_DB" DB_USER=root DB_PASS='')
+verify_status() {
+    local id=$1 expected=$2
+    shift 2
+    set +e
+    "${VERIFY_ENV[@]}" php "$ROOT/scripts/verify_production_images.php" "$@" >"$WORK_DIR/$id.out" 2>"$WORK_DIR/$id.err"
+    local actual=$?
+    set -e
+    [[ "$actual" -eq "$expected" ]] || { printf '%s: esperado %s, recibido %s\n' "$id" "$expected" "$actual" >&2; exit 1; }
 }
-printf '%s\n' "$INVENTORY_OUTPUT"
+verify_status V-01 2
+printf 'V-01 PASS - raíz ausente rechazada\n'
+verify_status V-02 2 --root=relative
+printf 'V-02 PASS - raíz relativa rechazada\n'
+verify_status V-03 2 --root="$WORK_DIR/no-existe"
+printf 'V-03 PASS - raíz inexistente rechazada\n'
+ln -s "$INVENTORY_ROOT" "$WORK_DIR/image-root-link"
+verify_status V-04 2 --root="$WORK_DIR/image-root-link"
+printf 'V-04 PASS - raíz symlink rechazada\n'
+
+MISSING_PRODUCT='assets/images/products/cccccccccccccccccccccccccccccccc.jpg'
+"${MYSQL[@]}" "$TEST_DB" -e "UPDATE products SET image='$MISSING_PRODUCT' WHERE id=1; UPDATE product_images SET image_path='$MISSING_PRODUCT',is_main=1 WHERE product_id=1"
+verify_status V-05 1 --root="$INVENTORY_ROOT"
+rg -q '^missing: [1-9]' "$WORK_DIR/V-05.out"
+printf 'V-05 PASS - referencia faltante detectada\n'
+
+"${MYSQL[@]}" "$TEST_DB" -e "UPDATE products SET image='../../etc/passwd' WHERE id=1; UPDATE product_images SET image_path='../../etc/passwd',is_main=1 WHERE product_id=1"
+verify_status V-06 1 --root="$INVENTORY_ROOT"
+rg -q '^unsafe: [1-9]' "$WORK_DIR/V-06.out"
+printf 'V-06 PASS - referencia insegura detectada\n'
+
+"${MYSQL[@]}" "$TEST_DB" -e "UPDATE products SET image='$PRODUCT_FIXTURE' WHERE id=1; UPDATE product_images SET image_path='$PRODUCT_FIXTURE',is_main=0 WHERE product_id=1"
+verify_status V-07 1 --root="$INVENTORY_ROOT"
+rg -q '^main_inconsistencies: [1-9]' "$WORK_DIR/V-07.out"
+printf 'V-07 PASS - principal inconsistente detectada\n'
+
+"${MYSQL[@]}" "$TEST_DB" -e "UPDATE product_images SET is_main=1 WHERE product_id=1"
+verify_status V-08 0 --root="$INVENTORY_ROOT"
+INVENTORY_OUTPUT="$(<"$WORK_DIR/V-08.out")"
+[[ "$INVENTORY_OUTPUT" == $'total: 3\ncorrect: 3\nmissing: 0\nunsafe: 0\nmain_inconsistencies: 0' ]]
+printf 'V-08 PASS - fixture correcto\n%s\n' "$INVENTORY_OUTPUT"
 
 TEST_DB_SOCKET="$SOCKET" TEST_DB_NAME="$TEST_DB" \
     "$ROOT/tests/run_http.sh"

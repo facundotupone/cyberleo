@@ -2,17 +2,59 @@
 declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 
+/**
+ * @return never
+ */
+function root_usage(string $message = ''): void {
+    if ($message !== '') fwrite(STDERR, $message . "\n");
+    fwrite(STDERR, "Uso: php scripts/verify_production_images.php --root /ruta/absoluta/real/public_html\n");
+    exit(2);
+}
+
+function cli_path_has_symlink(string $path): bool {
+    $current = DIRECTORY_SEPARATOR;
+    foreach (explode(DIRECTORY_SEPARATOR, trim($path, DIRECTORY_SEPARATOR)) as $segment) {
+        if ($segment === '') continue;
+        $current .= ($current === DIRECTORY_SEPARATOR ? '' : DIRECTORY_SEPARATOR) . $segment;
+        if (is_link($current)) return true;
+    }
+    return false;
+}
+
+$arguments = array_slice($argv, 1);
+$rootArgument = '';
+if (count($arguments) === 2 && $arguments[0] === '--root') {
+    $rootArgument = $arguments[1];
+} elseif (count($arguments) === 1 && str_starts_with($arguments[0], '--root=')) {
+    $rootArgument = substr($arguments[0], strlen('--root='));
+} else {
+    root_usage('La opción --root es obligatoria y no admite argumentos adicionales.');
+}
+if ($rootArgument === '' || !str_starts_with($rootArgument, DIRECTORY_SEPARATOR)) {
+    root_usage('--root debe ser una ruta absoluta.');
+}
+$realRoot = realpath($rootArgument);
+if ($realRoot === false || !is_dir($realRoot) || $realRoot === DIRECTORY_SEPARATOR
+    || $rootArgument !== $realRoot || cli_path_has_symlink($rootArgument)) {
+    root_usage('--root debe ser un directorio real canónico, distinto de / y sin enlaces simbólicos.');
+}
+foreach (['products', 'settings'] as $scope) {
+    $directory = $realRoot . '/assets/images/' . $scope;
+    if (!is_dir($directory) || is_link($directory) || cli_path_has_symlink($directory)
+        || realpath($directory) !== $directory) {
+        root_usage("--root debe contener assets/images/{$scope} como directorio real sin enlaces simbólicos.");
+    }
+}
+
 require_once dirname(__DIR__) . '/includes/config.php';
 require_once dirname(__DIR__) . '/includes/db.php';
 require_once dirname(__DIR__) . '/includes/images.php';
 
 $counts = ['total'=>0, 'correct'=>0, 'missing'=>0, 'unsafe'=>0, 'main_inconsistencies'=>0];
-$imageRoot = (getenv('APP_ENV') === 'test' && getenv('IMAGE_STORAGE_ROOT'))
-    ? (string)getenv('IMAGE_STORAGE_ROOT') : dirname(__DIR__);
-$check = static function (?string $path, string $scope) use (&$counts, $imageRoot): void {
+$check = static function (?string $path, string $scope) use (&$counts, $realRoot): void {
     if ($path === null || $path === '') return;
     $counts['total']++;
-    $resolved = resolve_safe_stored_image_path($path, $imageRoot, $scope);
+    $resolved = resolve_safe_stored_image_path($path, $realRoot, $scope);
     if ($resolved['status'] === 'resolved') $counts['correct']++;
     elseif ($resolved['status'] === 'missing_file') $counts['missing']++;
     else $counts['unsafe']++;
