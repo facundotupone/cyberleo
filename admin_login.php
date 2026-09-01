@@ -15,7 +15,7 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username']);
     $password = $_POST['password'];
-
+    try {
     $key = enforce_auth_rate_limit($pdo, 'login|' . strtolower($username));
     if (!empty($username) && !empty($password)) {
         $stmt = $pdo->prepare("SELECT id, password FROM users WHERE username = ?");
@@ -41,6 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $error = 'Por favor, complete todos los campos';
     }
+    } catch (RateLimitException $e) {
+        http_response_code(429); header('Retry-After: 900'); $error = 'Demasiados intentos. Intentá más tarde.';
+    } catch (Throwable $e) { error_log($e->getMessage()); $error = 'Usuario o contraseña incorrectos'; }
 }
 ?>
 <!DOCTYPE html>
