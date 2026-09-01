@@ -11,6 +11,8 @@ Catálogo autoadministrable de productos informáticos con carrito, control de s
 4. Dar permisos de escritura al servidor web sobre `assets/images/products/`.
 5. Abrir `admin_login.php`, cargar categorías y productos, incluyendo el stock inicial.
 
+Desde `admin_settings.php`, el administrador puede modificar el nombre comercial, WhatsApp, Instagram, textos de portada y subir fondos para el encabezado y el sitio. La configuración técnica (base de datos y dominio) permanece en `includes/config.php`.
+
 ## Flujo de pedidos y stock
 
 - El cliente agrega productos y presiona **Enviar pedido por WhatsApp**.

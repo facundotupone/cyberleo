@@ -1,8 +1,8 @@
-<?php if (!isset($categories)) { $categories = get_categories(); } ?>
+<?php if (!isset($categories)) { $categories = get_categories(); } if (!isset($storeSettings)) { $storeSettings = get_store_settings(); } ?>
 <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm sticky-top">
     <div class="container">
         <a class="navbar-brand fw-bold text-primary" href="index.php">
-            <i class="bi bi-cpu-fill me-2"></i><?= htmlspecialchars(STORE_NAME) ?>
+            <i class="bi bi-cpu-fill me-2"></i><?= htmlspecialchars($storeSettings['store_name']) ?>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Abrir menú">
             <span class="navbar-toggler-icon"></span>

@@ -1,6 +1,7 @@
 <?php
 require_once 'includes/config.php';
 require_once 'includes/db.php';
+require_once 'includes/functions.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -63,12 +64,13 @@ try {
     }
     $pdo->commit();
 
-    $message = "Hola " . STORE_NAME . ", quiero confirmar el pedido #{$orderId}:\n\n";
+    $storeSettings = get_store_settings();
+    $message = "Hola " . $storeSettings['store_name'] . ", quiero confirmar el pedido #{$orderId}:\n\n";
     foreach ($orderItems as $item) {
         $message .= "{$item['product']['name']} x {$item['quantity']} = $" . number_format($item['price'] * $item['quantity'], 2, ',', '.') . "\n";
     }
     $message .= "\nTotal: $" . number_format($total, 2, ',', '.') . "\n\nQuedo atento/a para coordinar pago, envío o retiro.";
-    echo json_encode(['success' => true, 'orderId' => $orderId, 'whatsappUrl' => 'https://wa.me/' . WHATSAPP_NUMBER . '?text=' . rawurlencode($message)]);
+    echo json_encode(['success' => true, 'orderId' => $orderId, 'whatsappUrl' => 'https://wa.me/' . $storeSettings['whatsapp_number'] . '?text=' . rawurlencode($message)]);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();

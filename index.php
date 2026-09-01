@@ -68,10 +68,10 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 <body>
     <?php require_once 'components/nav.php'; ?>
     <main class="container mt-4">
-        <section class="hero-section" aria-label="<?= htmlspecialchars(STORE_NAME) ?>">
+        <section class="hero-section" aria-label="<?= htmlspecialchars($storeSettings['store_name']) ?>">
             <div class="hero-content text-center text-white">
-                <h1 class="text-white">Tecnología para trabajar, estudiar y disfrutar</h1>
-                <h3 class="text-white">Encontrá notebooks, componentes y periféricos con stock actualizado.</h3>
+                <h1 class="text-white"><?= htmlspecialchars($storeSettings['hero_title']) ?></h1>
+                <h3 class="text-white"><?= htmlspecialchars($storeSettings['hero_subtitle']) ?></h3>
             </div>
         </section>
         <br>

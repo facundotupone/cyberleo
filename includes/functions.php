@@ -2,6 +2,32 @@
 <?php
 require_once 'db.php';
 
+function get_store_settings() {
+    global $pdo;
+    static $settings = null;
+    if ($settings !== null) return $settings;
+
+    $settings = [
+        'store_name' => STORE_NAME,
+        'whatsapp_number' => WHATSAPP_NUMBER,
+        'instagram_url' => STORE_INSTAGRAM,
+        'hero_title' => 'Tecnología para trabajar, estudiar y disfrutar',
+        'hero_subtitle' => 'Encontrá notebooks, componentes y periféricos con stock actualizado.',
+        'hero_background' => '',
+        'body_background' => '',
+    ];
+    try {
+        $rows = $pdo->query('SELECT setting_key, setting_value FROM store_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
+        foreach ($rows as $key => $value) {
+            if (array_key_exists($key, $settings) && $value !== '') $settings[$key] = $value;
+        }
+    } catch (PDOException $e) {
+        // La tienda sigue mostrando valores seguros por defecto hasta importar schema.sql.
+        error_log($e->getMessage());
+    }
+    return $settings;
+}
+
 function get_categories() {
     global $pdo;
     try {

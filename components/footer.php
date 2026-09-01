@@ -1,3 +1,4 @@
+<?php if (!isset($storeSettings)) { $storeSettings = get_store_settings(); } ?>
 <footer class="footer mt-5 pt-4 pb-2 border-top shadow-lg" style="background: linear-gradient(90deg, #90caf9 0%, #ffe0b2 100%); color: #222; border-color: #eee !important; font-family: 'Montserrat', Arial, sans-serif; box-shadow: 0 -4px 24px 0 rgba(0,0,0,0.07);">
     <div class="container">
         <!-- Banners destacados en el pie -->
@@ -9,6 +10,7 @@
                         <span style="font-size: 1.7rem; background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: flex; align-items: center;"><i class="bi bi-instagram"></i></span>
                         <span style="font-size: 1.02rem; color: #222;">
                             Tecnología, periféricos y soluciones para tu equipo.
+                            <?php if ($storeSettings['instagram_url']): ?><br><a href="<?= htmlspecialchars($storeSettings['instagram_url']) ?>" target="_blank" rel="noopener" style="color: #dc2743; font-weight: 600; text-decoration: underline;">Seguinos en Instagram</a><?php endif; ?>
                         </span>
                     </div>
                     <!-- WhatsApp -->
@@ -16,7 +18,7 @@
                         <span style="font-size: 1.7rem; color: #25d366; display: flex; align-items: center;"><i class="bi bi-whatsapp"></i></span>
                         <span style="font-size: 1.02rem; color: #222;">
                             Escribinos por cualquier consulta o para coordinar tu compra:<br>
-                            <a href="https://wa.me/<?= htmlspecialchars(WHATSAPP_NUMBER) ?>?text=<?= urlencode('Hola ' . STORE_NAME . ', quisiera hacer una consulta.') ?>" target="_blank" rel="noopener" style="color: #128c7e; font-weight: 600; text-decoration: underline;">Contactar por WhatsApp</a>
+                            <a href="https://wa.me/<?= htmlspecialchars($storeSettings['whatsapp_number']) ?>?text=<?= urlencode('Hola ' . $storeSettings['store_name'] . ', quisiera hacer una consulta.') ?>" target="_blank" rel="noopener" style="color: #128c7e; font-weight: 600; text-decoration: underline;">Contactar por WhatsApp</a>
                         </span>
                     </div>
                     <!-- Email -->
@@ -27,7 +29,7 @@
         <!-- Fin banners destacados en el pie -->
         <div class="row">
             <div class="col text-center">
-                <small class="footer-copyright">&copy; <?php echo date('Y'); ?> <?= htmlspecialchars(STORE_NAME) ?>. Todos los derechos reservados.</small>
+                <small class="footer-copyright">&copy; <?php echo date('Y'); ?> <?= htmlspecialchars($storeSettings['store_name']) ?>. Todos los derechos reservados.</small>
             </div>
         </div>
     </div>

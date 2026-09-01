@@ -70,6 +70,11 @@ CREATE TABLE IF NOT EXISTS order_items (
   CONSTRAINT fk_order_item_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS store_settings (
+  setting_key VARCHAR(80) PRIMARY KEY,
+  setting_value TEXT NOT NULL
+) ENGINE=InnoDB;
+
 INSERT INTO categories (name, icon)
 SELECT 'Notebooks', 'bi-laptop' WHERE NOT EXISTS (SELECT 1 FROM categories);
 INSERT INTO categories (name, icon)

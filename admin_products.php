@@ -657,6 +657,11 @@ foreach ($products as $product) {
                             <i class="bi bi-receipt"></i> Pedidos
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin_settings.php">
+                            <i class="bi bi-sliders"></i> Configuración
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
