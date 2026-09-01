@@ -12,8 +12,22 @@ function store_safe_image($tmpName, $error, $size, $directory) {
     return $path;
 }
 function is_safe_upload_path($path) {
-    $real = realpath($path); $base = realpath('assets/images');
-    return $real && $base && str_starts_with($real, $base . DIRECTORY_SEPARATOR);
+    $base = realpath(dirname(__DIR__) . '/assets/images');
+    $real = is_string($path) ? realpath(dirname(__DIR__) . '/' . ltrim($path, '/')) : false;
+    return $real && $base && is_file($real) && !is_link($real) && str_starts_with($real, $base . DIRECTORY_SEPARATOR);
+}
+function is_safe_settings_image_path($path) {
+    return is_string($path) && preg_match('#^assets/images/settings/[a-f0-9]{32}\.(?:jpe?g|png|webp)$#i', $path);
+}
+function delete_image_if_unreferenced(PDO $pdo, $path) {
+    if (!is_safe_upload_path($path)) return false;
+    $check = $pdo->prepare('SELECT (SELECT COUNT(*) FROM products WHERE image=?) + (SELECT COUNT(*) FROM product_images WHERE image_path=?) + (SELECT COUNT(*) FROM store_settings WHERE setting_value=?)');
+    $check->execute([$path, $path, $path]);
+    if ((int)$check->fetchColumn() > 0) return false;
+    $full = realpath(dirname(__DIR__) . '/' . $path);
+    if (!$full || !is_file($full) || is_link($full)) return false;
+    if (!@unlink($full)) { error_log('Could not delete unreferenced image.'); return false; }
+    return true;
 }
 function is_safe_product_image_path($path) {
     return is_string($path) && preg_match('#^assets/images/products/(?:[a-f0-9]{13}|[a-f0-9]{32})\.(?:jpe?g|png|webp)$#i', $path);

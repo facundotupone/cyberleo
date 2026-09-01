@@ -172,9 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($success) {
                     foreach ($images as $image_path) {
-                        if (is_safe_upload_path($image_path)) {
-                            unlink($image_path);
-                        }
+                        delete_image_if_unreferenced($pdo, $image_path);
                     }
                     $pdo->commit();
                     $message = 'Producto eliminado exitosamente.';
