@@ -3,6 +3,14 @@ function reservation_minutes($settings) {
     return max(5, min(1440, (int)($settings['reservation_minutes'] ?? 120)));
 }
 function mysql_now(PDO $pdo) { return $pdo->query('SELECT NOW()')->fetchColumn(); }
+function enforce_order_rate_limit(PDO $pdo) {
+    $hash = hash('sha256', 'order|' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+    $pdo->prepare('DELETE FROM order_rate_limits WHERE requested_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)')->execute();
+    $count = $pdo->prepare('SELECT COUNT(*) FROM order_rate_limits WHERE client_hash = ? AND requested_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)');
+    $count->execute([$hash]);
+    if ((int)$count->fetchColumn() >= 10) { header('Retry-After: 900'); http_response_code(429); echo json_encode(['success'=>false,'message'=>'Demasiados intentos. Intentá más tarde.']); exit; }
+    $pdo->prepare('INSERT INTO order_rate_limits (client_hash, requested_at) VALUES (?, NOW())')->execute([$hash]);
+}
 function order_whatsapp_url(PDO $pdo, $orderId, $settings) {
     $stmt = $pdo->prepare('SELECT product_name, unit_price, quantity FROM order_items WHERE order_id = ?');
     $stmt->execute([$orderId]); $items = $stmt->fetchAll(PDO::FETCH_ASSOC);

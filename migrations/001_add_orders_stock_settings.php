@@ -300,6 +300,12 @@ try {
         );
         fwrite(STDOUT, "Tabla store_settings creada.\n");
     }
+    if (!table_exists($pdo, 'order_rate_limits')) {
+        $pdo->exec('CREATE TABLE `order_rate_limits` (`client_hash` CHAR(64) NOT NULL, `requested_at` DATETIME NOT NULL, KEY `idx_rate_client_time` (`client_hash`, `requested_at`)) ENGINE=InnoDB');
+    }
+    if (!table_exists($pdo, 'auth_rate_limits')) {
+        $pdo->exec('CREATE TABLE `auth_rate_limits` (`context_hash` CHAR(64) NOT NULL, `requested_at` DATETIME NOT NULL, KEY `idx_auth_rate_time` (`context_hash`, `requested_at`)) ENGINE=InnoDB');
+    }
     require_innodb($pdo, 'store_settings');
     require_column($pdo, 'store_settings', 'setting_key', 'varchar(80)', false);
     require_column($pdo, 'store_settings', 'setting_value', 'text', false);

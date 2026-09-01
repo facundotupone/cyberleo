@@ -23,6 +23,7 @@ if (!$cart) {
     echo json_encode(['success' => false, 'message' => 'El carrito está vacío.']);
     exit;
 }
+if (count($cart) > 50) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'El carrito supera el límite permitido.']); exit; }
 
 // Se acumulan cantidades por producto: el precio y el nombre siempre se obtienen de la base.
 $quantities = [];
@@ -35,10 +36,13 @@ foreach ($cart as $item) {
         exit;
     }
     $quantities[$id] = ($quantities[$id] ?? 0) + $quantity;
+    if ($quantities[$id] > 20) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'Cantidad no permitida.']); exit; }
 }
+if (array_sum($quantities) > 100) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'El carrito supera el límite permitido.']); exit; }
 
 try {
     $storeSettings = get_store_settings();
+    enforce_order_rate_limit($pdo);
     expire_pending_orders($pdo);
     $pdo->beginTransaction();
     $existing = $pdo->prepare('SELECT id FROM orders WHERE idempotency_key = ? FOR UPDATE');

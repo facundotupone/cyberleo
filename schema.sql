@@ -82,6 +82,11 @@ CREATE TABLE IF NOT EXISTS order_rate_limits (
   requested_at DATETIME NOT NULL,
   KEY idx_rate_client_time (client_hash, requested_at)
 ) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS auth_rate_limits (
+  context_hash CHAR(64) NOT NULL,
+  requested_at DATETIME NOT NULL,
+  KEY idx_auth_rate_time (context_hash, requested_at)
+) ENGINE=InnoDB;
 
 INSERT INTO categories (name, icon)
 SELECT 'Notebooks', 'bi-laptop' WHERE NOT EXISTS (SELECT 1 FROM categories);
