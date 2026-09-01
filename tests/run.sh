@@ -140,5 +140,7 @@ run_fixture "$ROOT/tests/fixtures/pre_5c8bdb2_orders.sql"
 "${MYSQL[@]}" "$TEST_DB" < "$ROOT/schema.sql"
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/image_deletion_test.php"
+TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
+    php "$ROOT/tests/image_deletion_regression_test.php"
 
 printf 'OK: lint, migración idempotente y ciclo de eliminación de imágenes verificados.\n'

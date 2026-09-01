@@ -66,13 +66,14 @@ function delete_unreferenced_product_image(PDO $pdo, $path, ?string $root = null
     if ($resolved['status'] !== 'resolved') return $resolved['status'];
     $check = $pdo->prepare(
         'SELECT (SELECT COUNT(*) FROM products WHERE image = ?) + '
-        . '(SELECT COUNT(*) FROM product_images WHERE image_path = ?)'
+        . '(SELECT COUNT(*) FROM product_images WHERE image_path = ?) + '
+        . '(SELECT COUNT(*) FROM store_settings WHERE setting_value = ?)'
     );
-    $check->execute([$path, $path]);
+    $check->execute([$path, $path, $path]);
     if ((int) $check->fetchColumn() > 0) return 'still_referenced';
 
     try {
-        $deleted = $deleteFile ? $deleteFile($resolved['path']) : @unlink($resolved['path']);
+        $deleted = $deleteFile !== null ? $deleteFile($resolved['path']) : @unlink($resolved['path']);
     } catch (Throwable $e) {
         error_log('Could not delete unreferenced product image: ' . $e->getMessage());
         return 'deletion_failed';
@@ -126,7 +127,7 @@ function delete_product_image_record(PDO $pdo, int $imageId): array {
         }
 
         $images = $pdo->prepare(
-            'SELECT id, image_path FROM product_images WHERE product_id = ? ORDER BY id ASC FOR UPDATE'
+            'SELECT id, image_path, is_main FROM product_images WHERE product_id = ? ORDER BY id ASC FOR UPDATE'
         );
         $images->execute([$image['product_id']]);
         $lockedImages = $images->fetchAll(PDO::FETCH_ASSOC);
@@ -144,7 +145,8 @@ function delete_product_image_record(PDO $pdo, int $imageId): array {
 
         $pdo->prepare('DELETE FROM product_images WHERE id = ?')->execute([$imageId]);
         $next = $pdo->prepare(
-            'SELECT id, image_path FROM product_images WHERE product_id = ? ORDER BY id ASC LIMIT 1 FOR UPDATE'
+            'SELECT id, image_path FROM product_images WHERE product_id = ? '
+            . 'ORDER BY is_main DESC, id ASC LIMIT 1 FOR UPDATE'
         );
         $next->execute([$image['product_id']]);
         $replacement = $next->fetch(PDO::FETCH_ASSOC) ?: null;
