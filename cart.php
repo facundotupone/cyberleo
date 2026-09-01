@@ -58,32 +58,32 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
         text-align: center;
         margin-bottom: 20px;
     }
-    
+
     .cart-item .d-flex.align-items-center {
         flex-direction: column;
         align-items: center !important;
         text-align: center;
     }
-    
+
     .cart-item .me-3.flex-shrink-0 {
         margin-right: 0 !important;
         margin-bottom: 15px;
     }
-    
+
     .cart-item .flex-grow-1 {
         text-align: center;
         width: 100%;
     }
-    
+
     .cart-item h6 {
         margin-bottom: 10px;
         text-align: center;
     }
-    
+
     .cart-item .d-flex.align-items-center:not(.justify-content-center) {
         justify-content: center;
     }
-    
+
 }
 </style>
 </head>
@@ -113,7 +113,7 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 </div>
             </div>
         </div>
-        
+
         <div class="col-lg-4">
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-primary text-white">
@@ -124,18 +124,18 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
                         <h4 class="mb-0">Total:</h4>
                         <h4 id="cart-total" class="mb-0 text-primary">$0.00</h4>
                     </div>
-                    
+
                     <div class="bg-light p-3 rounded mb-3">
                         <h6 class="mb-2"><i class="bi bi-info-circle me-2"></i>Información de envío</h6>
                         <p class="small mb-0">Envíanos tu consulta y te responderemos a la brevedad para coordinar envío o retiro.</p>
                     </div>
-                    
+
                     <div class="mb-3">
                         <h6><i class="bi bi-credit-card me-2"></i>Métodos de pago:</h6>
                         <div class="d-flex flex-wrap gap-2"><?php foreach ($paymentMethods as $method): ?><span class="badge bg-info"><?= htmlspecialchars($method, ENT_QUOTES, 'UTF-8') ?></span><?php endforeach; ?></div>
                         <small class="text-muted">Abonas al recibir tu pedido</small>
                     </div>
-                    
+
                     <div class="d-grid gap-2">
                         <a href="#" id="whatsapp-order" class="btn btn-success btn-lg" target="_blank">
                             <i class="bi bi-whatsapp me-2"></i>Enviar Pedido por WhatsApp
@@ -159,7 +159,39 @@ const productImages = <?php echo json_encode($productImages, JSON_HEX_TAG | JSON
 
 // Función para obtener los datos de un producto por su ID
 function getProductById(productId) {
-    return productData.find(product => product.id == productId);
+    return productData.find(product => String(product.id) === String(productId));
+}
+
+// Convierte cualquier valor persistido a la única forma aceptada por el carrito:
+// IDs existentes, cantidades enteras positivas y una sola fila por producto.
+function normalizedCart() {
+    let stored;
+    try {
+        stored = JSON.parse(localStorage.getItem('cart'));
+    } catch {
+        stored = [];
+    }
+    const quantities = new Map();
+    if (Array.isArray(stored)) {
+        stored.forEach(item => {
+            if (!item || typeof item !== 'object') return;
+            const id = String(item.productId ?? '');
+            const quantity = Number(item.quantity);
+            if (!/^[1-9]\d*$/.test(id)
+                || !Number.isSafeInteger(quantity)
+                || quantity < 1
+                || !getProductById(id)) return;
+            const combined = (quantities.get(id) || 0) + quantity;
+            if (Number.isSafeInteger(combined)) quantities.set(id, combined);
+        });
+    }
+    const cart = Array.from(quantities, ([productId, quantity]) => ({productId, quantity}));
+    if (cart.length > 0) {
+        localStorage.setItem('cart', JSON.stringify(cart));
+    } else {
+        localStorage.removeItem('cart');
+    }
+    return cart;
 }
 
 // Función para obtener la imagen principal de un producto
@@ -168,13 +200,13 @@ function getProductImage(productId) {
     if (productImages[productId] && productImages[productId].length > 0) {
         return productImages[productId][0];
     }
-    
+
     // Si no hay en product_images, usar la imagen del producto
     const product = getProductById(productId);
     if (product && product.image) {
         return product.image;
     }
-    
+
     // Retornar null si no hay imagen disponible
     return null;
 }
@@ -223,15 +255,7 @@ function getEffectivePrice(product) {
 
 // Cargar los items del carrito
 function loadCartItems() {
-    let cartItems = [];
-    try {
-        const storedCart = JSON.parse(localStorage.getItem('cart'));
-        if (Array.isArray(storedCart)) {
-            cartItems = storedCart;
-        }
-    } catch (error) {
-        localStorage.removeItem('cart');
-    }
+    const cartItems = normalizedCart();
 
     const cartContainer = document.getElementById('cart-items');
     const cartTotal = document.getElementById('cart-total');
@@ -409,11 +433,11 @@ function loadCartItems() {
 }
 
 function updateCartItemQuantity(productId, quantity) {
-    if (quantity < 1) return;
+    if (!Number.isSafeInteger(quantity) || quantity < 1) return;
 
-    let cart = JSON.parse(localStorage.getItem('cart')) || [];
-    const index = cart.findIndex(item => item.productId == productId);
-    
+    const cart = normalizedCart();
+    const index = cart.findIndex(item => String(item.productId) === String(productId));
+
     if (index !== -1) {
         cart[index].quantity = quantity;
         localStorage.setItem('cart', JSON.stringify(cart));
@@ -423,15 +447,15 @@ function updateCartItemQuantity(productId, quantity) {
 }
 
 function removeFromCart(productId) {
-    let cart = JSON.parse(localStorage.getItem('cart')) || [];
-    cart = cart.filter(item => item.productId != productId);
+    let cart = normalizedCart();
+    cart = cart.filter(item => String(item.productId) !== String(productId));
     localStorage.setItem('cart', JSON.stringify(cart));
     loadCartItems();
     updateCartCount();
 }
 
 function updateCartCount() {
-    const cart = JSON.parse(localStorage.getItem('cart')) || [];
+    const cart = normalizedCart();
     const count = cart.reduce((total, item) => total + item.quantity, 0);
     document.querySelectorAll('.cart-count').forEach(el => {
         el.textContent = count;
@@ -442,7 +466,7 @@ function updateCartCount() {
 document.getElementById('whatsapp-order').addEventListener('click', async function(e) {
     e.preventDefault();
     const button = this;
-    const cart = JSON.parse(localStorage.getItem('cart')) || [];
+    const cart = normalizedCart();
     if (!cart.length || button.classList.contains('disabled')) return;
 
     button.classList.add('disabled');

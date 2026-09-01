@@ -68,6 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $subcategory_id = !empty($_POST['subcategory_id']) ? intval($_POST['subcategory_id']) : null;
                 $destacados = 0;
 
+            $storedImages = [];
             $pdo->beginTransaction();
             try {
                 // Insertar producto sin imagen principal aún
@@ -76,19 +77,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $product_id = $pdo->lastInsertId();
 
                 $main_image_path = null;
-                if (!empty($_FILES['images']['name'][0])) {
-                    $upload_dir = 'assets/images/products/';
-                    foreach ($_FILES['images']['tmp_name'] as $key => $tmp_name) {
-                        if ($_FILES['images']['error'][$key] === UPLOAD_ERR_OK) {
-                            $image_path = store_safe_image($tmp_name, $_FILES['images']['error'][$key], $_FILES['images']['size'][$key], rtrim($upload_dir, '/'));
-                            if ($image_path) {
-                                $is_main = ($key === 0) ? 1 : 0;
-                                $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
-                                $stmt->execute([$product_id, $image_path, $is_main]);
-                                if ($is_main) {
-                                    $main_image_path = $image_path;
-                                }
-                            }
+                if (!empty($_FILES['images'])) {
+                    $storedImages = store_image_batch(normalize_upload_batch($_FILES['images']), 'products');
+                    foreach ($storedImages as $key => $image_path) {
+                        $is_main = ($key === 0) ? 1 : 0;
+                        $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
+                        $stmt->execute([$product_id, $image_path, $is_main]);
+                        if ($is_main) {
+                            $main_image_path = $image_path;
                         }
                     }
                 }
@@ -99,8 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $pdo->commit();
                 $message = 'Producto agregado exitosamente.';
-            } catch (Exception $e) {
-                $pdo->rollBack();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                cleanup_stored_images($storedImages);
                 $message = 'Error al agregar el producto: ' . $e->getMessage();
             }
         }
@@ -117,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $is_active = isset($_POST['is_active']) ? 1 : 0;
             $main_image_id = isset($_POST['main_image']) ? intval($_POST['main_image']) : null;
 
+            $storedImages = [];
             $pdo->beginTransaction();
 
             try {
@@ -135,24 +133,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare('UPDATE products SET image = ? WHERE id = ?')->execute([$mainImagePath, $id]);
                 }
 
-                if (!empty($_FILES['new_images']['name'][0])) {
-                    $upload_dir = 'assets/images/products/';
-                    foreach ($_FILES['new_images']['tmp_name'] as $key => $tmp_name) {
-                        if ($_FILES['new_images']['error'][$key] === UPLOAD_ERR_OK) {
-                            $image_path = store_safe_image($tmp_name, $_FILES['new_images']['error'][$key], $_FILES['new_images']['size'][$key], rtrim($upload_dir, '/'));
-                            if ($image_path) {
-                                $is_main = 0;
-                                $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
-                                $stmt->execute([$id, $image_path, $is_main]);
-                            }
+                if (!empty($_FILES['new_images'])) {
+                    $storedImages = store_image_batch(normalize_upload_batch($_FILES['new_images']), 'products');
+                    $countImages = $pdo->prepare('SELECT COUNT(*) FROM product_images WHERE product_id=?');
+                    $countImages->execute([$id]);
+                    $hasImages = (int)$countImages->fetchColumn() > 0;
+                    foreach ($storedImages as $image_path) {
+                        $isMain = $hasImages ? 0 : 1;
+                        $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
+                        $stmt->execute([$id, $image_path, $isMain]);
+                        if ($isMain) {
+                            $pdo->prepare('UPDATE products SET image=? WHERE id=?')->execute([$image_path,$id]);
+                            $hasImages = true;
                         }
                     }
                 }
 
                 $pdo->commit();
                 $message = 'Producto actualizado exitosamente.';
-            } catch (Exception $e) {
-                $pdo->rollBack();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                cleanup_stored_images($storedImages);
                 $message = 'Error al actualizar el producto: ' . $e->getMessage();
             }
         }

@@ -9,12 +9,6 @@ require_once 'includes/images.php';
 $defaults = get_store_settings();
 $message = '';
 
-function save_setting($key, $value) {
-    global $pdo;
-    $stmt = $pdo->prepare('INSERT INTO store_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
-    $stmt->execute([$key, $value]);
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
     try {
@@ -26,21 +20,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $instagram = trim($_POST['instagram_url'] ?? '');
         if ($instagram !== '' && !filter_var($instagram, FILTER_VALIDATE_URL)) throw new RuntimeException('La URL de Instagram no es válida.');
 
-        $heroBackground = empty($_FILES['hero_background_file']['name']) ? $defaults['hero_background'] : store_safe_image($_FILES['hero_background_file']['tmp_name'], $_FILES['hero_background_file']['error'], $_FILES['hero_background_file']['size'], 'assets/images/settings');
-        $bodyBackground = empty($_FILES['body_background_file']['name']) ? $defaults['body_background'] : store_safe_image($_FILES['body_background_file']['tmp_name'], $_FILES['body_background_file']['error'], $_FILES['body_background_file']['size'], 'assets/images/settings');
-        foreach ([
+        $values = [
             'store_name' => $name,
             'whatsapp_number' => $whatsapp,
             'instagram_url' => $instagram,
             'hero_title' => mb_substr(trim($_POST['hero_title'] ?? ''), 0, 140),
             'hero_subtitle' => mb_substr(trim($_POST['hero_subtitle'] ?? ''), 0, 240),
-            'hero_background' => $heroBackground,
-            'body_background' => $bodyBackground,
             'reservation_minutes' => max(5, min(1440, (int)($_POST['reservation_minutes'] ?? 120))),
             'admin_email' => filter_var($_POST['admin_email'] ?? '', FILTER_VALIDATE_EMAIL) ?: '',
             'mail_from' => filter_var($_POST['mail_from'] ?? '', FILTER_VALIDATE_EMAIL) ?: '',
             'payment_methods' => mb_substr(trim($_POST['payment_methods'] ?? ''), 0, 255),
-        ] as $key => $value) save_setting($key, $value);
+        ];
+        save_settings_with_images(
+            $pdo,
+            $values,
+            [
+                'hero_background' => $_FILES['hero_background_file'] ?? [],
+                'body_background' => $_FILES['body_background_file'] ?? [],
+            ],
+            [
+                'hero_background' => isset($_POST['remove_hero_background']),
+                'body_background' => isset($_POST['remove_body_background']),
+            ]
+        );
         header('Location: admin_settings.php?saved=1'); exit;
     } catch (Throwable $e) {
         $message = $e->getMessage();
@@ -70,8 +72,8 @@ $message = isset($_GET['saved']) ? 'Configuración guardada correctamente.' : $m
 <div class="col-md-4"><label class="form-label">Correo administrador</label><input class="form-control" type="email" name="admin_email" value="<?= htmlspecialchars($defaults['admin_email']) ?>"></div>
 <div class="col-md-4"><label class="form-label">Remitente de correos</label><input class="form-control" type="email" name="mail_from" value="<?= htmlspecialchars($defaults['mail_from']) ?>"></div>
 <div class="col-12"><label class="form-label">Métodos de pago (separados por coma)</label><input class="form-control" name="payment_methods" value="<?= htmlspecialchars($defaults['payment_methods']) ?>"></div>
-<div class="col-md-6"><label class="form-label">Fondo del encabezado</label><input class="form-control" type="file" name="hero_background_file" accept="image/jpeg,image/png,image/webp"><?php if ($defaults['hero_background']): ?><img class="img-thumbnail mt-2" style="max-height:100px" src="<?= htmlspecialchars($defaults['hero_background']) ?>" alt="Fondo actual"><?php endif; ?></div>
-<div class="col-md-6"><label class="form-label">Fondo del sitio</label><input class="form-control" type="file" name="body_background_file" accept="image/jpeg,image/png,image/webp"><?php if ($defaults['body_background']): ?><img class="img-thumbnail mt-2" style="max-height:100px" src="<?= htmlspecialchars($defaults['body_background']) ?>" alt="Fondo actual"><?php endif; ?></div>
+<div class="col-md-6"><label class="form-label">Fondo del encabezado</label><input class="form-control" type="file" name="hero_background_file" accept="image/jpeg,image/png,image/webp"><?php if ($defaults['hero_background']): ?><img class="img-thumbnail mt-2" style="max-height:100px" src="<?= htmlspecialchars($defaults['hero_background']) ?>" alt="Fondo actual"><div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="remove_hero_background" id="remove_hero_background" value="1"><label class="form-check-label" for="remove_hero_background">Quitar fondo del encabezado</label></div><?php endif; ?></div>
+<div class="col-md-6"><label class="form-label">Fondo del sitio</label><input class="form-control" type="file" name="body_background_file" accept="image/jpeg,image/png,image/webp"><?php if ($defaults['body_background']): ?><img class="img-thumbnail mt-2" style="max-height:100px" src="<?= htmlspecialchars($defaults['body_background']) ?>" alt="Fondo actual"><div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="remove_body_background" id="remove_body_background" value="1"><label class="form-check-label" for="remove_body_background">Quitar fondo del sitio</label></div><?php endif; ?></div>
 </div>
 </div><div class="card-footer bg-white text-end"><button class="btn btn-primary"><i class="bi bi-save"></i> Guardar cambios</button></div></form>
 </main></body></html>

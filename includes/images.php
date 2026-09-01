@@ -1,15 +1,75 @@
 <?php
 const MAX_IMAGE_BYTES = 5242880;
-function store_safe_image($tmpName, $error, $size, $directory) {
-    if ($error !== UPLOAD_ERR_OK || $size < 1 || $size > MAX_IMAGE_BYTES) throw new RuntimeException('Imagen inválida o demasiado grande.');
+
+function image_storage_directory(string $scope, ?string $root = null): string {
+    if (!in_array($scope, ['products', 'settings'], true)) {
+        throw new InvalidArgumentException('Directorio de imágenes no permitido.');
+    }
+    return rtrim($root ?? dirname(__DIR__), DIRECTORY_SEPARATOR) . '/assets/images/' . $scope;
+}
+
+function image_storage_relative_directory(string $directory, ?string $root = null): string {
+    $normalized = str_replace('\\', '/', rtrim($directory, '/\\'));
+    $projectRoot = str_replace('\\', '/', rtrim($root ?? dirname(__DIR__), '/\\'));
+    if (str_starts_with($normalized, $projectRoot . '/')) {
+        $normalized = substr($normalized, strlen($projectRoot) + 1);
+    }
+    if (!in_array($normalized, ['assets/images/products', 'assets/images/settings'], true)) {
+        throw new InvalidArgumentException('Directorio de imágenes no permitido.');
+    }
+    return $normalized;
+}
+
+function store_safe_image(
+    $tmpName,
+    $error,
+    $size,
+    $directory,
+    ?string $root = null,
+    ?callable $moveFile = null,
+    ?callable $deleteFile = null
+): string {
+    if ($error !== UPLOAD_ERR_OK || $size < 1 || $size > MAX_IMAGE_BYTES || !is_file($tmpName)) {
+        throw new RuntimeException('Imagen inválida o demasiado grande.');
+    }
     $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmpName);
     $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
     $dimensions = @getimagesize($tmpName);
     if (!isset($extensions[$mime]) || !$dimensions || $dimensions[0] > 6000 || $dimensions[1] > 6000) throw new RuntimeException('Formato o dimensiones de imagen no permitidos.');
-    if (!is_dir($directory) && !mkdir($directory, 0755, true)) throw new RuntimeException('No se pudo preparar imágenes.');
-    $path = rtrim($directory, '/') . '/' . bin2hex(random_bytes(16)) . '.' . $extensions[$mime];
-    if (!move_uploaded_file($tmpName, $path)) throw new RuntimeException('No se pudo guardar la imagen.');
-    return $path;
+    $relativeDirectory = image_storage_relative_directory((string) $directory, $root);
+    $scope = basename($relativeDirectory);
+    $physicalDirectory = image_storage_directory($scope, $root);
+    $parentDirectory = dirname($physicalDirectory);
+    if (path_has_symlink($parentDirectory)
+        || (!is_dir($physicalDirectory) && !mkdir($physicalDirectory, 0755, true))
+        || path_has_symlink($physicalDirectory)) {
+        throw new RuntimeException('No se pudo preparar imágenes.');
+    }
+    $relativePath = $relativeDirectory . '/' . bin2hex(random_bytes(16)) . '.' . $extensions[$mime];
+    $physicalPath = $physicalDirectory . '/' . basename($relativePath);
+    try {
+        $moved = $moveFile !== null
+            ? $moveFile((string) $tmpName, $physicalPath)
+            : move_uploaded_file((string) $tmpName, $physicalPath);
+    } catch (Throwable $e) {
+        remove_image_file($physicalPath, $deleteFile);
+        throw new RuntimeException('No se pudo guardar la imagen.', 0, $e);
+    }
+    if ($moved !== true) {
+        remove_image_file($physicalPath, $deleteFile);
+        throw new RuntimeException('No se pudo guardar la imagen.');
+    }
+    return $relativePath;
+}
+
+function remove_image_file(string $path, ?callable $deleteFile = null): bool {
+    if (!is_file($path) || is_link($path)) return false;
+    try {
+        return ($deleteFile !== null ? $deleteFile($path) : @unlink($path)) === true;
+    } catch (Throwable $e) {
+        error_log('Could not remove image file: ' . $e->getMessage());
+        return false;
+    }
 }
 function is_safe_product_image_path($path) {
     return is_string($path) && preg_match('#^assets/images/products/(?:[a-f0-9]{13}|[a-f0-9]{32})\.(?:jpe?g|png|webp)$#i', $path);
@@ -20,7 +80,11 @@ function is_safe_settings_image_path($path) {
 }
 
 function product_image_directory(?string $root = null): string {
-    return rtrim($root ?? dirname(__DIR__), DIRECTORY_SEPARATOR) . '/assets/images/products';
+    return image_storage_directory('products', $root);
+}
+
+function settings_image_directory(?string $root = null): string {
+    return image_storage_directory('settings', $root);
 }
 
 function path_has_symlink(string $path): bool {
@@ -37,9 +101,18 @@ function path_has_symlink(string $path): bool {
  * @return array{status:string,path:?string}
  */
 function resolve_safe_product_image_path($path, ?string $root = null): array {
-    if (!is_safe_product_image_path($path)) return ['status' => 'unsafe_path', 'path' => null];
+    return resolve_safe_stored_image_path($path, $root, 'products');
+}
 
-    $directory = product_image_directory($root);
+/**
+ * @return array{status:string,path:?string}
+ */
+function resolve_safe_stored_image_path($path, ?string $root = null, ?string $scope = null): array {
+    $isProduct = ($scope === null || $scope === 'products') && is_safe_product_image_path($path);
+    $isSetting = ($scope === null || $scope === 'settings') && is_safe_settings_image_path($path);
+    if (!$isProduct && !$isSetting) return ['status' => 'unsafe_path', 'path' => null];
+
+    $directory = $isProduct ? product_image_directory($root) : settings_image_directory($root);
     $candidate = $directory . DIRECTORY_SEPARATOR . basename($path);
     // Check links before realpath(), which otherwise resolves an escaped target.
     if (path_has_symlink($directory) || is_link($candidate)) return ['status' => 'symlink_path', 'path' => null];
@@ -60,9 +133,14 @@ function is_safe_upload_path($path, ?string $root = null): bool {
 }
 
 function delete_unreferenced_product_image(PDO $pdo, $path, ?string $root = null, ?callable $deleteFile = null): string {
+    if (!is_safe_product_image_path($path)) return 'unsafe_path';
+    return delete_unreferenced_image($pdo, $path, $root, $deleteFile);
+}
+
+function delete_unreferenced_image(PDO $pdo, $path, ?string $root = null, ?callable $deleteFile = null): string {
     if ($pdo->inTransaction()) throw new LogicException('Image deletion requires a committed database transaction.');
 
-    $resolved = resolve_safe_product_image_path($path, $root);
+    $resolved = resolve_safe_stored_image_path($path, $root);
     if ($resolved['status'] !== 'resolved') return $resolved['status'];
     $check = $pdo->prepare(
         'SELECT (SELECT COUNT(*) FROM products WHERE image = ?) + '
@@ -72,17 +150,53 @@ function delete_unreferenced_product_image(PDO $pdo, $path, ?string $root = null
     $check->execute([$path, $path, $path]);
     if ((int) $check->fetchColumn() > 0) return 'still_referenced';
 
-    try {
-        $deleted = $deleteFile !== null ? $deleteFile($resolved['path']) : @unlink($resolved['path']);
-    } catch (Throwable $e) {
-        error_log('Could not delete unreferenced product image: ' . $e->getMessage());
-        return 'deletion_failed';
-    }
-    if ($deleted !== true) {
+    if (!remove_image_file($resolved['path'], $deleteFile)) {
         error_log('Could not delete unreferenced product image.');
         return 'deletion_failed';
     }
     return 'deleted';
+}
+
+/**
+ * Removes files created by the current failed operation. These paths are never
+ * taken from request data or from pre-existing database records.
+ *
+ * @return array<string,string>
+ */
+function cleanup_stored_images(array $paths, ?string $root = null, ?callable $deleteFile = null): array {
+    $results = [];
+    foreach (array_unique($paths) as $path) {
+        if (!is_string($path)) continue;
+        $resolved = resolve_safe_stored_image_path($path, $root);
+        if ($resolved['status'] !== 'resolved') {
+            $results[$path] = $resolved['status'];
+            continue;
+        }
+        $results[$path] = remove_image_file($resolved['path'], $deleteFile) ? 'deleted' : 'deletion_failed';
+    }
+    return $results;
+}
+function normalize_upload_batch(array $files): array {
+    $batch = [];
+    foreach (($files['name'] ?? []) as $i => $name) {
+        $batch[] = ['name'=>$name, 'tmp_name'=>$files['tmp_name'][$i] ?? '', 'error'=>$files['error'][$i] ?? UPLOAD_ERR_NO_FILE, 'size'=>$files['size'][$i] ?? 0];
+    }
+    return $batch;
+}
+function store_image_batch(array $uploads, string $scope, ?string $root = null, ?callable $moveFile = null, ?callable $deleteFile = null): array {
+    $created = [];
+    try {
+        foreach ($uploads as $upload) {
+            $error = $upload['error'] ?? UPLOAD_ERR_NO_FILE;
+            if ($error === UPLOAD_ERR_NO_FILE) continue;
+            if ($error !== UPLOAD_ERR_OK) throw new RuntimeException('Falló una imagen del lote.');
+            $created[] = store_safe_image($upload['tmp_name'] ?? '', $error, $upload['size'] ?? 0, 'assets/images/' . $scope, $root, $moveFile, $deleteFile);
+        }
+        return $created;
+    } catch (Throwable $e) {
+        cleanup_stored_images($created, $root, $deleteFile);
+        throw $e;
+    }
 }
 
 /**
@@ -98,6 +212,82 @@ function cleanup_product_images_after_commit(PDO $pdo, array $paths, ?string $ro
         }
     }
     return $results;
+}
+
+/**
+ * Persists settings and their two managed backgrounds as one database/file
+ * lifecycle. Newly moved files are removed on rollback; replaced files are
+ * considered for deletion only after commit.
+ *
+ * @param array<string,mixed> $values
+ * @param array<string,array<string,mixed>> $uploads
+ * @param array<string,bool> $remove
+ * @return array{backgrounds:array<string,string>,cleanup:array<string,string>}
+ */
+function save_settings_with_images(
+    PDO $pdo,
+    array $values,
+    array $uploads = [],
+    array $remove = [],
+    ?string $root = null,
+    ?callable $moveFile = null,
+    ?callable $deleteFile = null
+): array {
+    $backgroundKeys = ['hero_background', 'body_background'];
+    $newPaths = [];
+    $oldPaths = [];
+    $backgrounds = [];
+
+    $pdo->beginTransaction();
+    try {
+        $select = $pdo->prepare('SELECT setting_value FROM store_settings WHERE setting_key = ? FOR UPDATE');
+        foreach ($backgroundKeys as $key) {
+            $select->execute([$key]);
+            $old = $select->fetchColumn();
+            $old = is_string($old) ? $old : '';
+            $oldPaths[$key] = $old;
+            $upload = $uploads[$key] ?? null;
+            $hasUpload = is_array($upload) && !empty($upload['name']);
+            if ($hasUpload) {
+                $backgrounds[$key] = store_safe_image(
+                    $upload['tmp_name'] ?? '',
+                    $upload['error'] ?? UPLOAD_ERR_NO_FILE,
+                    $upload['size'] ?? 0,
+                    'assets/images/settings',
+                    $root,
+                    $moveFile,
+                    $deleteFile
+                );
+                $newPaths[] = $backgrounds[$key];
+            } elseif (!empty($remove[$key])) {
+                $backgrounds[$key] = '';
+            } else {
+                $backgrounds[$key] = $old;
+            }
+        }
+
+        $upsert = $pdo->prepare(
+            'INSERT INTO store_settings (setting_key, setting_value) VALUES (?, ?) '
+            . 'ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        );
+        foreach (array_merge($values, $backgrounds) as $key => $value) {
+            $upsert->execute([(string) $key, (string) $value]);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        cleanup_stored_images($newPaths, $root, $deleteFile);
+        throw $e;
+    }
+
+    $cleanup = [];
+    foreach ($backgroundKeys as $key) {
+        $old = $oldPaths[$key];
+        if ($old !== '' && $old !== $backgrounds[$key]) {
+            $cleanup[$old] = delete_unreferenced_image($pdo, $old, $root, $deleteFile);
+        }
+    }
+    return ['backgrounds' => $backgrounds, 'cleanup' => $cleanup];
 }
 
 /**
