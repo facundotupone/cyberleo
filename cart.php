@@ -154,8 +154,8 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-const productData = <?php echo json_encode($products); ?>;
-const productImages = <?php echo json_encode($productImages); ?>;
+const productData = <?php echo json_encode($products, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR); ?>;
+const productImages = <?php echo json_encode($productImages, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR); ?>;
 
 // Función para obtener los datos de un producto por su ID
 function getProductById(productId) {
@@ -179,20 +179,38 @@ function getProductImage(productId) {
     return null;
 }
 
-// Función para generar el HTML de la imagen del producto
-function getProductImageHtml(productId, productName) {
-    const imageSrc = getProductImage(productId);
-    
-    if (imageSrc) {
-        return `<img src="${imageSrc}" 
-                     alt="${productName}" 
-                     class="cart-product-image"
-                     onerror="this.parentElement.innerHTML='<div class=\\'product-image-placeholder\\'><i class=\\'bi bi-image\\'></i></div>'">`;
-    } else {
-        return `<div class="product-image-placeholder">
-                    <i class="bi bi-image"></i>
-                </div>`;
+function isSafeLocalImagePath(imagePath) {
+    if (typeof imagePath !== 'string' || !imagePath.startsWith('assets/images/')) {
+        return false;
     }
+
+    const relativePath = imagePath.slice('assets/images/'.length);
+    return relativePath.length > 0
+        && !relativePath.split('/').some(segment => segment === '.' || segment === '..' || segment === '')
+        && /^[a-zA-Z0-9._/-]+$/.test(imagePath);
+}
+
+function createImagePlaceholder() {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'product-image-placeholder';
+    const icon = document.createElement('i');
+    icon.className = 'bi bi-image';
+    placeholder.append(icon);
+    return placeholder;
+}
+
+function createProductImage(productId, productName) {
+    const imagePath = getProductImage(productId);
+    if (!isSafeLocalImagePath(imagePath)) {
+        return createImagePlaceholder();
+    }
+
+    const image = document.createElement('img');
+    image.src = imagePath;
+    image.alt = String(productName);
+    image.className = 'cart-product-image';
+    image.addEventListener('error', () => image.replaceWith(createImagePlaceholder()), { once: true });
+    return image;
 }
 
 // Función para obtener el precio efectivo (price_sale si existe y > 0, sino price)
@@ -205,35 +223,54 @@ function getEffectivePrice(product) {
 
 // Cargar los items del carrito
 function loadCartItems() {
-    const cartItems = JSON.parse(localStorage.getItem('cart')) || [];
+    let cartItems = [];
+    try {
+        const storedCart = JSON.parse(localStorage.getItem('cart'));
+        if (Array.isArray(storedCart)) {
+            cartItems = storedCart;
+        }
+    } catch (error) {
+        localStorage.removeItem('cart');
+    }
+
     const cartContainer = document.getElementById('cart-items');
     const cartTotal = document.getElementById('cart-total');
     let total = 0;
     let hasOutOfStockItems = false;
 
     if (cartItems.length === 0) {
-        cartContainer.innerHTML = `
-            <div class="text-center py-5">
-                <i class="bi bi-cart-x fs-1 text-muted mb-3"></i>
-                <h5 class="text-muted">Tu carrito está vacío</h5>
-                <p class="text-muted">Agrega algunos productos para comenzar</p>
-                <a href="index.php" class="btn btn-primary">
-                    <i class="bi bi-shop me-2"></i>Explorar productos
-                </a>
-            </div>`;
+        const emptyCart = document.createElement('div');
+        emptyCart.className = 'text-center py-5';
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-cart-x fs-1 text-muted mb-3';
+        const title = document.createElement('h5');
+        title.className = 'text-muted';
+        title.textContent = 'Tu carrito está vacío';
+        const message = document.createElement('p');
+        message.className = 'text-muted';
+        message.textContent = 'Agrega algunos productos para comenzar';
+        const link = document.createElement('a');
+        link.href = 'index.php';
+        link.className = 'btn btn-primary';
+        const linkIcon = document.createElement('i');
+        linkIcon.className = 'bi bi-shop me-2';
+        link.append(linkIcon, document.createTextNode('Explorar productos'));
+        emptyCart.append(icon, title, message, link);
+        cartContainer.replaceChildren(emptyCart);
         cartTotal.textContent = '$0.00';
         return;
     }
 
-    let html = '';
+    const cartElements = [];
 
-    cartItems.forEach((item, idx) => {
+    cartItems.forEach(item => {
         const product = getProductById(parseInt(item.productId));
-        if (product) {
+        const quantity = Number.parseInt(item.quantity, 10);
+        if (product && Number.isInteger(quantity) && quantity > 0) {
             const effectivePrice = getEffectivePrice(product);
-            const subtotal = effectivePrice * item.quantity;
+            const subtotal = effectivePrice * quantity;
             total += subtotal;
-            const isOutOfStock = product.stock < item.quantity;
+            const isOutOfStock = product.stock < quantity;
 
             if (isOutOfStock) {
                 hasOutOfStockItems = true;
@@ -244,65 +281,120 @@ function loadCartItems() {
             const originalPrice = parseFloat(product.price);
             const currentPrice = effectivePrice;
 
-            html += `
-                <div class="border-bottom p-3 cart-item ${isOutOfStock ? 'bg-warning bg-opacity-10' : ''}">
-                    <div class="row align-items-center">
-                        <div class="col-lg-5 col-md-12 mb-3 mb-lg-0">
-                            <div class="d-flex align-items-center">
-                                <div class="me-3 flex-shrink-0">
-                                    ${getProductImageHtml(product.id, product.name)}
-                                </div>
-                                <div class="flex-grow-1">
-                                    <h6 class="mb-1">${product.name}</h6>
-                                    <div class="d-flex align-items-center">
-                                        ${hasLiquidation ? 
-                                            `<span class="badge bg-danger me-2">LIQUIDACIÓN</span>
-                                             <span class="text-decoration-line-through text-muted me-2">$${originalPrice.toFixed(2)}</span>
-                                             <span class="fw-bold text-danger">$${currentPrice.toFixed(2)}</span>` : 
-                                            `<span class="fw-bold text-primary">$${currentPrice.toFixed(2)}</span>`
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-3 col-md-6 mb-3 mb-lg-0">
-                            <div class="d-flex align-items-center justify-content-center">
-                                <div class="input-group" style="max-width: 130px;">
-                                    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="decreaseQuantity(${item.productId})" style="padding: 0.25rem 0.5rem;">
-                                        <i class="bi bi-dash"></i>
-                                    </button>
-                                    <input type="number" class="form-control form-control-sm text-center update-quantity" 
-                                        value="${item.quantity}" min="1" max="${product.stock}"
-                                        data-product-id="${item.productId}" style="padding: 0.25rem;">
-                                    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="increaseQuantity(${item.productId})" style="padding: 0.25rem 0.5rem;">
-                                        <i class="bi bi-plus"></i>
-                                    </button>
-                                </div>
-                                <button class="btn btn-outline-danger btn-sm ms-2 remove-from-cart" 
-                                        data-product-id="${item.productId}" title="Eliminar producto">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="col-lg-2 col-md-3 mb-2 mb-lg-0">
-                            <div class="text-center">
-                                <strong>$${subtotal.toFixed(2)}</strong>
-                            </div>
-                        </div>
-                        <div class="col-lg-2 col-md-3">
-                            <div class="text-center">
-                                ${isOutOfStock ? 
-                                `<small class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Solo ${product.stock} disponibles</small>` : 
-                                `<small class="text-success"><i class="bi bi-check-circle me-1"></i>Disponible</small>`}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
+            const cartItem = document.createElement('div');
+            cartItem.className = `border-bottom p-3 cart-item${isOutOfStock ? ' bg-warning bg-opacity-10' : ''}`;
+            const row = document.createElement('div');
+            row.className = 'row align-items-center';
+
+            const productColumn = document.createElement('div');
+            productColumn.className = 'col-lg-5 col-md-12 mb-3 mb-lg-0';
+            const productDetails = document.createElement('div');
+            productDetails.className = 'd-flex align-items-center';
+            const imageContainer = document.createElement('div');
+            imageContainer.className = 'me-3 flex-shrink-0';
+            imageContainer.append(createProductImage(product.id, product.name));
+            const productText = document.createElement('div');
+            productText.className = 'flex-grow-1';
+            const productName = document.createElement('h6');
+            productName.className = 'mb-1';
+            productName.textContent = String(product.name);
+            const prices = document.createElement('div');
+            prices.className = 'd-flex align-items-center';
+            if (hasLiquidation) {
+                const liquidation = document.createElement('span');
+                liquidation.className = 'badge bg-danger me-2';
+                liquidation.textContent = 'LIQUIDACIÓN';
+                const original = document.createElement('span');
+                original.className = 'text-decoration-line-through text-muted me-2';
+                original.textContent = `$${originalPrice.toFixed(2)}`;
+                const current = document.createElement('span');
+                current.className = 'fw-bold text-danger';
+                current.textContent = `$${currentPrice.toFixed(2)}`;
+                prices.append(liquidation, original, current);
+            } else {
+                const current = document.createElement('span');
+                current.className = 'fw-bold text-primary';
+                current.textContent = `$${currentPrice.toFixed(2)}`;
+                prices.append(current);
+            }
+            productText.append(productName, prices);
+            productDetails.append(imageContainer, productText);
+            productColumn.append(productDetails);
+
+            const quantityColumn = document.createElement('div');
+            quantityColumn.className = 'col-lg-3 col-md-6 mb-3 mb-lg-0';
+            const quantityControls = document.createElement('div');
+            quantityControls.className = 'd-flex align-items-center justify-content-center';
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'input-group';
+            inputGroup.style.maxWidth = '130px';
+            const quantityInput = document.createElement('input');
+            quantityInput.type = 'number';
+            quantityInput.className = 'form-control form-control-sm text-center update-quantity';
+            quantityInput.value = String(quantity);
+            quantityInput.min = '1';
+            quantityInput.max = String(product.stock);
+            quantityInput.dataset.productId = String(product.id);
+            quantityInput.style.padding = '0.25rem';
+            quantityInput.addEventListener('change', () => updateCartItemQuantity(product.id, Number.parseInt(quantityInput.value, 10)));
+
+            const createQuantityButton = (iconClass, handler) => {
+                const button = document.createElement('button');
+                button.className = 'btn btn-outline-secondary btn-sm';
+                button.type = 'button';
+                button.style.padding = '0.25rem 0.5rem';
+                const buttonIcon = document.createElement('i');
+                buttonIcon.className = iconClass;
+                button.append(buttonIcon);
+                button.addEventListener('click', handler);
+                return button;
+            };
+            const decreaseButton = createQuantityButton('bi bi-dash', () => {
+                if (quantity > 1) updateCartItemQuantity(product.id, quantity - 1);
+            });
+            const increaseButton = createQuantityButton('bi bi-plus', () => {
+                if (quantity < Number(product.stock)) updateCartItemQuantity(product.id, quantity + 1);
+            });
+            inputGroup.append(decreaseButton, quantityInput, increaseButton);
+            const removeButton = document.createElement('button');
+            removeButton.className = 'btn btn-outline-danger btn-sm ms-2 remove-from-cart';
+            removeButton.type = 'button';
+            removeButton.dataset.productId = String(product.id);
+            removeButton.title = 'Eliminar producto';
+            const removeIcon = document.createElement('i');
+            removeIcon.className = 'bi bi-trash';
+            removeButton.append(removeIcon);
+            removeButton.addEventListener('click', () => removeFromCart(product.id));
+            quantityControls.append(inputGroup, removeButton);
+            quantityColumn.append(quantityControls);
+
+            const subtotalColumn = document.createElement('div');
+            subtotalColumn.className = 'col-lg-2 col-md-3 mb-2 mb-lg-0';
+            const subtotalText = document.createElement('div');
+            subtotalText.className = 'text-center';
+            const subtotalValue = document.createElement('strong');
+            subtotalValue.textContent = `$${subtotal.toFixed(2)}`;
+            subtotalText.append(subtotalValue);
+            subtotalColumn.append(subtotalText);
+
+            const availabilityColumn = document.createElement('div');
+            availabilityColumn.className = 'col-lg-2 col-md-3';
+            const availability = document.createElement('div');
+            availability.className = 'text-center';
+            const availabilityText = document.createElement('small');
+            availabilityText.className = isOutOfStock ? 'text-danger' : 'text-success';
+            const availabilityIcon = document.createElement('i');
+            availabilityIcon.className = isOutOfStock ? 'bi bi-exclamation-triangle me-1' : 'bi bi-check-circle me-1';
+            availabilityText.append(availabilityIcon, document.createTextNode(isOutOfStock ? `Solo ${product.stock} disponibles` : 'Disponible'));
+            availability.append(availabilityText);
+            availabilityColumn.append(availability);
+            row.append(productColumn, quantityColumn, subtotalColumn, availabilityColumn);
+            cartItem.append(row);
+            cartElements.push(cartItem);
         }
     });
 
-    cartContainer.innerHTML = html;
+    cartContainer.replaceChildren(...cartElements);
     cartTotal.textContent = `$${total.toFixed(2)}`;
 
     // Deshabilitar botón de WhatsApp si hay productos sin stock
@@ -314,28 +406,6 @@ function loadCartItems() {
         whatsappBtn.classList.remove('disabled');
         whatsappBtn.removeAttribute('title');
     }
-
-    addCartEventListeners();
-}
-
-function addCartEventListeners() {
-    // Event listeners para actualizar cantidad
-    document.querySelectorAll('.update-quantity').forEach(input => {
-        input.addEventListener('change', function() {
-            const productId = this.dataset.productId;
-            const quantity = parseInt(this.value);
-            updateCartItemQuantity(productId, quantity);
-        });
-    });
-
-    // Event listeners para eliminar productos
-    document.querySelectorAll('.remove-from-cart').forEach(button => {
-        button.addEventListener('click', function() {
-            const productId = this.dataset.productId;
-            removeFromCart(productId);
-        });
-    });
-
 }
 
 function updateCartItemQuantity(productId, quantity) {
@@ -349,28 +419,6 @@ function updateCartItemQuantity(productId, quantity) {
         localStorage.setItem('cart', JSON.stringify(cart));
         loadCartItems();
         updateCartCount();
-    }
-}
-
-// Funciones para aumentar y disminuir cantidad
-function increaseQuantity(productId) {
-    const input = document.querySelector(`input[data-product-id="${productId}"]`);
-    const currentQuantity = parseInt(input.value);
-    const maxQuantity = parseInt(input.max);
-    
-    if (currentQuantity < maxQuantity) {
-        input.value = currentQuantity + 1;
-        updateCartItemQuantity(productId, currentQuantity + 1);
-    }
-}
-
-function decreaseQuantity(productId) {
-    const input = document.querySelector(`input[data-product-id="${productId}"]`);
-    const currentQuantity = parseInt(input.value);
-    
-    if (currentQuantity > 1) {
-        input.value = currentQuantity - 1;
-        updateCartItemQuantity(productId, currentQuantity - 1);
     }
 }
 
@@ -398,7 +446,10 @@ document.getElementById('whatsapp-order').addEventListener('click', async functi
     if (!cart.length || button.classList.contains('disabled')) return;
 
     button.classList.add('disabled');
-    button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Registrando pedido...';
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner-border spinner-border-sm me-2';
+    spinner.setAttribute('aria-hidden', 'true');
+    button.replaceChildren(spinner, document.createTextNode('Registrando pedido...'));
     const whatsappWindow = window.open('', '_blank');
     const idempotencyKey = sessionStorage.getItem('checkout_idempotency_key') || crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
     sessionStorage.setItem('checkout_idempotency_key', idempotencyKey);
@@ -419,7 +470,9 @@ document.getElementById('whatsapp-order').addEventListener('click', async functi
         if (whatsappWindow) whatsappWindow.close();
         alert(error.message);
         button.classList.remove('disabled');
-        button.innerHTML = '<i class="bi bi-whatsapp me-2"></i>Enviar Pedido por WhatsApp';
+        const whatsappIcon = document.createElement('i');
+        whatsappIcon.className = 'bi bi-whatsapp me-2';
+        button.replaceChildren(whatsappIcon, document.createTextNode('Enviar Pedido por WhatsApp'));
     }
 });
 

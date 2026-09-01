@@ -15,7 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($_POST['action'] === 'add_category') {
             $name = trim($_POST['name']);
             $icon = trim($_POST['icon']);
-            if (!empty($name)) {
+            if (!preg_match('/^bi bi-[a-z0-9-]{1,60}$/', $icon)) {
+                $message = 'Icono inválido.';
+            } elseif (!empty($name)) {
                 $stmt = $pdo->prepare("INSERT INTO categories (name, icon) VALUES (?, ?)");
                 if ($stmt->execute([$name, $icon])) {
                     $message = 'Categoría agregada exitosamente.';
@@ -497,7 +499,7 @@ function renderIcons(filter = "") {
     const list = document.getElementById("iconList");
 
     // Limpiar contenido previo
-    list.innerHTML = "";
+    list.replaceChildren();
 
     // Filtrar e iterar íconos
     icons
@@ -507,7 +509,9 @@ function renderIcons(filter = "") {
             const div = document.createElement("div");
             div.className = "col icon-option";
             div.setAttribute("data-icon", icon);
-            div.innerHTML = `<i class="${icon}"></i>`;
+            const iconNode = document.createElement('i');
+            iconNode.className = icon;
+            div.appendChild(iconNode);
 
             // Insertar en el DOM
             list.appendChild(div);
@@ -568,7 +572,9 @@ document.addEventListener("click", function(e){
     document.getElementById("iconInput").value = icon;
 
     // Mostrar preview
-    document.getElementById("iconPreview").innerHTML = `<i class="${icon}"></i>`;
+    const preview = document.getElementById("iconPreview");
+    preview.replaceChildren();
+    const previewIcon = document.createElement('i'); previewIcon.className = icon; preview.appendChild(previewIcon);
 
     // Cerrar modal
     bootstrap.Modal.getInstance(document.getElementById("iconModal")).hide();
@@ -584,7 +590,9 @@ document.addEventListener("click", function(e){
 
 document.getElementById("iconInput").addEventListener("input", function(){
     const val = this.value.trim();
-    document.getElementById("iconPreview").innerHTML = val ? `<i class="${val}"></i>` : "";
+    const preview = document.getElementById("iconPreview");
+    preview.replaceChildren();
+    if (/^bi bi-[a-z0-9-]{1,60}$/.test(val)) { const node = document.createElement('i'); node.className = val; preview.appendChild(node); }
 });
 
 </script>
