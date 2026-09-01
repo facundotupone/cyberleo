@@ -16,5 +16,5 @@ function is_safe_upload_path($path) {
     return $real && $base && str_starts_with($real, $base . DIRECTORY_SEPARATOR);
 }
 function is_safe_product_image_path($path) {
-    return is_string($path) && preg_match('#^assets/images/products/[A-Za-z0-9_-]{16,}\.(jpe?g|png|webp)$#', $path);
+    return is_string($path) && preg_match('#^assets/images/products/(?:[a-f0-9]{13}|[a-f0-9]{32})\.(?:jpe?g|png|webp)$#i', $path);
 }

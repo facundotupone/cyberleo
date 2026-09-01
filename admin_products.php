@@ -9,12 +9,16 @@ require_once 'includes/images.php';
 
 // --- ENDPOINT AJAX PARA PRODUCTOS DESTACADOS ---
 if (isset($_GET['action']) && $_GET['action'] === 'get_featured_products') {
-    header('Content-Type: application/json');
-    if (function_exists('get_featured_products')) {
-        $featured = get_featured_products();
-        echo json_encode($featured);
-    } else {
-        echo json_encode([]);
+    header('Content-Type: application/json; charset=UTF-8');
+    try {
+        $rows = $pdo->query('SELECT id, name, image, destacados FROM products WHERE destacados > 0 AND is_active = 1 ORDER BY destacados')->fetchAll(PDO::FETCH_ASSOC);
+        $featured = [];
+        foreach ($rows as $row) $featured[] = ['id'=>(int)$row['id'], 'name'=>(string)$row['name'], 'image'=>is_safe_product_image_path($row['image']) ? $row['image'] : null, 'destacados'=>(int)$row['destacados']];
+        echo json_encode($featured, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    } catch (Throwable $e) {
+        error_log('Featured products error: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success'=>false,'message'=>'No se pudieron cargar productos.']);
     }
     exit;
 }
@@ -1012,7 +1016,7 @@ foreach ($products as $product) {
 let featuredOrderList = null;
 let featuredOrderModal = null;
 const DEFAULT_PRODUCT_IMAGE = 'assets/images/products/default.jpg';
-const PRODUCT_IMAGE_PATH = /^assets\/images\/products\/(?:[a-f0-9]{32}\.(?:jpg|jpeg|png|webp)|default\.jpg)$/i;
+const PRODUCT_IMAGE_PATH = /^assets\/images\/products\/(?:[a-f0-9]{13}|[a-f0-9]{32})\.(?:jpg|jpeg|png|webp)$/i;
 
 function validId(value) {
     return typeof value === 'string' || typeof value === 'number'
