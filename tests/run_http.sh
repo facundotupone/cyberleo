@@ -806,6 +806,7 @@ assert_sql H-BACKGROUND-CLEANUP '' "SELECT setting_value FROM store_settings WHE
 pass H-BACKGROUND-CLEANUP
 
 printf 'Prueba XSS por HTTP...\n'
+sql 'UPDATE products SET stock=2 WHERE id=2'
 request GET index.php
 assert_status H-XSS-HTTP 200
 assert_body_excludes H-XSS-HTTP '<script>globalThis.xssExecuted=1;document.title="XSS_EXECUTED"</script>'
@@ -817,22 +818,29 @@ if [[ -n "$CHROME_BIN" ]] && command -v node >/dev/null 2>&1; then
     CHROME_PORT="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
     CHROME_COMMAND=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
         --disable-background-networking --disable-extensions --disable-component-update
-        --disable-dev-shm-usage "--remote-debugging-port=$CHROME_PORT"
+        --disable-dev-shm-usage "--remote-debugging-port=$CHROME_PORT" "--remote-allow-origins=*"
         "--user-data-dir=$HTTP_TMP/chrome-profile"
-        "--host-resolver-rules=MAP * 127.0.0.1, EXCLUDE 127.0.0.1"
         about:blank)
     setsid "${CHROME_COMMAND[@]}" >"$HTTP_TMP/chrome.out" 2>"$HTTP_TMP/chrome.log" & CHROME_PID=$!
     for _ in {1..100}; do curl -sf "http://127.0.0.1:$CHROME_PORT/json/list" >/dev/null && break; sleep .05; done
-    if timeout 20 node "$ROOT/tests/helpers/chrome_xss.mjs" "$CHROME_PORT" "$HTTP_BASE_URL" >"$HTTP_TMP/chrome-test.out" 2>>"$HTTP_TMP/chrome.log"; then
+    if HTTP_TEST_ADMIN_PASSWORD="$WINNING_PASSWORD" timeout 45 node "$ROOT/tests/helpers/chrome_xss.mjs" \
+        "$CHROME_PORT" "$HTTP_BASE_URL" >"$HTTP_TMP/chrome-test.out" 2>>"$HTTP_TMP/chrome.log"; then
+        sed -n '1,80p' "$HTTP_TMP/chrome-test.out"
         pass H-XSS-BROWSER
     else
         cp "$HTTP_TMP/chrome.log" /tmp/cyberleo-chrome.log
-        printf '  Chromium command: timeout 30 %q ' "${CHROME_COMMAND[@]}"
+        cp "$HTTP_TMP/chrome-test.out" /tmp/cyberleo-chrome-test.out
+        printf '  Chromium command:'
+        printf ' %q' "${CHROME_COMMAND[@]}"
         printf '\n'
-        printf '  BLOCKED H-XSS-BROWSER - Chromium headless no terminó correctamente\n'
+        printf '  Browser test output (/tmp/cyberleo-chrome-test.out):\n' >&2
+        sed -n '1,160p' "$HTTP_TMP/chrome-test.out" >&2
+        printf '  Chromium log (/tmp/cyberleo-chrome.log):\n' >&2
+        sed -n '1,160p' "$HTTP_TMP/chrome.log" >&2
+        fail H-XSS-BROWSER 'Chromium headless o la prueba CDP fallaron'
     fi
 else
-    printf '  BLOCKED H-XSS-BROWSER - google-chrome no está disponible\n'
+    fail H-XSS-BROWSER 'google-chrome o node no están disponibles'
 fi
 
 if rg --ignore-case --quiet 'PHP (Warning|Fatal error)|Stack trace:|\\[500\\]:' "$SERVER_LOG"; then
