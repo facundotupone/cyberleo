@@ -679,11 +679,11 @@ foreach ($products as $product) {
             </div>
         </div>
 
-        <?php if ($message): ?>
+<?php if ($message): ?>
         <div class="alert alert-info mb-4">
             <i class="bi bi-check-circle"></i> <?= htmlspecialchars($message) ?>
         </div>
-        <?php endif; ?>
+<?php endif; ?>
 
         <div class="row">
             <div class="col-md-4">
@@ -722,9 +722,9 @@ foreach ($products as $product) {
                                 <label for="category_id" class="form-label fw-600"><i class="bi bi-folder"></i> Categoría</label>
                                 <select class="form-select" id="category_id" name="category_id" required>
                                     <option value="">Seleccionar categoría</option>
-                                    <?php foreach ($categories as $category): ?>
+<?php foreach ($categories as $category): ?>
                                     <option value="<?= $category['id'] ?>"><?= htmlspecialchars($category['name']) ?></option>
-                                    <?php endforeach; ?>
+<?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -775,11 +775,11 @@ foreach ($products as $product) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                        <?php foreach ($productsByCategory as $catName => $catProducts): ?>
+<?php foreach ($productsByCategory as $catName => $catProducts): ?>
                             <tr class="table-warning">
                                 <td colspan="6"><strong><?= htmlspecialchars($catName) ?></strong></td>
                             </tr>
-                            <?php foreach ($catProducts as $product):
+<?php foreach ($catProducts as $product):
                                 $stmt = $pdo->prepare("SELECT * FROM product_images WHERE product_id = ? ORDER BY is_main DESC");
                                 $stmt->execute([$product['id']]);
                                 $images = $stmt->fetchAll();
@@ -787,32 +787,32 @@ foreach ($products as $product) {
                             ?>
                             <tr>
                                 <td>
-                                    <?php if (!empty($images)): ?>
+<?php if (!empty($images)): ?>
                                         <div class="d-flex flex-wrap gap-1">
-                                            <?php foreach ($images as $image): ?>
-                                                <?php if (is_safe_product_image_path($image['image_path'])): ?>
+<?php foreach ($images as $image): ?>
+<?php if (is_safe_product_image_path($image['image_path'])): ?>
                                                     <img src="<?= htmlspecialchars($image['image_path'], ENT_QUOTES, 'UTF-8') ?>"
                                                         class="image-thumbnail <?= $image['is_main'] ? 'main-image' : '' ?>"
                                                         title="<?= $image['is_main'] ? 'Imagen principal' : '' ?>">
-                                                <?php endif; ?>
-                                            <?php endforeach; ?>
+<?php endif; ?>
+<?php endforeach; ?>
                                         </div>
                                         <small><?= count($images) ?> <?= count($images) === 1 ? 'imagen' : 'imágenes' ?></small>
-                                    <?php else: ?>
+<?php else: ?>
                                         <span class="text-muted">Sin imágenes</span>
-                                    <?php endif; ?>
+<?php endif; ?>
                                 </td>
                                 <td class="product-name">
                                     <span class="fw-bold"><?= htmlspecialchars($product['name']) ?></span>
                                 </td>
                                 <td>
                                     <span class="badge bg-info"><?= htmlspecialchars($product['category_name']) ?></span>
-                                    <?php if (!empty($product['subcategory_name'])): ?>
+<?php if (!empty($product['subcategory_name'])): ?>
                                         <small class="d-block text-muted"><?= htmlspecialchars($product['subcategory_name']) ?></small>
-                                    <?php endif; ?>
+<?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
+<?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
                                         <div class="d-flex flex-column align-items-start gap-1">
                                             <span class="badge bg-danger">LIQUIDACIÓN</span>
                                             <div>
@@ -820,18 +820,18 @@ foreach ($products as $product) {
                                                 <span class="badge bg-danger fs-6">$<?= number_format($product['price_sale'], 2) ?></span>
                                             </div>
                                         </div>
-                                    <?php else: ?>
+<?php else: ?>
                                         <span class="badge bg-success">$<?= number_format($product['price'], 2) ?></span>
-                                    <?php endif; ?>
+<?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if ($product['stock'] == 0): ?>
+<?php if ($product['stock'] == 0): ?>
                                         <span class="badge bg-danger">Sin stock</span>
-                                    <?php elseif ($product['stock'] < 5): ?>
+<?php elseif ($product['stock'] < 5): ?>
                                         <span class="badge bg-warning text-dark"><?= $product['stock'] ?></span>
-                                    <?php else: ?>
+<?php else: ?>
                                         <span class="badge bg-secondary"><?= $product['stock'] ?></span>
-                                    <?php endif; ?>
+<?php endif; ?>
                                     <div class="d-flex align-items-center mt-2">
                                         <form method="POST" class="me-1">
                                             <?= csrf_input() ?>
@@ -879,8 +879,8 @@ foreach ($products as $product) {
                                     </div>
                                 </td>
                             </tr>
-                            <?php endforeach; ?>
-                        <?php endforeach; ?>
+<?php endforeach; ?>
+<?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
@@ -953,9 +953,9 @@ foreach ($products as $product) {
                                     <label class="form-label fw-600"><i class="bi bi-folder"></i> Categoría</label>
                                     <select class="form-select" id="edit_category_id" name="category_id" required>
                                         <option value="">Seleccionar</option>
-                                        <?php foreach ($categories as $category): ?>
+<?php foreach ($categories as $category): ?>
                                         <option value="<?= $category['id'] ?>"><?= htmlspecialchars($category['name']) ?></option>
-                                        <?php endforeach; ?>
+<?php endforeach; ?>
                                     </select>
                                 </div>
                                 <div class="mb-3">
