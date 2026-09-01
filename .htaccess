@@ -1,0 +1,4 @@
+RewriteEngine On
+
+RewriteCond %{REQUEST_URI} ^/admin/?$
+RewriteRule ^.*$ /admin_products.php [L,R=301]
