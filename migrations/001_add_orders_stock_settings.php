@@ -133,6 +133,10 @@ function add_index_if_missing(PDO $pdo, $table, $indexName, $columnName)
         fwrite(STDOUT, "Índice {$indexName} creado.\n");
     }
 }
+function index_named(PDO $pdo, $table, $name) {
+    $s=$pdo->prepare('SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name=? AND index_name=?');
+    $s->execute([$table,$name]); return (bool)$s->fetchColumn();
+}
 
 function foreign_key(PDO $pdo, $table, $columnName)
 {
@@ -264,8 +268,21 @@ try {
     }
     require_innodb($pdo, 'orders');
     require_column($pdo, 'orders', 'id', 'int unsigned', false);
+    $statusColumn = column($pdo, 'orders', 'status');
+    if (!$statusColumn || strpos($statusColumn['column_type'], "'expired'") === false) {
+        $pdo->exec("ALTER TABLE `orders` MODIFY `status` ENUM('pending','confirmed','cancelled','expired') NOT NULL DEFAULT 'pending'");
+    }
     if (column($pdo, 'orders', 'idempotency_key') === null) $pdo->exec("ALTER TABLE `orders` ADD COLUMN `idempotency_key` CHAR(64) NULL");
     if (column($pdo, 'orders', 'expires_at') === null) $pdo->exec("ALTER TABLE `orders` ADD COLUMN `expires_at` DATETIME NULL");
+    $legacy = $pdo->query("SELECT id FROM orders WHERE idempotency_key IS NULL OR idempotency_key = ''")->fetchAll(PDO::FETCH_COLUMN);
+    $setKey = $pdo->prepare('UPDATE orders SET idempotency_key = ? WHERE id = ?');
+    foreach ($legacy as $legacyId) $setKey->execute([hash('sha256', 'legacy-order-' . $legacyId), $legacyId]);
+    $pdo->exec("UPDATE orders SET expires_at = DATE_ADD(NOW(), INTERVAL 120 MINUTE) WHERE expires_at IS NULL");
+    $duplicates = $pdo->query("SELECT idempotency_key FROM orders GROUP BY idempotency_key HAVING COUNT(*) > 1 LIMIT 1")->fetchColumn();
+    if ($duplicates) fail('Incompatibilidad: existen claves de idempotencia duplicadas.');
+    $pdo->exec("ALTER TABLE `orders` MODIFY `idempotency_key` CHAR(64) NOT NULL, MODIFY `expires_at` DATETIME NOT NULL");
+    if (!index_named($pdo, 'orders', 'uq_orders_idempotency_key')) $pdo->exec('ALTER TABLE orders ADD UNIQUE KEY uq_orders_idempotency_key (idempotency_key)');
+    if (!index_named($pdo, 'orders', 'idx_orders_status_expires')) $pdo->exec('ALTER TABLE orders ADD KEY idx_orders_status_expires (status, expires_at)');
     require_column($pdo, 'orders', 'status', "enum('pending','confirmed','cancelled','expired')", false);
     require_column($pdo, 'orders', 'total', 'decimal(12,2)', false);
     add_index_if_missing($pdo, 'orders', 'idx_orders_status', 'status');

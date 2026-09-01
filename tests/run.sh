@@ -81,8 +81,8 @@ assert_scalar() {
 
 assert_schema() {
     local fixture_name=$1
-    assert_scalar 5 \
-        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('products', 'orders', 'order_items', 'store_settings', 'categories')" \
+    assert_scalar 7 \
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('products', 'orders', 'order_items', 'store_settings', 'categories', 'order_rate_limits', 'auth_rate_limits')" \
         "$fixture_name: tablas requeridas"
     assert_scalar 1 \
         "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'products' AND column_name = 'stock' AND column_type = 'int(11)' AND is_nullable = 'NO'" \
@@ -99,6 +99,9 @@ assert_schema() {
     assert_scalar 1 \
         "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'orders' AND index_name = 'PRIMARY' AND column_name = 'id'" \
         "$fixture_name: índice primario de orders"
+    assert_scalar 1 "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='orders' AND index_name='uq_orders_idempotency_key' AND non_unique=0" "$fixture_name: unique idempotency"
+    assert_scalar 1 "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='orders' AND index_name='idx_orders_status_expires' AND column_name='status' AND seq_in_index=1" "$fixture_name: index status"
+    assert_scalar 1 "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='orders' AND index_name='idx_orders_status_expires' AND column_name='expires_at' AND seq_in_index=2" "$fixture_name: index expires"
     assert_scalar 1 \
         "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'orders' AND column_name = 'status' AND seq_in_index = 1" \
         "$fixture_name: índice por estado de orders"
@@ -118,6 +121,11 @@ run_fixture() {
 
     DB_HOST="localhost;unix_socket=$SOCKET" DB_NAME="$TEST_DB" DB_USER=root DB_PASS='' \
         php "$ROOT/migrations/001_add_orders_stock_settings.php"
+    if [[ "$fixture_name" == "pre_5c8bdb2_orders" ]]; then
+        assert_scalar 3 "SELECT COUNT(*) FROM orders" "legacy orders preserved"
+        assert_scalar 3 "SELECT COUNT(DISTINCT idempotency_key) FROM orders WHERE CHAR_LENGTH(idempotency_key)=64 AND expires_at IS NOT NULL" "legacy keys and expiry"
+        assert_scalar 7 "SELECT stock FROM products WHERE id=1" "legacy stock preserved"
+    fi
     DB_HOST="localhost;unix_socket=$SOCKET" DB_NAME="$TEST_DB" DB_USER=root DB_PASS='' \
         php "$ROOT/migrations/001_add_orders_stock_settings.php"
 

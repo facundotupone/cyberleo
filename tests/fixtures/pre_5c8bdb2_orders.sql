@@ -1,7 +1,4 @@
--- Variante aproximada del esquema anterior a los campos de recuperación.
--- Conserva pedidos e ítems existentes, pero orders no tiene idempotency_key
--- ni expires_at. El estado ya incluye expired para ser compatible con la
--- migración incremental actual.
+-- Estructura exacta de orders de 5c8bdb2: no incluye expired ni columnas nuevas.
 
 CREATE TABLE categories (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -37,7 +34,7 @@ CREATE TABLE products (
 
 CREATE TABLE orders (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  status ENUM('pending','confirmed','cancelled','expired') NOT NULL DEFAULT 'pending',
+  status ENUM('pending','confirmed','cancelled') NOT NULL DEFAULT 'pending',
   total DECIMAL(12,2) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -60,3 +57,8 @@ CREATE TABLE store_settings (
   setting_key VARCHAR(80) PRIMARY KEY,
   setting_value TEXT NOT NULL
 ) ENGINE=InnoDB;
+
+INSERT INTO categories (id,name,icon) VALUES (1,'Legacy','bi-cpu');
+INSERT INTO products (id,name,description,price,stock,category_id) VALUES (1,'Producto legacy','Conservar',100,7,1);
+INSERT INTO orders (id,status,total) VALUES (10,'pending',100),(11,'confirmed',200),(12,'cancelled',300);
+INSERT INTO order_items (order_id,product_id,product_name,unit_price,quantity) VALUES (10,1,'Producto legacy',100,1),(11,1,'Producto legacy',100,2),(12,1,'Producto legacy',100,3);
