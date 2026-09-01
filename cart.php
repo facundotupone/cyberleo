@@ -5,6 +5,8 @@ require_once 'includes/functions.php';
 
 // Obtener las categorías para el menú
 $categories = get_categories();
+$storeSettings = get_store_settings();
+$paymentMethods = array_filter(array_map('trim', explode(',', $storeSettings['payment_methods'])));
 
 // Obtener los datos de los productos para el carrito (incluyendo stock e imágenes)
 $stmt = $pdo->prepare("SELECT id, name, price, price_sale, stock, image FROM products");
@@ -130,11 +132,7 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     
                     <div class="mb-3">
                         <h6><i class="bi bi-credit-card me-2"></i>Métodos de pago:</h6>
-                        <div class="d-flex flex-wrap gap-2">
-                            <span class="badge bg-success">Efectivo</span>
-                            <span class="badge bg-info">Transferencia</span>
-                            <span class="badge bg-warning text-dark">Mercado Pago</span>
-                        </div>
+                        <div class="d-flex flex-wrap gap-2"><?php foreach ($paymentMethods as $method): ?><span class="badge bg-info"><?= htmlspecialchars($method, ENT_QUOTES, 'UTF-8') ?></span><?php endforeach; ?></div>
                         <small class="text-muted">Abonas al recibir tu pedido</small>
                     </div>
                     

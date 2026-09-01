@@ -7,6 +7,7 @@ require_once 'includes/security.php';
 require_once 'includes/orders.php';
 
 $message = '';
+$storeSettings = get_store_settings();
 expire_pending_orders($pdo);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'], $_POST['status'])) {
     require_csrf();
@@ -32,12 +33,12 @@ $orders = $pdo->query("SELECT o.*, GROUP_CONCAT(CONCAT(oi.product_name, ' × ', 
 <html lang="es">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pedidos | <?= htmlspecialchars(STORE_NAME) ?></title>
+    <title>Pedidos | <?= htmlspecialchars($storeSettings['store_name']) ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 </head>
 <body class="bg-light">
-<nav class="navbar navbar-dark bg-dark"><div class="container"><a class="navbar-brand" href="admin_products.php"><?= htmlspecialchars(STORE_NAME) ?> · Administración</a><div><a class="btn btn-outline-light btn-sm" href="admin_products.php">Productos</a> <a class="btn btn-outline-light btn-sm" href="admin_categories.php">Categorías</a></div></div></nav>
+<nav class="navbar navbar-dark bg-dark"><div class="container"><a class="navbar-brand" href="admin_products.php"><?= htmlspecialchars($storeSettings['store_name']) ?> · Administración</a><div><a class="btn btn-outline-light btn-sm" href="admin_products.php">Productos</a> <a class="btn btn-outline-light btn-sm" href="admin_categories.php">Categorías</a></div></div></nav>
 <main class="container py-4">
     <h1 class="h2 mb-1"><i class="bi bi-receipt"></i> Pedidos</h1>
     <p class="text-muted">Cada solicitud reserva stock. Las reservas vencidas se liberan automáticamente.</p>

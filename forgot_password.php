@@ -4,11 +4,15 @@ start_secure_session();
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/mailer.php';
 
 $notice = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email']);
+    try { enforce_auth_rate_limit($pdo, 'reset|' . strtolower($email)); }
+    catch (RateLimitException $e) { http_response_code(429); header('Retry-After: 900'); $notice = 'Demasiados intentos. Intentá más tarde.'; }
+    catch (Throwable $e) { error_log($e->getMessage()); $notice = 'Si el correo está registrado, recibirás instrucciones.'; }
 
     // Validación básica
     if (empty($email)) {
@@ -41,6 +45,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $to = $user['mail'];
             $subject = "Recuperación de contraseña - " . $settings['store_name'];
 
+            $safeStore = htmlspecialchars($settings['store_name'], ENT_QUOTES, 'UTF-8');
+            $safeUser = htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8');
+            $safeLink = htmlspecialchars($resetLink, ENT_QUOTES, 'UTF-8');
             $message = "
             <!DOCTYPE html>
             <html>
@@ -48,19 +55,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             <div style='max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;padding:30px;box-shadow:0 4px 18px rgba(0,0,0,0.08);'>
             
-                <h1 style='color:#2BBFBD;text-align:center;font-size:24px;'>" . $settings['store_name'] . "</h1>
+                <h1 style='color:#2BBFBD;text-align:center;font-size:24px;'>" . $safeStore . "</h1>
             
                 <h2 style='color:#333;margin:0 0 10px;font-size:20px;font-weight:600;text-align:center;'>
                     Recuperar contraseña
                 </h2>
             
                 <p style='color:#555;font-size:15px;line-height:1.6;'>
-                    Hola <strong>{$user['username']}</strong>,<br><br>
+                    Hola <strong>{$safeUser}</strong>,<br><br>
                     Solicitaste restablecer tu contraseña. Hacé click en el siguiente botón para continuar.
                 </p>
             
                 <div style='text-align:center;margin:30px 0;'>
-                    <a href='$resetLink' 
+                    <a href='$safeLink' 
                        style='background:#6c63ff;color:#fff;text-decoration:none;font-weight:600;
                               padding:14px 24px;border-radius:8px;display:inline-block;font-size:15px;'>
                         Restablecer contraseña
@@ -75,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
                 <p style='color:#888;font-size:12px;text-align:center;line-height:1.5;margin:0;'>
                     Este enlace es válido por 1 hora.<br>
-                    " . $settings['store_name'] . " © " . date('Y') . "
+                    " . $safeStore . " © " . date('Y') . "
                 </p>
             
             </div>
@@ -92,13 +99,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
             // Enviar mail
-            if (!mail($to, $subject, $message, $headers)) error_log('Password reset email delivery failed.');
+            if (!send_store_mail($to, $subject, $message, $headers)) {
+                $pdo->prepare('UPDATE users SET reset_token = NULL, reset_expires = NULL WHERE id = ?')->execute([$user['id']]);
+                error_log('Password reset email delivery failed.');
+            }
 
             // Redirigir al login con mensaje
         }
-        $notice = "Si el correo está registrado, recibirás instrucciones.";
+        $_SESSION['password_reset_notice'] = "Si el correo está registrado, recibirás instrucciones.";
+        header('Location: forgot_password.php'); exit;
     }
 }
+$notice = $_SESSION['password_reset_notice'] ?? $notice;
+unset($_SESSION['password_reset_notice']);
 ?>
 <!DOCTYPE html>
 <html lang="es">

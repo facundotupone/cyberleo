@@ -43,6 +43,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'save_featured_order') {
 
 $message = '';
 $categories = get_categories();
+$storeSettings = get_store_settings();
 
 // Obtener todas las subcategorías
 $stmtSub = $pdo->query("SELECT s.id, s.name, s.category_id FROM subcategories s ORDER BY s.name");
@@ -120,10 +121,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$name, $description, $price, $price_sale, $category_id, $subcategory_id, $destacados, $is_active, $id]);
 
                 if ($main_image_id) {
+                    $mainImage = $pdo->prepare('SELECT image_path FROM product_images WHERE id = ? AND product_id = ? FOR UPDATE');
+                    $mainImage->execute([$main_image_id, $id]);
+                    $mainImagePath = $mainImage->fetchColumn();
+                    if (!$mainImagePath) throw new RuntimeException('La imagen principal no pertenece al producto.');
                     $stmt = $pdo->prepare("UPDATE product_images SET is_main = 0 WHERE product_id = ?");
                     $stmt->execute([$id]);
-                    $stmt = $pdo->prepare("UPDATE product_images SET is_main = 1 WHERE id = ?");
-                    $stmt->execute([$main_image_id]);
+                    $stmt = $pdo->prepare("UPDATE product_images SET is_main = 1 WHERE id = ? AND product_id = ?");
+                    $stmt->execute([$main_image_id, $id]);
+                    $pdo->prepare('UPDATE products SET image = ? WHERE id = ?')->execute([$mainImagePath, $id]);
                 }
 
                 if (!empty($_FILES['new_images']['name'][0])) {
@@ -242,7 +248,7 @@ foreach ($products as $product) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administrar Productos - <?= htmlspecialchars(STORE_NAME) ?></title>
+    <title>Administrar Productos - <?= htmlspecialchars($storeSettings['store_name']) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
