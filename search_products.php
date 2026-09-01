@@ -14,7 +14,7 @@ if (empty($search)) {
 $stmt = $pdo->prepare("SELECT p.*, c.name as category_name 
                        FROM products p 
                        LEFT JOIN categories c ON p.category_id = c.id 
-                       WHERE p.name LIKE ? OR p.description LIKE ? 
+                       WHERE p.is_active = 1 AND (p.name LIKE ? OR p.description LIKE ?)
                        LIMIT 5");
 $searchTerm = "%{$search}%";
 $stmt->execute([$searchTerm, $searchTerm]);

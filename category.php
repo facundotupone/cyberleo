@@ -151,12 +151,6 @@ if ($product_id) {
             // Obtener todas las imágenes del producto
             $stmt = $pdo->prepare("SELECT image_path FROM product_images WHERE product_id = ? ORDER BY is_main DESC");
            
-            // Obtener aromas disponibles para el producto
-            $stmtAroma = $pdo->prepare("SELECT a.id, a.nombre FROM aromas a 
-                INNER JOIN producto_aroma pa ON pa.aroma_id = a.id 
-                WHERE pa.producto_id = ?");
-            $stmtAroma->execute([$product['id']]);
-            $aromas = $stmtAroma->fetchAll(PDO::FETCH_ASSOC);
             $stmt->execute([$product['id']]);
             $images = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
             
@@ -204,14 +198,6 @@ if ($product_id) {
                 <div class="card-body">
                     <h5 class="card-title"><?php echo htmlspecialchars($product['name']); ?></h5>
                     <div class="description-container">
-                        <?php if (!empty($aromas)): ?>
-                            <select class="form-select aroma-select mb-2" data-product-id="<?= $product['id'] ?>">
-                                <option value="">Elegí un aroma</option>
-                                <?php foreach ($aromas as $aroma): ?>
-                                    <option value="<?= $aroma['id'] ?>"><?= htmlspecialchars($aroma['nombre']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        <?php endif; ?>
                         <?php 
                         $full_description = htmlspecialchars($product['description']);
                         $short_description = mb_substr($full_description, 0, 200);
@@ -255,7 +241,7 @@ if ($product_id) {
                     <div class="mt-3">
                         <div class="d-flex justify-content-center gap-2">
                             <?php
-                                $shareUrl = "https://www.rincondefreya.com.ar/category.php?id={$product['category_id']}&product_id={$product['id']}";
+                                $shareUrl = SITE_URL . "/category.php?id={$product['category_id']}&product_id={$product['id']}";
                                 $shareText = "¡Mirá este producto! " . htmlspecialchars($product['name']);
                             ?>
                             <a href="https://wa.me/?text=<?= urlencode($shareText . ' ' . $shareUrl) ?>"
@@ -366,20 +352,8 @@ document.addEventListener('DOMContentLoaded', function() {
             var productPrice = parseFloat(btn.getAttribute('data-product-price'));
             var stockOriginal = parseInt(btn.getAttribute('data-product-stock-original'), 10);
 
-            // Leer aroma seleccionado
-            var aromaSelect = document.querySelector(`.aroma-select[data-product-id="${productId}"]`);
-            var aromaId = aromaSelect ? aromaSelect.value : '';
-            var aromaName = aromaSelect ? aromaSelect.options[aromaSelect.selectedIndex].text : '';
-
-            // Validar aroma si corresponde
-            if (aromaSelect && !aromaId) {
-                showCartMessage('Por favor, seleccioná un aroma.', 'danger');
-                return;
-            }
-
             let cart = JSON.parse(localStorage.getItem('cart')) || [];
-            // Buscar si ya existe ese producto con ese aroma
-            let index = cart.findIndex(item => item.productId == productId && item.aromaId == aromaId);
+            let index = cart.findIndex(item => item.productId == productId);
             let currentQty = index !== -1 ? cart[index].quantity : 0;
 
             // Calcular stock visual antes de agregar
@@ -399,8 +373,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     productName: productName,
                     productPrice: productPrice,
                     quantity: 1,
-                    aromaId: aromaId,
-                    aromaName: aromaName
                 });
             }
             localStorage.setItem('cart', JSON.stringify(cart));

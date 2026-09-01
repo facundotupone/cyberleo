@@ -22,13 +22,6 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
     $productImages[$row['product_id']][] = $row['image_path'];
 }
 
-// Obtener aromas por producto
-$aromasPorProducto = [];
-$stmtAroma = $pdo->prepare("SELECT pa.producto_id, a.id, a.nombre FROM producto_aroma pa INNER JOIN aromas a ON pa.aroma_id = a.id");
-$stmtAroma->execute();
-foreach ($stmtAroma->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $aromasPorProducto[$row['producto_id']][] = ['id' => $row['id'], 'nombre' => $row['nombre']];
-}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -89,17 +82,6 @@ foreach ($stmtAroma->fetchAll(PDO::FETCH_ASSOC) as $row) {
         justify-content: center;
     }
     
-    /* Centrar selectores de aroma en móvil */
-    .cart-item .small.text-muted {
-        text-align: center;
-        display: flex;
-        justify-content: center;
-    }
-    
-    .cart-item .aroma-select-cart {
-        max-width: 200px;
-        margin: 0 auto;
-    }
 }
 </style>
 </head>
@@ -175,7 +157,6 @@ foreach ($stmtAroma->fetchAll(PDO::FETCH_ASSOC) as $row) {
 
 <script>
 const productData = <?php echo json_encode($products); ?>;
-const aromasData = <?php echo json_encode($aromasPorProducto); ?>;
 const productImages = <?php echo json_encode($productImages); ?>;
 
 // Función para obtener los datos de un producto por su ID
@@ -260,20 +241,6 @@ function loadCartItems() {
                 hasOutOfStockItems = true;
             }
 
-            // Selector de aromas
-            const aromas = aromasData[product.id] || [];
-            let aromaSelectHtml = '';
-            if (aromas.length > 0) {
-                aromaSelectHtml = `<select class="form-select form-select-sm aroma-select-cart" data-index="${idx}" data-product-id="${item.productId}">`;
-                aromaSelectHtml += `<option value="">Elegí aroma</option>`;
-                aromas.forEach(aroma => {
-                    aromaSelectHtml += `<option value="${aroma.id}" ${item.aromaId == aroma.id ? 'selected' : ''}>${aroma.nombre}</option>`;
-                });
-                aromaSelectHtml += `</select>`;
-            } else if (item.aromaName) {
-                aromaSelectHtml = `<span class="badge bg-light text-dark">${item.aromaName}</span>`;
-            }
-
             // Determinar si hay precio de liquidación
             const hasLiquidation = product.price_sale && parseFloat(product.price_sale) > 0;
             const originalPrice = parseFloat(product.price);
@@ -289,7 +256,6 @@ function loadCartItems() {
                                 </div>
                                 <div class="flex-grow-1">
                                     <h6 class="mb-1">${product.name}</h6>
-                                    ${aromaSelectHtml ? `<div class="small text-muted mb-2">${aromaSelectHtml}</div>` : ''}
                                     <div class="d-flex align-items-center">
                                         ${hasLiquidation ? 
                                             `<span class="badge bg-danger me-2">LIQUIDACIÓN</span>
@@ -372,15 +338,6 @@ function addCartEventListeners() {
         });
     });
 
-    // Event listeners para cambiar aroma
-    document.querySelectorAll('.aroma-select-cart').forEach(select => {
-        select.addEventListener('change', function() {
-            const idx = this.dataset.index;
-            const aromaId = this.value;
-            const aromaName = this.options[this.selectedIndex].text;
-            updateCartItemAroma(idx, aromaId, aromaName);
-        });
-    });
 }
 
 function updateCartItemQuantity(productId, quantity) {
@@ -391,17 +348,6 @@ function updateCartItemQuantity(productId, quantity) {
     
     if (index !== -1) {
         cart[index].quantity = quantity;
-        localStorage.setItem('cart', JSON.stringify(cart));
-        loadCartItems();
-        updateCartCount();
-    }
-}
-
-function updateCartItemAroma(idx, aromaId, aromaName) {
-    let cart = JSON.parse(localStorage.getItem('cart')) || [];
-    if (cart[idx]) {
-        cart[idx].aromaId = aromaId;
-        cart[idx].aromaName = aromaName;
         localStorage.setItem('cart', JSON.stringify(cart));
         loadCartItems();
         updateCartCount();
@@ -454,39 +400,33 @@ function updateCartCount() {
     });
 }
 
-function getWhatsAppMessage() {
-    const cart = JSON.parse(localStorage.getItem('cart')) || [];
-    let message = 'Hola HappyEars! Me gustaría hacer el siguiente pedido:\n\n';
-    let total = 0;
-
-    cart.forEach(item => {
-        const product = getProductById(parseInt(item.productId));
-        if (product) {
-            const effectivePrice = getEffectivePrice(product);
-            const subtotal = effectivePrice * item.quantity;
-            message += `${product.name}`;
-            if (item.aromaId) {
-                let aromaName = item.aromaName;
-                if (!aromaName && aromasData[item.productId]) {
-                    const aromaObj = aromasData[item.productId].find(a => a.id == item.aromaId);
-                    if (aromaObj) aromaName = aromaObj.nombre;
-                }
-                if (aromaName) message += ` (${aromaName})`;
-            }
-            message += ` x ${item.quantity} = $${subtotal.toFixed(2)}\n`;
-            total += subtotal;
-        }
-    });
-
-    message += `\nTotal: $${total.toFixed(2)}`;
-    return encodeURIComponent(message);
-}
-
-// Event listener para el botón de WhatsApp
-document.getElementById('whatsapp-order').addEventListener('click', function(e) {
+// Registra la solicitud y reserva stock antes de abrir WhatsApp.
+document.getElementById('whatsapp-order').addEventListener('click', async function(e) {
     e.preventDefault();
-    const message = getWhatsAppMessage();
-    window.open(`https://wa.me/5491149357558?text=${message}`, '_blank');
+    const button = this;
+    const cart = JSON.parse(localStorage.getItem('cart')) || [];
+    if (!cart.length || button.classList.contains('disabled')) return;
+
+    button.classList.add('disabled');
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Registrando pedido...';
+    try {
+        const response = await fetch('create_order.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({items: cart})
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'No se pudo registrar el pedido.');
+        localStorage.removeItem('cart');
+        window.open(result.whatsappUrl, '_blank', 'noopener');
+        loadCartItems();
+        updateCartCount();
+        alert(`Pedido #${result.orderId} registrado. Te llevamos a WhatsApp para coordinarlo.`);
+    } catch (error) {
+        alert(error.message);
+        button.classList.remove('disabled');
+        button.innerHTML = '<i class="bi bi-whatsapp me-2"></i>Enviar Pedido por WhatsApp';
+    }
 });
 
 document.addEventListener('DOMContentLoaded', () => {

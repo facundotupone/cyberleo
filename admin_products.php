@@ -45,10 +45,6 @@ $categories = get_categories();
 $stmtSub = $pdo->query("SELECT s.id, s.name, s.category_id FROM subcategories s ORDER BY s.name");
 $subcategories = $stmtSub->fetchAll(PDO::FETCH_ASSOC);
 
-// Obtener todos los aromas
-$stmtAromas = $pdo->query("SELECT id, nombre FROM aromas ORDER BY nombre");
-$aromas = $stmtAromas->fetchAll(PDO::FETCH_ASSOC);
-
 // Procesar el formulario de producto
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -59,24 +55,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $description = trim($_POST['description']);
             $price = floatval($_POST['price']);
             $price_sale = isset($_POST['price_sale']) && $_POST['price_sale'] !== '' ? floatval($_POST['price_sale']) : 0;
+            $stock = max(0, intval($_POST['stock'] ?? 0));
             $category_id = intval($_POST['category_id']);
             $subcategory_id = !empty($_POST['subcategory_id']) ? intval($_POST['subcategory_id']) : null;
                 $destacados = 0;
-            $aromas_sel = isset($_POST['aromas']) ? $_POST['aromas'] : [];
 
             $pdo->beginTransaction();
             try {
                 // Insertar producto sin imagen principal aún
-                $stmt = $pdo->prepare("INSERT INTO products (name, description, price, price_sale, category_id, subcategory_id, destacados, image) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)");
-                $stmt->execute([$name, $description, $price, $price_sale, $category_id, $subcategory_id, $destacados]);
+                $stmt = $pdo->prepare("INSERT INTO products (name, description, price, price_sale, stock, category_id, subcategory_id, destacados, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)");
+                $stmt->execute([$name, $description, $price, $price_sale, $stock, $category_id, $subcategory_id, $destacados]);
                 $product_id = $pdo->lastInsertId();
-
-                if (!empty($aromas_sel)) {
-                    $stmtInsert = $pdo->prepare("INSERT INTO producto_aroma (producto_id, aroma_id) VALUES (?, ?)");
-                    foreach ($aromas_sel as $aroma_id) {
-                        $stmtInsert->execute([$product_id, $aroma_id]);
-                    }
-                }
 
                 $main_image_path = null;
                 if (!empty($_FILES['images']['name'][0])) {
@@ -123,21 +112,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $subcategory_id = !empty($_POST['subcategory_id']) ? intval($_POST['subcategory_id']) : null;
             $destacados = isset($_POST['destacados']) ? 1 : 0;
             $main_image_id = isset($_POST['main_image']) ? intval($_POST['main_image']) : null;
-            $aromas_sel = isset($_POST['aromas']) ? $_POST['aromas'] : [];
 
             $pdo->beginTransaction();
 
             try {
                 $stmt = $pdo->prepare("UPDATE products SET name = ?, description = ?, price = ?, price_sale = ?, category_id = ?, subcategory_id = ?, destacados = ? WHERE id = ?");
                 $stmt->execute([$name, $description, $price, $price_sale, $category_id, $subcategory_id, $destacados, $id]);
-
-                $pdo->prepare("DELETE FROM producto_aroma WHERE producto_id = ?")->execute([$id]);
-                if (!empty($aromas_sel)) {
-                    $stmtInsert = $pdo->prepare("INSERT INTO producto_aroma (producto_id, aroma_id) VALUES (?, ?)");
-                    foreach ($aromas_sel as $aroma_id) {
-                        $stmtInsert->execute([$id, $aroma_id]);
-                    }
-                }
 
                 if ($main_image_id) {
                     $stmt = $pdo->prepare("UPDATE product_images SET is_main = 0 WHERE product_id = ?");
@@ -269,7 +249,7 @@ foreach ($products as $product) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administrar Productos - HappyEars</title>
+    <title>Administrar Productos - <?= htmlspecialchars(STORE_NAME) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
@@ -672,6 +652,11 @@ foreach ($products as $product) {
                             <i class="bi bi-tags"></i> Categorías
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin_orders.php">
+                            <i class="bi bi-receipt"></i> Pedidos
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -720,6 +705,10 @@ foreach ($products as $product) {
                                 <input type="number" class="form-control" id="price_sale" name="price_sale" step="0.01" placeholder="Precio Promoción (opcional)">
                                 <label for="price_sale"><i class="bi bi-tag"></i> Precio Promoción</label>
                             </div>
+                            <div class="mb-3 form-floating">
+                                <input type="number" class="form-control" id="stock" name="stock" min="0" value="0" placeholder="Stock" required>
+                                <label for="stock"><i class="bi bi-boxes"></i> Stock inicial</label>
+                            </div>
                             <div class="mb-3">
                                 <label for="category_id" class="form-label fw-600"><i class="bi bi-folder"></i> Categoría</label>
                                 <select class="form-select" id="category_id" name="category_id" required>
@@ -734,13 +723,6 @@ foreach ($products as $product) {
                                 <select class="form-select" id="subcategory_id" name="subcategory_id" required>
                                     <option value="">Seleccionar</option>
                                 </select>
-                            </div>
-                            <div class="mb-3 d-none">
-                                <label for="aromas" class="form-label d-none">Aromas</label>
-                                <select name="aromas[]" id="aromas" class="form-select" multiple>
-                                    <option disabled>Seleccione una subcategoría</option>
-                                </select>
-                                <small class="text-muted">Ctrl+Click para seleccionar varios.</small>
                             </div>
                             <div class="mb-3">
                                 <label for="images" class="form-label fw-600"><i class="bi bi-images"></i> Imágenes (Múltiples)</label>
@@ -793,9 +775,6 @@ foreach ($products as $product) {
                                 $stmt->execute([$product['id']]);
                                 $images = $stmt->fetchAll();
 
-                                $stmtAroma = $pdo->prepare("SELECT a.id, a.nombre FROM producto_aroma pa INNER JOIN aromas a ON pa.aroma_id = a.id WHERE pa.producto_id = ?");
-                                $stmtAroma->execute([$product['id']]);
-                                $productAromas = $stmtAroma->fetchAll(PDO::FETCH_ASSOC);
                             ?>
                             <tr>
                                 <td>
@@ -814,12 +793,6 @@ foreach ($products as $product) {
                                 </td>
                                 <td class="product-name">
                                     <span class="fw-bold"><?= htmlspecialchars($product['name']) ?></span>
-                                    <?php if (!empty($productAromas)): ?>
-                                        <br>
-                                        <small class="text-muted">
-                                            Aromas: <?= implode(', ', array_map(function($a){ return htmlspecialchars($a['nombre']); }, $productAromas)) ?>
-                                        </small>
-                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <span class="badge bg-info"><?= htmlspecialchars($product['category_name']) ?></span>
@@ -874,7 +847,7 @@ foreach ($products as $product) {
                                 <td>
                                     <div class="d-flex flex-column gap-2">
                                         <button class="btn btn-info btn-sm" title="Editar producto" data-bs-toggle="tooltip"
-                                            onclick="editProduct(<?= htmlspecialchars(json_encode($product)) ?>, <?= htmlspecialchars(json_encode($images)) ?>, <?= htmlspecialchars(json_encode(array_column($productAromas, 'id'))) ?>)">
+                                            onclick="editProduct(<?= htmlspecialchars(json_encode($product)) ?>, <?= htmlspecialchars(json_encode($images)) ?>)">
                                             <i class="bi bi-pencil-square"></i> Editar
                                         </button>
                                         <form method="POST" style="margin: 0;">
@@ -956,13 +929,6 @@ foreach ($products as $product) {
                                 <div class="mb-3">
                                     <label class="form-label fw-600"><i class="bi bi-tag"></i> Precio Promoción</label>
                                     <input type="number" class="form-control" id="edit_price_sale" name="price_sale" step="0.01" placeholder="Opcional">
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label fw-600"><i class="bi bi-flower1"></i> Aromas</label>
-                                    <select name="aromas[]" id="edit_aromas" class="form-select" multiple>
-                                        <option disabled>Seleccione una subcategoría</option>
-                                    </select>
-                                    <small class="text-muted">Ctrl+Click para seleccionar varios.</small>
                                 </div>
                             </div>
                             <div class="col-md-6">
@@ -1142,7 +1108,6 @@ document.getElementById('category_id').addEventListener('change', function() {
     const categoryId = this.value;
     const subcategorySelect = document.getElementById('subcategory_id');
     subcategorySelect.innerHTML = '<option value="">Seleccionar</option>';
-    document.getElementById('aromas').innerHTML = '<option disabled>Seleccione una subcategoría</option>';
     if (categoryId) {
         fetch(`get_subcategories.php?category_id=${categoryId}`)
             .then(response => response.json())
@@ -1161,66 +1126,8 @@ document.getElementById('category_id').addEventListener('change', function() {
     }
 });
 
-// Cargar aromas según subcategoría seleccionada (alta)
-document.getElementById('subcategory_id').addEventListener('change', function() {
-    const subcatId = this.value;
-    const aromasSelect = document.getElementById('aromas');
-    aromasSelect.innerHTML = '';
-    if (subcatId) {
-        fetch('get_aromas_by_subcat.php?subcat_id=' + subcatId)
-            .then(response => response.json())
-            .then(data => {
-                if (data.length === 0) {
-                    aromasSelect.innerHTML = '<option disabled>No hay aromas asociados</option>';
-                } else {
-                    data.forEach(aroma => {
-                        const option = document.createElement('option');
-                        option.value = aroma.id;
-                        option.textContent = aroma.nombre;
-                        aromasSelect.appendChild(option);
-                    });
-                }
-            });
-    } else {
-        aromasSelect.innerHTML = '<option disabled>Seleccione una subcategoría</option>';
-    }
-});
-
-// Función auxiliar para cargar aromas en edición
-function loadAromasForEdit(subcatId, selectedAromas) {
-    const aromasSelect = document.getElementById('edit_aromas');
-    aromasSelect.innerHTML = '';
-    
-    if (subcatId) {
-        fetch('get_aromas_by_subcat.php?subcat_id=' + subcatId)
-            .then(response => response.json())
-            .then(data => {
-                if (data.length === 0) {
-                    aromasSelect.innerHTML = '<option disabled>No hay aromas asociados</option>';
-                } else {
-                    data.forEach(aroma => {
-                        const option = document.createElement('option');
-                        option.value = aroma.id;
-                        option.textContent = aroma.nombre;
-                        // Marcar como seleccionado si está en los aromas del producto
-                        if (selectedAromas.includes(parseInt(aroma.id))) {
-                            option.selected = true;
-                        }
-                        aromasSelect.appendChild(option);
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Error loading aromas:', error);
-                aromasSelect.innerHTML = '<option disabled>Error al cargar aromas</option>';
-            });
-    } else {
-        aromasSelect.innerHTML = '<option disabled>Seleccione una subcategoría</option>';
-    }
-}
-
-// Modal de edición: cargar subcategorías y aromas dinámicamente
-function editProduct(product, images, aromasIds) {
+// Modal de edición: cargar subcategorías dinámicamente
+function editProduct(product, images) {
     document.getElementById('edit_id').value = product.id;
     document.getElementById('edit_name').value = product.name;
     document.getElementById('edit_description').value = product.description;
@@ -1249,21 +1156,12 @@ function editProduct(product, images, aromasIds) {
                         }
                         subcategorySelect.appendChild(option);
                     });
-                    
-                    // Después de cargar subcategorías, cargar aromas si hay subcategoría
-                    if (product.subcategory_id) {
-                        loadAromasForEdit(product.subcategory_id, aromasIds);
-                    } else {
-                        document.getElementById('edit_aromas').innerHTML = '<option disabled>Seleccione una subcategoría primero</option>';
-                    }
                 }
             })
             .catch(error => {
                 console.error('Error loading subcategories:', error);
                 subcategorySelect.innerHTML = '<option value="">Error al cargar</option>';
             });
-    } else {
-        document.getElementById('edit_aromas').innerHTML = '<option disabled>Seleccione una categoría primero</option>';
     }
 
     // Mostrar imágenes actuales
@@ -1294,12 +1192,6 @@ function editProduct(product, images, aromasIds) {
     const editModal = new bootstrap.Modal(document.getElementById('editModal'));
     editModal.show();
 }
-
-// Modal de edición: cargar aromas al cambiar subcategoría
-document.getElementById('edit_subcategory_id').addEventListener('change', function() {
-    const subcatId = this.value;
-    loadAromasForEdit(subcatId, []);
-});
 
 // Eliminar imagen en el modal de edición
 function deleteImage(imageId, button) {

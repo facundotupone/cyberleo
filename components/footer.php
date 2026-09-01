@@ -8,16 +8,15 @@
                     <div class="footer-banner d-flex align-items-center gap-2 flex-grow-1" style="background: linear-gradient(90deg, #fdf6ee 0%, #e3f2fd 100%); border: 1.5px solid #fd7e14; border-radius: 1.5em; padding: 0.7em 1.2em; min-width: 0;">
                         <span style="font-size: 1.7rem; background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: flex; align-items: center;"><i class="bi bi-instagram"></i></span>
                         <span style="font-size: 1.02rem; color: #222;">
-                            Seguinos en <b>Instagram</b> para novedades, sorteos y tips:<br>
-                            <a href="https://www.instagram.com/happy.ears4u" target="_blank" rel="noopener" style="color: #dc2743; font-weight: 600; text-decoration: underline;">@happy.ears4u</a>
+                            Tecnología, periféricos y soluciones para tu equipo.
                         </span>
                     </div>
                     <!-- WhatsApp -->
                     <div class="footer-banner d-flex align-items-center gap-2 flex-grow-1" style="background: linear-gradient(90deg, #e3f2fd 0%, #e0f7fa 100%); border: 1.5px solid #25d366; border-radius: 1.5em; padding: 0.7em 1.2em; min-width: 0;">
                         <span style="font-size: 1.7rem; color: #25d366; display: flex; align-items: center;"><i class="bi bi-whatsapp"></i></span>
                         <span style="font-size: 1.02rem; color: #222;">
-                            Escribinos por cualquier consulta de nuestros productos:<br>
-                            <a href="https://wa.me/5491149357558?text=Hola HappyEars! Me gustaría consultar acerca de..." target="_blank" rel="noopener" style="color: #128c7e; font-weight: 600; text-decoration: underline;">+54 9 11 4935 7558</a>
+                            Escribinos por cualquier consulta o para coordinar tu compra:<br>
+                            <a href="https://wa.me/<?= htmlspecialchars(WHATSAPP_NUMBER) ?>?text=<?= urlencode('Hola ' . STORE_NAME . ', quisiera hacer una consulta.') ?>" target="_blank" rel="noopener" style="color: #128c7e; font-weight: 600; text-decoration: underline;">Contactar por WhatsApp</a>
                         </span>
                     </div>
                     <!-- Email -->
@@ -28,7 +27,7 @@
         <!-- Fin banners destacados en el pie -->
         <div class="row">
             <div class="col text-center">
-                <small class="footer-copyright">&copy; <?php echo date('Y'); ?> HappyEars. Todos los derechos reservados.</small>
+                <small class="footer-copyright">&copy; <?php echo date('Y'); ?> <?= htmlspecialchars(STORE_NAME) ?>. Todos los derechos reservados.</small>
             </div>
         </div>
     </div>

@@ -32,13 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$token, $expiresAt, $user['id']]);
 
             // Link de reseteo
-            $resetLink = "https://happyears.somoscrear.com.ar/reset_password.php?token=" . urlencode($token);
+            $resetLink = rtrim(SITE_URL, '/') . "/reset_password.php?token=" . urlencode($token);
 
             // Email
             $to = $user['mail'];
-            $subject = "Recuperación de contraseña - HappyEars";
-
-            $logo = "https://happyears.somoscrear.com.ar/assets/images/happyears.png";
+            $subject = "Recuperación de contraseña - " . STORE_NAME;
 
             $message = "
             <!DOCTYPE html>
@@ -47,9 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             <div style='max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;padding:30px;box-shadow:0 4px 18px rgba(0,0,0,0.08);'>
             
-                <div style='text-align:center;margin-bottom:20px;'>
-                    <img src='$logo' alt='HappyEars' style='width:140px;'>
-                </div>
+                <h1 style='color:#2BBFBD;text-align:center;font-size:24px;'>" . STORE_NAME . "</h1>
             
                 <h2 style='color:#333;margin:0 0 10px;font-size:20px;font-weight:600;text-align:center;'>
                     Recuperar contraseña
@@ -76,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
                 <p style='color:#888;font-size:12px;text-align:center;line-height:1.5;margin:0;'>
                     Este enlace es válido por 1 hora.<br>
-                    HappyEars © " . date('Y') . "
+                    " . STORE_NAME . " © " . date('Y') . "
                 </p>
             
             </div>
@@ -86,8 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ";
 
             // Headers correctos
-            $headers  = "From: HappyEars <happyears@somoscrear.com.ar>\r\n";
-            $headers .= "Reply-To: happyears@somoscrear.com.ar\r\n";
+            $headers  = "From: " . STORE_NAME . " <no-reply@localhost>\r\n";
+            $headers .= "Reply-To: no-reply@localhost\r\n";
             $headers .= "MIME-Version: 1.0\r\n";
             $headers .= "Content-type: text/html; charset=UTF-8\r\n";
 

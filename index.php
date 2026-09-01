@@ -19,16 +19,7 @@ if (!empty($featured_ids_str)) {
     }
 }
 
-// 2. Todos los aromas de productos destacados
-$aromas_by_product = [];
-if (!empty($featured_ids_str)) {
-    $stmt = $pdo->query("SELECT pa.producto_id, a.id, a.nombre FROM producto_aroma pa INNER JOIN aromas a ON pa.aroma_id = a.id WHERE pa.producto_id IN ($featured_ids_str)");
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $aromas_by_product[$row['producto_id']][] = ['id' => $row['id'], 'nombre' => $row['nombre']];
-    }
-}
-
-// 3. Todas las subcategorías de todas las categorías
+// 2. Todas las subcategorías de todas las categorías
 $all_subcategories = [];
 $stmt = $pdo->query("SELECT * FROM subcategories ORDER BY category_id, name");
 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
@@ -77,26 +68,13 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 <body>
     <?php require_once 'components/nav.php'; ?>
     <main class="container mt-4">
-        <section class="hero-section" aria-label="Happy Ears">
+        <section class="hero-section" aria-label="<?= htmlspecialchars(STORE_NAME) ?>">
             <div class="hero-content text-center text-white">
-                <h1 class="text-white">⭐ Brillá Todos los Días, Sin Pagar de Más</h1>
-                <h3 class="text-white">Calidad real y estilo moderno a precios que te permiten usar algo nuevo todos los días.</h3>
+                <h1 class="text-white">Tecnología para trabajar, estudiar y disfrutar</h1>
+                <h3 class="text-white">Encontrá notebooks, componentes y periféricos con stock actualizado.</h3>
             </div>
         </section>
         <br>
-        <!-- Banner Instagram -->
-        <div class="row justify-content-center mb-3" aria-label="Banner Instagram">
-            <div class="col-md-8">
-                <div class="alert alert-info d-flex align-items-center justify-content-center gap-3 p-3 shadow-sm" style="background: linear-gradient(90deg, #fdf6ee 0%, #e3f2fd 100%); border: 1.5px solid #fd7e14; border-radius: 1.5em;">
-                    <span style="font-size: 2.1rem; background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: flex; align-items: center;"><i class="bi bi-instagram"></i></span>
-                    <span style="font-size: 1.15rem; color: #222;">
-                        Seguinos en <b>Instagram</b> para novedades, sorteos y tips:<br>
-                        <a href="https://www.instagram.com/happy.ears4u" target="_blank" rel="noopener" style="color: #dc2743; font-weight: 600; text-decoration: underline;">@happy.ears4u</a>
-                    </span>
-                </div>
-            </div>
-        </div>
-        <!-- Fin Banner Instagram -->
         <section class="row justify-content-center mb-4" aria-label="Buscador de productos">
             <div class="col-md-6">
                 <div class="input-group">
@@ -123,8 +101,6 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             if (empty($images) && !empty($product['image'])) {
                 $images = [$product['image']];
             }
-            // Usar aromas precargados
-            $aromas = isset($aromas_by_product[$product['id']]) ? $aromas_by_product[$product['id']] : [];
         ?>
         <div class="col-md-4">
             <div class="card product-card h-100">
@@ -142,7 +118,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                                         <div class="carousel-item <?= $index === 0 ? 'active' : '' ?>">
                                             <img src="<?= htmlspecialchars($image) ?>" 
                                                  class="d-block w-100" 
-                                                 alt="<?= htmlspecialchars($product['name']) ?> - Foto producto Rincón de Freya"
+                                                 alt="<?= htmlspecialchars($product['name']) ?>"
                                                  loading="lazy">
                                         </div>
                                     <?php endforeach; ?>
@@ -159,7 +135,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                         <?php else: ?>
                             <img src="<?= htmlspecialchars($images[0]) ?>" 
                                  class="single-product-image" 
-                                 alt="<?= htmlspecialchars($product['name']) ?> - Foto producto Rincón de Freya"
+                                 alt="<?= htmlspecialchars($product['name']) ?>"
                                  loading="lazy">
                         <?php endif; ?>
                     </div>
@@ -176,14 +152,6 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     
                     <h5 class="card-title"><?php echo htmlspecialchars($product['name']); ?></h5>
                     <div class="description-container">
-                        <?php if (!empty($aromas)): ?>
-                            <select class="form-select aroma-select mb-2" data-product-id="<?= $product['id'] ?>">
-                                <option value="">Elegí un aroma</option>
-                                <?php foreach ($aromas as $aroma): ?>
-                                    <option value="<?= $aroma['id'] ?>"><?= htmlspecialchars($aroma['nombre']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        <?php endif; ?>
                         <?php 
                         $full_description = htmlspecialchars($product['description']);
                         $short_description = mb_substr($full_description, 0, 200);
@@ -227,7 +195,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     <div class="mt-3">
                         <div class="d-flex justify-content-center gap-2">
                             <?php
-                                $shareUrl = "https://chiqui3d.somoscrear.com.ar/category.php?id={$product['category_id']}&product_id={$product['id']}";
+                                $shareUrl = SITE_URL . "/category.php?id={$product['category_id']}&product_id={$product['id']}";
                                 $shareText = "¡Mirá este producto! " . htmlspecialchars($product['name']);
                             ?>
                             <a href="https://wa.me/?text=<?= urlencode($shareText . ' ' . $shareUrl) ?>"
@@ -314,7 +282,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     var productId = btn.getAttribute('data-product-id');
                     var stockOriginal = parseInt(btn.getAttribute('data-product-stock-original'), 10);
                     
-                    // Sumar TODAS las cantidades del mismo producto (con cualquier aroma)
+                    // Sumar todas las cantidades del mismo producto.
                     let totalQuantity = 0;
                     cart.forEach(item => {
                         if (item.productId == productId) {
@@ -354,23 +322,8 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     var productPrice = parseFloat(btn.getAttribute('data-product-price'));
                     var stockOriginal = parseInt(btn.getAttribute('data-product-stock-original'), 10);
 
-                    // Leer aroma seleccionado
-                    var aromaSelect = document.querySelector(`.aroma-select[data-product-id="${productId}"]`);
-                    var aromaId = aromaSelect ? aromaSelect.value : '';
-                    var aromaName = aromaSelect ? aromaSelect.options[aromaSelect.selectedIndex].text : '';
-
-                    // Si el producto tiene aromas, obliga a elegir uno
-                    if (aromaSelect && aromaSelect.options.length > 1 && !aromaId) {
-                        aromaSelect.classList.add('is-invalid');
-                        aromaSelect.focus();
-                        return;
-                    } else if (aromaSelect) {
-                        aromaSelect.classList.remove('is-invalid');
-                    }
-
                     let cart = JSON.parse(localStorage.getItem('cart')) || [];
-                    // Buscar si ya existe ese producto con ese aroma
-                    let index = cart.findIndex(item => item.productId == productId && item.aromaId == aromaId);
+                    let index = cart.findIndex(item => item.productId == productId);
                     let currentQty = index !== -1 ? cart[index].quantity : 0;
 
                     // Calcular total de ese producto en el carrito
@@ -396,8 +349,6 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                             productName: productName,
                             productPrice: productPrice,
                             quantity: 1,
-                            aromaId: aromaId,
-                            aromaName: aromaName
                         });
                     }
                     localStorage.setItem('cart', JSON.stringify(cart));
