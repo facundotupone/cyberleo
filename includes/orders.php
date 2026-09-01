@@ -6,7 +6,9 @@ function mysql_now(PDO $pdo) { return $pdo->query('SELECT NOW()')->fetchColumn()
 function enforce_order_rate_limit(PDO $pdo) {
     if (APP_SECRET === '') throw new RuntimeException('Missing application secret.');
     $hash = hash_hmac('sha256', 'order|' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'), APP_SECRET);
-    $lock = $pdo->prepare('SELECT GET_LOCK(?, 5)'); $lock->execute(['order-rate-' . $hash]);
+    $lockName = 'cyberleo:order:' . substr($hash, 0, 48);
+    if (strlen($lockName) > 64) throw new RuntimeException('Invalid rate limit lock name.');
+    $lock = $pdo->prepare('SELECT GET_LOCK(?, 5)'); $lock->execute([$lockName]);
     if (!$lock->fetchColumn()) throw new RuntimeException('Rate limit lock unavailable.');
     try {
         $pdo->prepare('DELETE FROM order_rate_limits WHERE requested_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)')->execute();
@@ -14,7 +16,7 @@ function enforce_order_rate_limit(PDO $pdo) {
         $count->execute([$hash]);
         if ((int)$count->fetchColumn() >= 10) throw new RateLimitException('Too many attempts.');
         $pdo->prepare('INSERT INTO order_rate_limits (client_hash, requested_at) VALUES (?, NOW())')->execute([$hash]);
-    } finally { $pdo->prepare('DO RELEASE_LOCK(?)')->execute(['order-rate-' . $hash]); }
+    } finally { $pdo->prepare('DO RELEASE_LOCK(?)')->execute([$lockName]); }
 }
 function order_whatsapp_url(PDO $pdo, $orderId, $settings) {
     $stmt = $pdo->prepare('SELECT product_name, unit_price, quantity FROM order_items WHERE order_id = ?');

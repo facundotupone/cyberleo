@@ -29,7 +29,9 @@ function require_csrf($json = false) {
 function enforce_auth_rate_limit(PDO $pdo, $context) {
     if (APP_SECRET === '') throw new RuntimeException('Missing application secret.');
     $hash = hash_hmac('sha256', ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . '|' . $context, APP_SECRET);
-    $lock = $pdo->prepare('SELECT GET_LOCK(?, 5)'); $lock->execute(['auth-rate-' . $hash]);
+    $lockName = 'cyberleo:auth:' . substr($hash, 0, 48);
+    if (strlen($lockName) > 64) throw new RuntimeException('Invalid rate limit lock name.');
+    $lock = $pdo->prepare('SELECT GET_LOCK(?, 5)'); $lock->execute([$lockName]);
     if (!$lock->fetchColumn()) throw new RuntimeException('Rate limit lock unavailable.');
     try {
     $pdo->prepare('DELETE FROM auth_rate_limits WHERE requested_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)')->execute();
@@ -38,6 +40,6 @@ function enforce_auth_rate_limit(PDO $pdo, $context) {
     if ((int)$s->fetchColumn() >= 5) throw new RateLimitException('Too many attempts.');
     $pdo->prepare('INSERT INTO auth_rate_limits (context_hash, requested_at) VALUES (?, NOW())')->execute([$hash]);
     return $hash;
-    } finally { $pdo->prepare('DO RELEASE_LOCK(?)')->execute(['auth-rate-' . $hash]); }
+    } finally { $pdo->prepare('DO RELEASE_LOCK(?)')->execute([$lockName]); }
 }
 function clear_auth_rate_limit(PDO $pdo, $hash) { $pdo->prepare('DELETE FROM auth_rate_limits WHERE context_hash=?')->execute([$hash]); }
