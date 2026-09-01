@@ -12,7 +12,6 @@ body {
     position: relative;
     min-height: 100vh;
     background-color: #f5f7fa;
-    background-image: url('../images/background-body.png');
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
@@ -60,7 +59,6 @@ body {
 
 
 .hero-section {
-    background-image: url('../images/background-hero.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -133,19 +131,19 @@ body {
     .hero-content p {
         font-size: 1.1rem;
     }
-    
+
     .card-body {
         padding: 1rem;
     }
-    
+
     .btn {
         font-size: 0.9rem;
     }
-    
+
     .cart-item {
         padding: 1rem !important;
     }
-    
+
     .cart-item .row > div {
         margin-bottom: 0.5rem;
     }
@@ -155,16 +153,16 @@ body {
     .hero-content h1 {
         font-size: 2rem;
     }
-    
+
     .container {
         padding-left: 10px;
         padding-right: 10px;
     }
-    
+
     .card-img-container {
         height: 200px;
     }
-    
+
     .btn-sm {
         font-size: 0.8rem;
         padding: 0.4rem 0.8rem;
@@ -251,20 +249,20 @@ body {
     .cart-item {
         padding: 1rem !important;
     }
-    
+
     .cart-item .row > div {
         margin-bottom: 0.75rem;
     }
-    
+
     .cart-item .input-group {
         max-width: 100px !important;
         margin: 0 auto;
     }
-    
+
     .cart-item .remove-from-cart {
         margin-left: 0.5rem !important;
     }
-    
+
     .cart-item h6 {
         font-size: 1rem;
         margin-bottom: 0.5rem;
@@ -276,16 +274,16 @@ body {
         flex-direction: column;
         gap: 0.5rem;
     }
-    
+
     .cart-item .input-group {
         max-width: 120px !important;
     }
-    
+
     .cart-item .remove-from-cart {
         margin-left: 0 !important;
         margin-top: 0.25rem;
     }
-    
+
     .cart-item .row .col-lg-3 {
         text-align: center;
     }
@@ -482,7 +480,6 @@ body {
 .footer {
     background-color: var(--light-bg);
     color: var(--text-color);
-    background-image: url('../images/background-footer.svg');
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
@@ -685,11 +682,11 @@ body {
         z-index: 1050 !important;
         position: static;
     }
-    
+
     .nav-link {
         padding: 0.5rem 1rem;
     }
-    
+
     .nav-item.dropdown {
         position: relative;
     }
@@ -770,11 +767,11 @@ body {
     .navbar-brand.mx-auto.mx-lg-0 {
         margin-left: 0 !important;
     }
-    
+
     .navbar-toggler.order-lg-1 {
         order: 1;
     }
-    
+
     .navbar-collapse {
         flex-grow: 0;
         width: 100%;
@@ -786,7 +783,7 @@ body {
         flex-direction: column;
         flex-wrap: nowrap !important;
     }
-    
+
     .nav-item.dropdown.mx-1.my-1 {
         width: 100%;
         margin: 0.25rem 0;

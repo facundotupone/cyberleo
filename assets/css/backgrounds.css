@@ -43,7 +43,6 @@ body {
 
 /* Category section background */
 .categories-section {
-    background-image: url('../images/background-categories.svg');
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
@@ -145,11 +144,11 @@ html {
     .hero-section {
         min-height: 50vh;
     }
-    
+
     .categories-section {
         background-attachment: scroll;
     }
-    
+
     body {
         background-attachment: scroll;
     }
@@ -202,11 +201,11 @@ svg:hover path {
         width: 40px;
         height: 40px;
     }
-    
+
     .hero-content h1 {
         font-size: 1.8rem;
     }
-    
+
     .card {
         margin-bottom: 1rem;
     }
@@ -217,11 +216,11 @@ svg:hover path {
     .navbar, .footer, .floating-cart {
         display: none !important;
     }
-    
+
     body {
         background: white !important;
     }
-    
+
     .card {
         box-shadow: none;
         border: 1px solid #ddd;

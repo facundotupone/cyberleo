@@ -18,15 +18,18 @@ El ZIP no tiene una carpeta contenedora: sus archivos deben extraerse
 directamente en `public_html`. Guardar fuera del hosting una copia del ZIP y
 del archivo `.sha256`.
 
-## 2. Respaldo y staging privado
+## 2. Respaldo y conservación obligatoria de uploads
 
 Antes de cambiar producción:
 
 1. Cambiar obligatoriamente la contraseña MySQL que haya sido expuesta anteriormente y actualizarla sólo en la configuración privada.
 2. Exportar la base desde hPanel/phpMyAdmin o con `mysqldump`.
-3. Comprimir el `public_html` actual.
-4. Guardar ambos respaldos fuera de `public_html` y comprobar que se pueden
-   abrir.
+3. Crear un backup completo de `public_html`.
+4. Crear además backups separados de
+   `public_html/assets/images/products/` y
+   `public_html/assets/images/settings/`, conservando nombres, extensiones y
+   estructura.
+5. Guardar los respaldos fuera de `public_html` y comprobar que se pueden abrir.
 4. Crear un directorio privado como
    `/home/USUARIO/cyberleo-private`, nunca debajo de `public_html`.
 5. Para una actualización, subir allí una copia del repositorio fuente. Esa
@@ -35,6 +38,20 @@ Antes de cambiar producción:
 
 Probar primero en un subdominio de staging con su propia base de datos y
 credenciales. No reutilizar la base ni `APP_SECRET` de producción.
+
+Orden obligatorio de staging:
+
+1. Copiar la base de producción a una base exclusiva de staging.
+2. Copiar los uploads actuales de productos y settings a staging.
+3. Ejecutar la migración sobre la base de staging.
+4. Ejecutar `scripts/verify_production_images.php` en staging.
+5. Desplegar el ZIP en un directorio nuevo de staging.
+6. Restaurar los uploads en ese directorio, conservando los `.htaccess` nuevos.
+7. Ejecutar nuevamente el verificador.
+8. Completar el smoke test.
+9. Recién entonces planificar producción.
+
+Las credenciales y `APP_SECRET` de staging deben ser diferentes de producción.
 
 ## 3. Base de datos y migración
 
@@ -63,11 +80,23 @@ No copiar `migrations/` ni `schema.sql` a `public_html`. La migración es
 idempotente, pero siempre debe probarse primero contra el respaldo restaurado
 en staging.
 
-## 4. Publicar y configurar
+## 4. Publicar sin perder uploads
 
-Vaciar o renombrar el contenido anterior de `public_html` y extraer allí
-`cyberleo-hostinger.zip`. No extraerlo como
-`public_html/cyberleo-hostinger/...`.
+No vaciar `public_html` directamente. Extraer el ZIP en un directorio nuevo,
+paralelo al sitio activo. Restaurar allí los archivos respaldados de
+`products/` y `settings/`, manteniendo los `.htaccess` nuevos incluidos en el
+release. No restaurar scripts, symlinks, subdirectorios inesperados ni
+extensiones distintas de JPG, JPEG, PNG y WebP.
+
+Ejecutar el verificador privado contra la base correspondiente:
+
+```bash
+php /ruta/privada/al/proyecto/scripts/verify_production_images.php
+```
+
+Debe finalizar con código 0. Comparar referencias de base con archivos físicos
+y recién entonces intercambiar el directorio nuevo por el `public_html`
+activo. Conservar el directorio anterior para rollback.
 
 Crear manualmente `public_html/includes/config.local.php`; nunca agregarlo al
 ZIP. Plantilla:

@@ -9,7 +9,7 @@ ARCHIVE="$DIST_DIR/cyberleo-hostinger.zip"
 CHECKSUM="$ARCHIVE.sha256"
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-315532800}"
 
-for command in git php zip unzip sha256sum touch rg; do
+for command in git php zip unzip sha256sum touch rg install stat; do
     command -v "$command" >/dev/null 2>&1 || {
         printf 'Falta el prerrequisito: %s\n' "$command" >&2
         exit 1
@@ -96,6 +96,7 @@ done < "$MANIFEST"
 mv -f "$TMP_ARCHIVE" "$ARCHIVE"
 
 unzip -q "$ARCHIVE" -d "$VERIFY_DIR"
+php "$ROOT/tests/release_integrity_test.php" "$VERIFY_DIR"
 mapfile -t archive_files < <(unzip -Z1 "$ARCHIVE")
 [[ "${#archive_files[@]}" -eq "${#FILES[@]}" ]] || {
     printf 'Cantidad inesperada de archivos en el ZIP.\n' >&2
@@ -116,8 +117,8 @@ for relative in "${archive_files[@]}"; do
     esac
 done
 
-if rg -n --hidden \
-    'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|define\(['"'"'"]DB_PASS['"'"'"],[[:space:]]*['"'"'"][^'"'"'"]+['"'"'"]\)' \
+if rg --pcre2 -n --hidden \
+    'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|sk_(live|prod)_[A-Za-z0-9]+|define\(['"'"'"](APP_SECRET|DB_PASS|DB_USER|DB_NAME)['"'"'"],[[:space:]]*['"'"'"][^'"'"'"]+['"'"'"]\)|define\(['"'"'"]DB_HOST['"'"'"],[[:space:]]*['"'"'"](?!localhost)[^'"'"'"]+['"'"'"]\)' \
     "$STAGE_DIR"; then
     printf 'Posible secreto literal detectado en el paquete.\n' >&2
     exit 1

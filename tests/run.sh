@@ -148,7 +148,28 @@ TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=roo
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/image_upload_settings_test.php"
 
+printf 'Verificando inventario de imágenes con fixtures...\n'
+INVENTORY_ROOT="$WORK_DIR/image-inventory"
+mkdir -p "$INVENTORY_ROOT/assets/images/products" "$INVENTORY_ROOT/assets/images/settings"
+PRODUCT_FIXTURE='assets/images/products/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg'
+SETTING_FIXTURE='assets/images/settings/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp'
+printf fixture >"$INVENTORY_ROOT/$PRODUCT_FIXTURE"
+printf fixture >"$INVENTORY_ROOT/$SETTING_FIXTURE"
+"${MYSQL[@]}" "$TEST_DB" < "$ROOT/schema.sql"
+"${MYSQL[@]}" "$TEST_DB" -e "SET FOREIGN_KEY_CHECKS=0; TRUNCATE product_images; TRUNCATE products; TRUNCATE categories; TRUNCATE store_settings; SET FOREIGN_KEY_CHECKS=1;
+INSERT INTO categories(id,name,icon) VALUES(1,'Inventory','bi-image');
+INSERT INTO products(id,name,description,price,stock,image,category_id) VALUES(1,'Fixture','Fixture',1,1,'$PRODUCT_FIXTURE',1);
+INSERT INTO product_images(product_id,image_path,is_main) VALUES(1,'$PRODUCT_FIXTURE',1);
+INSERT INTO store_settings(setting_key,setting_value) VALUES('hero_background','$SETTING_FIXTURE');"
+INVENTORY_OUTPUT="$(APP_ENV=test IMAGE_STORAGE_ROOT="$INVENTORY_ROOT" DB_HOST="localhost;unix_socket=$SOCKET" DB_NAME="$TEST_DB" DB_USER=root DB_PASS='' php "$ROOT/scripts/verify_production_images.php")"
+[[ "$INVENTORY_OUTPUT" == $'total: 3\ncorrect: 3\nmissing: 0\nunsafe: 0\nmain_inconsistencies: 0' ]] || {
+    printf 'Inventario inesperado:\n%s\n' "$INVENTORY_OUTPUT" >&2
+    exit 1
+}
+printf '%s\n' "$INVENTORY_OUTPUT"
+
 TEST_DB_SOCKET="$SOCKET" TEST_DB_NAME="$TEST_DB" \
     "$ROOT/tests/run_http.sh"
 
-printf 'OK: lint, migración, imágenes y pruebas HTTP verificados.\n'
+RUN_TESTS=0 "$ROOT/scripts/build_hostinger_release.sh"
+printf 'OK: lint, migración, imágenes, HTTP e integridad del release verificados.\n'

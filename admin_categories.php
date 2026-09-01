@@ -63,12 +63,10 @@ $categories = get_categories();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Administrar Categorías - <?= htmlspecialchars(STORE_NAME) ?></title>
-    <link rel="icon" href="./assets/images/favicon.ico" type="image/x-icon">
-
     <!-- Bootstrap + Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    
+
     <!-- MISMO ESTILO QUE admin_products.php -->
     <style>
         body {
@@ -264,7 +262,7 @@ $categories = get_categories();
 
     <div class="container my-4">
         <h1>Administrar Categorías</h1>
-        
+
         <?php if ($message): ?>
         <div class="alert alert-info"><?php echo htmlspecialchars($message); ?></div>
         <?php endif; ?>
@@ -285,16 +283,16 @@ $categories = get_categories();
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Icono de categoría</label>
-                            
+
                                 <div class="input-group">
                                     <input type="text" class="form-control" id="iconInput" name="icon" placeholder="bi bi-star" required>
                                     <button type="button" class="btn btn-outline-secondary" id="openIconPicker">
                                         <i class="bi bi-grid"></i>
                                     </button>
                                 </div>
-                            
+
                                 <div class="mt-2" id="iconPreview" style="font-size: 2rem;"></div>
-                            
+
                                 <small class="text-muted">
                                     Elegí un icono o escribí manualmente. Ej: <code>bi bi-heart</code>
                                 </small>
@@ -303,8 +301,8 @@ $categories = get_categories();
 
                             <button type="submit" class="btn btn-primary mb-3">Agregar Categoría</button>
                         </form>
-                        
-                       
+
+
 
 
                         <hr>
@@ -338,9 +336,9 @@ $categories = get_categories();
                     <div class="card-header bg-warning text-white">
                         <h2 class="h5 mb-0">Categorías y Subcategorías Existentes</h2>
                     </div>
-                    
+
                     <div class="list-group">
-                        <?php foreach ($categories as $category): 
+                        <?php foreach ($categories as $category):
                             $subcategories = get_subcategories($category['id']);
                         ?>
                         <div class="list-group-item">
@@ -355,7 +353,7 @@ $categories = get_categories();
                                     <?= csrf_input() ?>
                                     <input type="hidden" name="action" value="delete_category">
                                     <input type="hidden" name="id" value="<?php echo $category['id']; ?>">
-                                    <button type="submit" class="btn btn-danger btn-sm" 
+                                    <button type="submit" class="btn btn-danger btn-sm"
                                             onclick="return confirm('¿Estás seguro de eliminar esta categoría y todas sus subcategorías?')">
                                         Eliminar
                                     </button>
@@ -387,24 +385,24 @@ $categories = get_categories();
         </div>
     </div>
      <!-- MODAL ICONO -->
-                        
+
     <div class="modal fade" id="iconModal" tabindex="-1">
       <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
-    
+
           <div class="modal-header">
             <h5 class="modal-title">Seleccionar Icono</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
-    
+
           <div class="modal-body">
-    
+
             <input type="text" class="form-control mb-3" id="iconSearch" placeholder="Buscar icono...">
-    
+
             <div class="row row-cols-6 g-3" id="iconList"></div>
-    
+
           </div>
-    
+
         </div>
       </div>
     </div>
