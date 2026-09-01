@@ -159,30 +159,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Eliminar producto
         elseif ($_POST['action'] === 'delete' && isset($_POST['id'])) {
             $product_id = intval($_POST['id']);
-
-            $pdo->beginTransaction();
-
             try {
-                $stmt = $pdo->prepare("SELECT id FROM products WHERE id = ? FOR UPDATE");
-                $stmt->execute([$product_id]);
-                if (!$stmt->fetchColumn()) throw new RuntimeException('Producto no encontrado.');
-                $stmt = $pdo->prepare("SELECT image_path FROM product_images WHERE product_id = ? FOR UPDATE");
-                $stmt->execute([$product_id]);
-                $images = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-                $stmt = $pdo->prepare("DELETE FROM products WHERE id = ?");
-                $success = $stmt->execute([$product_id]);
-
-                if ($success) {
-                    $pdo->commit();
-                    foreach ($images as $image_path) delete_image_if_unreferenced($pdo, $image_path);
+                $result = delete_product_record($pdo, $product_id);
+                if ($result['status'] === 'deleted') {
+                    cleanup_product_images_after_commit($pdo, $result['paths']);
                     $message = 'Producto eliminado exitosamente.';
+                } elseif ($result['status'] === 'not_found') {
+                    $message = 'Producto no encontrado.';
                 } else {
-                    $pdo->rollBack();
                     $message = 'Error al eliminar el producto.';
                 }
             } catch (Exception $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 $message = 'Error al eliminar el producto: ' . $e->getMessage();
             }
         }

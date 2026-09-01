@@ -136,4 +136,9 @@ run_fixture() {
 run_fixture "$ROOT/tests/fixtures/legacy_without_orders.sql"
 run_fixture "$ROOT/tests/fixtures/pre_5c8bdb2_orders.sql"
 
-printf 'OK: lint y migración idempotente verificados en ambos fixtures.\n'
+"${MYSQL[@]}" -e "DROP DATABASE IF EXISTS \`$TEST_DB\`; CREATE DATABASE \`$TEST_DB\` CHARACTER SET utf8mb4;"
+"${MYSQL[@]}" "$TEST_DB" < "$ROOT/schema.sql"
+TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
+    php "$ROOT/tests/image_deletion_test.php"
+
+printf 'OK: lint, migración idempotente y ciclo de eliminación de imágenes verificados.\n'

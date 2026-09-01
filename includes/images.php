@@ -11,26 +11,157 @@ function store_safe_image($tmpName, $error, $size, $directory) {
     if (!move_uploaded_file($tmpName, $path)) throw new RuntimeException('No se pudo guardar la imagen.');
     return $path;
 }
-function is_safe_upload_path($path) {
-    $base = realpath(dirname(__DIR__) . '/assets/images');
-    $real = is_string($path) ? realpath(dirname(__DIR__) . '/' . ltrim($path, '/')) : false;
-    return $real && $base && is_file($real) && !is_link($real) && str_starts_with($real, $base . DIRECTORY_SEPARATOR);
+function is_safe_product_image_path($path) {
+    return is_string($path) && preg_match('#^assets/images/products/(?:[a-f0-9]{13}|[a-f0-9]{32})\.(?:jpe?g|png|webp)$#i', $path);
 }
+
 function is_safe_settings_image_path($path) {
     return is_string($path) && preg_match('#^assets/images/settings/[a-f0-9]{32}\.(?:jpe?g|png|webp)$#i', $path);
 }
-function delete_image_if_unreferenced(PDO $pdo, $path) {
+
+function product_image_directory(?string $root = null): string {
+    return rtrim($root ?? dirname(__DIR__), DIRECTORY_SEPARATOR) . '/assets/images/products';
+}
+
+function path_has_symlink(string $path): bool {
+    $current = str_starts_with($path, DIRECTORY_SEPARATOR) ? DIRECTORY_SEPARATOR : '';
+    foreach (explode(DIRECTORY_SEPARATOR, trim($path, DIRECTORY_SEPARATOR)) as $segment) {
+        if ($segment === '') continue;
+        $current .= ($current === '' || $current === DIRECTORY_SEPARATOR ? '' : DIRECTORY_SEPARATOR) . $segment;
+        if (is_link($current)) return true;
+    }
+    return false;
+}
+
+/**
+ * @return array{status:string,path:?string}
+ */
+function resolve_safe_product_image_path($path, ?string $root = null): array {
+    if (!is_safe_product_image_path($path)) return ['status' => 'unsafe_path', 'path' => null];
+
+    $directory = product_image_directory($root);
+    $candidate = $directory . DIRECTORY_SEPARATOR . basename($path);
+    // Check links before realpath(), which otherwise resolves an escaped target.
+    if (path_has_symlink($directory) || is_link($candidate)) return ['status' => 'symlink_path', 'path' => null];
+    if (!is_file($candidate)) return ['status' => 'missing_file', 'path' => null];
+
+    $realDirectory = realpath($directory);
+    $realCandidate = realpath($candidate);
+    if ($realDirectory === false || $realCandidate === false
+        || !str_starts_with($realCandidate, $realDirectory . DIRECTORY_SEPARATOR)) {
+        return ['status' => 'unsafe_path', 'path' => null];
+    }
+    if (is_link($candidate) || is_link($realCandidate)) return ['status' => 'symlink_path', 'path' => null];
+    return ['status' => 'resolved', 'path' => $realCandidate];
+}
+
+function is_safe_upload_path($path, ?string $root = null): bool {
+    return resolve_safe_product_image_path($path, $root)['status'] === 'resolved';
+}
+
+function delete_unreferenced_product_image(PDO $pdo, $path, ?string $root = null): string {
     if ($pdo->inTransaction()) throw new LogicException('Image deletion requires a committed database transaction.');
-    if (!is_safe_product_image_path($path) && !is_safe_settings_image_path($path)) return 'unsafe_path';
-    if (!is_safe_upload_path($path)) return 'unsafe_path';
-    $check = $pdo->prepare('SELECT (SELECT COUNT(*) FROM products WHERE image=?) + (SELECT COUNT(*) FROM product_images WHERE image_path=?) + (SELECT COUNT(*) FROM store_settings WHERE setting_value=?)');
-    $check->execute([$path, $path, $path]);
-    if ((int)$check->fetchColumn() > 0) return 'still_referenced';
-    $full = realpath(dirname(__DIR__) . '/' . $path);
-    if (!$full || !is_file($full) || is_link($full)) return 'missing_file';
-    if (!@unlink($full)) { error_log('Could not delete unreferenced image.'); return 'deletion_failed'; }
+
+    $resolved = resolve_safe_product_image_path($path, $root);
+    if ($resolved['status'] !== 'resolved') return $resolved['status'];
+    $check = $pdo->prepare(
+        'SELECT (SELECT COUNT(*) FROM products WHERE image = ?) + '
+        . '(SELECT COUNT(*) FROM product_images WHERE image_path = ?)'
+    );
+    $check->execute([$path, $path]);
+    if ((int) $check->fetchColumn() > 0) return 'still_referenced';
+
+    if (!@unlink($resolved['path'])) {
+        error_log('Could not delete unreferenced product image.');
+        return 'deletion_failed';
+    }
     return 'deleted';
 }
-function is_safe_product_image_path($path) {
-    return is_string($path) && preg_match('#^assets/images/products/(?:[a-f0-9]{13}|[a-f0-9]{32})\.(?:jpe?g|png|webp)$#i', $path);
+
+/**
+ * @return array<string,string> paths indexed by their cleanup state
+ */
+function cleanup_product_images_after_commit(PDO $pdo, array $paths, ?string $root = null): array {
+    if ($pdo->inTransaction()) throw new LogicException('Image cleanup requires a committed database transaction.');
+
+    $results = [];
+    foreach (array_unique($paths) as $path) {
+        if (is_string($path)) $results[$path] = delete_unreferenced_product_image($pdo, $path, $root);
+    }
+    return $results;
+}
+
+/**
+ * Deletes one image row and repairs the selected main image atomically.
+ *
+ * @return array{status:string,path:?string}
+ */
+function delete_product_image_record(PDO $pdo, int $imageId): array {
+    if ($imageId < 1) return ['status' => 'invalid_image_id', 'path' => null];
+
+    $pdo->beginTransaction();
+    try {
+        $statement = $pdo->prepare(
+            'SELECT pi.product_id, pi.image_path, pi.is_main '
+            . 'FROM product_images pi INNER JOIN products p ON p.id = pi.product_id '
+            . 'WHERE pi.id = ? FOR UPDATE'
+        );
+        $statement->execute([$imageId]);
+        $image = $statement->fetch(PDO::FETCH_ASSOC);
+        if (!$image) {
+            $pdo->rollBack();
+            return ['status' => 'not_found', 'path' => null];
+        }
+
+        $pdo->prepare('DELETE FROM product_images WHERE id = ?')->execute([$imageId]);
+        if ((int) $image['is_main'] === 1) {
+            $next = $pdo->prepare(
+                'SELECT id, image_path FROM product_images WHERE product_id = ? ORDER BY id LIMIT 1 FOR UPDATE'
+            );
+            $next->execute([$image['product_id']]);
+            $replacement = $next->fetch(PDO::FETCH_ASSOC) ?: null;
+            $pdo->prepare('UPDATE product_images SET is_main = 0 WHERE product_id = ?')->execute([$image['product_id']]);
+            if ($replacement) {
+                $pdo->prepare('UPDATE product_images SET is_main = 1 WHERE id = ?')->execute([$replacement['id']]);
+            }
+            $pdo->prepare('UPDATE products SET image = ? WHERE id = ?')
+                ->execute([$replacement['image_path'] ?? null, $image['product_id']]);
+        }
+        $pdo->commit();
+        return ['status' => 'deleted', 'path' => $image['image_path']];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}
+
+/**
+ * Deletes a product and returns candidate files that may be cleaned post-commit.
+ *
+ * @return array{status:string,paths:array<int,string>}
+ */
+function delete_product_record(PDO $pdo, int $productId): array {
+    if ($productId < 1) return ['status' => 'invalid_product_id', 'paths' => []];
+
+    $pdo->beginTransaction();
+    try {
+        $product = $pdo->prepare('SELECT image FROM products WHERE id = ? FOR UPDATE');
+        $product->execute([$productId]);
+        $mainPath = $product->fetchColumn();
+        if ($mainPath === false) {
+            $pdo->rollBack();
+            return ['status' => 'not_found', 'paths' => []];
+        }
+        $images = $pdo->prepare('SELECT image_path FROM product_images WHERE product_id = ? FOR UPDATE');
+        $images->execute([$productId]);
+        $paths = $images->fetchAll(PDO::FETCH_COLUMN);
+        if (is_string($mainPath)) $paths[] = $mainPath;
+
+        $pdo->prepare('DELETE FROM products WHERE id = ?')->execute([$productId]);
+        $pdo->commit();
+        return ['status' => 'deleted', 'paths' => array_values(array_unique($paths))];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
 }
