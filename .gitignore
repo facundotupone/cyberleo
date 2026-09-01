@@ -1,0 +1,5 @@
+/includes/config.local.php
+/.env
+/logs/
+/tmp/
+*.log

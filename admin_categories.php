@@ -3,12 +3,14 @@ require_once 'includes/auth_check.php';
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/security.php';
 
 $message = '';
 $categories = get_categories();
 
 // Procesar el formulario de categoría y subcategoría
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    require_csrf();
     if (isset($_POST['action'])) {
         if ($_POST['action'] === 'add_category') {
             $name = trim($_POST['name']);
@@ -273,6 +275,7 @@ $categories = get_categories();
                     </div>
                     <div class="card-body">
                         <form method="POST" class="mb-4">
+                            <?= csrf_input() ?>
                             <input type="hidden" name="action" value="add_category">
                             <div class="mb-3">
                                 <label for="name" class="form-label">Nombre de la Categoría</label>
@@ -305,6 +308,7 @@ $categories = get_categories();
                         <hr>
                         <h2 class="h5 mb-3">Agregar Nueva Subcategoría</h2>
                         <form method="POST" class="mb-4">
+                            <?= csrf_input() ?>
                             <input type="hidden" name="action" value="add_subcategory">
                             <div class="mb-3">
                                 <label for="parent_category_id" class="form-label">Categoría Padre</label>
@@ -346,6 +350,7 @@ $categories = get_categories();
                                     <strong><?php echo htmlspecialchars($category['name']); ?></strong>
                                 </div>
                                 <form method="POST" class="d-inline">
+                                    <?= csrf_input() ?>
                                     <input type="hidden" name="action" value="delete_category">
                                     <input type="hidden" name="id" value="<?php echo $category['id']; ?>">
                                     <button type="submit" class="btn btn-danger btn-sm" 
@@ -360,6 +365,7 @@ $categories = get_categories();
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <span><?php echo htmlspecialchars($subcategory['name']); ?></span>
                                     <form method="POST" class="d-inline">
+                                        <?= csrf_input() ?>
                                         <input type="hidden" name="action" value="delete_subcategory">
                                         <input type="hidden" name="id" value="<?php echo $subcategory['id']; ?>">
                                         <button type="submit" class="btn btn-danger btn-sm"

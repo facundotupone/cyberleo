@@ -1,7 +1,5 @@
 -- Esquema inicial de CyberLeo (MySQL/MariaDB, utf8mb4).
--- Importar antes de configurar includes/config.php.
-CREATE DATABASE IF NOT EXISTS cyberleo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE cyberleo;
+-- Crear la base de datos previamente y seleccionarla al importar este archivo.
 
 CREATE TABLE IF NOT EXISTS users (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -53,10 +51,14 @@ CREATE TABLE IF NOT EXISTS product_images (
 
 CREATE TABLE IF NOT EXISTS orders (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  status ENUM('pending','confirmed','cancelled') NOT NULL DEFAULT 'pending',
+  status ENUM('pending','confirmed','cancelled','expired') NOT NULL DEFAULT 'pending',
   total DECIMAL(12,2) NOT NULL,
+  idempotency_key CHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_orders_idempotency_key (idempotency_key),
+  KEY idx_orders_status_expires (status, expires_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS order_items (
@@ -73,6 +75,12 @@ CREATE TABLE IF NOT EXISTS order_items (
 CREATE TABLE IF NOT EXISTS store_settings (
   setting_key VARCHAR(80) PRIMARY KEY,
   setting_value TEXT NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS order_rate_limits (
+  client_hash CHAR(64) NOT NULL,
+  requested_at DATETIME NOT NULL,
+  KEY idx_rate_client_time (client_hash, requested_at)
 ) ENGINE=InnoDB;
 
 INSERT INTO categories (name, icon)

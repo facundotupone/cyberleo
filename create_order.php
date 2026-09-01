@@ -2,6 +2,7 @@
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/orders.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -13,6 +14,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $payload = json_decode(file_get_contents('php://input'), true);
 $cart = isset($payload['items']) && is_array($payload['items']) ? $payload['items'] : [];
+$idempotencyKey = $payload['idempotencyKey'] ?? '';
+if (!is_string($idempotencyKey) || !preg_match('/^[a-f0-9]{64}$/', $idempotencyKey)) {
+    http_response_code(422); echo json_encode(['success' => false, 'message' => 'Solicitud inválida.']); exit;
+}
 if (!$cart) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'El carrito está vacío.']);
@@ -33,7 +38,16 @@ foreach ($cart as $item) {
 }
 
 try {
+    $storeSettings = get_store_settings();
+    expire_pending_orders($pdo);
     $pdo->beginTransaction();
+    $existing = $pdo->prepare('SELECT id FROM orders WHERE idempotency_key = ? FOR UPDATE');
+    $existing->execute([$idempotencyKey]);
+    if ($existingId = $existing->fetchColumn()) {
+        $pdo->commit();
+        echo json_encode(['success' => true, 'orderId' => (int)$existingId, 'message' => 'Pedido ya registrado.']);
+        exit;
+    }
     $orderItems = [];
     $total = 0;
 
@@ -52,8 +66,9 @@ try {
         $total += $price * $quantity;
     }
 
-    $stmt = $pdo->prepare("INSERT INTO orders (status, total) VALUES ('pending', ?)");
-    $stmt->execute([$total]);
+    $expiresAt = date('Y-m-d H:i:s', time() + reservation_minutes($storeSettings) * 60);
+    $stmt = $pdo->prepare("INSERT INTO orders (status, total, idempotency_key, expires_at) VALUES ('pending', ?, ?, ?)");
+    $stmt->execute([$total, $idempotencyKey, $expiresAt]);
     $orderId = (int)$pdo->lastInsertId();
     $itemStmt = $pdo->prepare('INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity) VALUES (?, ?, ?, ?, ?)');
     $stockStmt = $pdo->prepare('UPDATE products SET stock = stock - ? WHERE id = ?');
@@ -64,7 +79,6 @@ try {
     }
     $pdo->commit();
 
-    $storeSettings = get_store_settings();
     $message = "Hola " . $storeSettings['store_name'] . ", quiero confirmar el pedido #{$orderId}:\n\n";
     foreach ($orderItems as $item) {
         $message .= "{$item['product']['name']} x {$item['quantity']} = $" . number_format($item['price'] * $item['quantity'], 2, ',', '.') . "\n";
@@ -76,5 +90,6 @@ try {
         $pdo->rollBack();
     }
     http_response_code(422);
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    error_log('Order creation failed: ' . $e->getMessage());
+    echo json_encode(['success' => false, 'message' => 'No fue posible registrar el pedido. Verificá el stock e intentá nuevamente.']);
 }

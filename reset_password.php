@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once 'includes/security.php';
+start_secure_session();
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 
@@ -26,6 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($password !== $password2) {
         $error = "Las contraseñas no coinciden.";
+    } elseif (strlen($password) < 10) {
+        $error = "La contraseña debe tener al menos 10 caracteres.";
     } else {
         $hash = password_hash($password, PASSWORD_DEFAULT);
 

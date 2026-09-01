@@ -4,6 +4,8 @@ require_once 'includes/auth_check.php';
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/security.php';
+require_once 'includes/images.php';
 
 // --- ENDPOINT AJAX PARA PRODUCTOS DESTACADOS ---
 if (isset($_GET['action']) && $_GET['action'] === 'get_featured_products') {
@@ -19,6 +21,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'get_featured_products') {
 
 // --- ENDPOINT PARA GUARDAR ORDEN DE DESTACADOS ---
 if (isset($_GET['action']) && $_GET['action'] === 'save_featured_order') {
+    require_csrf(true);
     header('Content-Type: application/json');
     $data = json_decode(file_get_contents('php://input'), true);
     $success = true;
@@ -47,6 +50,7 @@ $subcategories = $stmtSub->fetchAll(PDO::FETCH_ASSOC);
 
 // Procesar el formulario de producto
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    require_csrf();
 
     if (isset($_POST['action'])) {
         // Agregar nuevo producto
@@ -70,15 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $main_image_path = null;
                 if (!empty($_FILES['images']['name'][0])) {
                     $upload_dir = 'assets/images/products/';
-                    if (!file_exists($upload_dir)) {
-                        mkdir($upload_dir, 0777, true);
-                    }
                     foreach ($_FILES['images']['tmp_name'] as $key => $tmp_name) {
                         if ($_FILES['images']['error'][$key] === UPLOAD_ERR_OK) {
-                            $file_extension = strtolower(pathinfo($_FILES['images']['name'][$key], PATHINFO_EXTENSION));
-                            $new_filename = uniqid() . '.' . $file_extension;
-                            $image_path = $upload_dir . $new_filename;
-                            if (move_uploaded_file($tmp_name, $image_path)) {
+                            $image_path = store_safe_image($tmp_name, $_FILES['images']['error'][$key], $_FILES['images']['size'][$key], rtrim($upload_dir, '/'));
+                            if ($image_path) {
                                 $is_main = ($key === 0) ? 1 : 0;
                                 $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
                                 $stmt->execute([$product_id, $image_path, $is_main]);
@@ -111,13 +110,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $category_id = intval($_POST['category_id']);
             $subcategory_id = !empty($_POST['subcategory_id']) ? intval($_POST['subcategory_id']) : null;
             $destacados = isset($_POST['destacados']) ? 1 : 0;
+            $is_active = isset($_POST['is_active']) ? 1 : 0;
             $main_image_id = isset($_POST['main_image']) ? intval($_POST['main_image']) : null;
 
             $pdo->beginTransaction();
 
             try {
-                $stmt = $pdo->prepare("UPDATE products SET name = ?, description = ?, price = ?, price_sale = ?, category_id = ?, subcategory_id = ?, destacados = ? WHERE id = ?");
-                $stmt->execute([$name, $description, $price, $price_sale, $category_id, $subcategory_id, $destacados, $id]);
+                $stmt = $pdo->prepare("UPDATE products SET name = ?, description = ?, price = ?, price_sale = ?, category_id = ?, subcategory_id = ?, destacados = ?, is_active = ? WHERE id = ?");
+                $stmt->execute([$name, $description, $price, $price_sale, $category_id, $subcategory_id, $destacados, $is_active, $id]);
 
                 if ($main_image_id) {
                     $stmt = $pdo->prepare("UPDATE product_images SET is_main = 0 WHERE product_id = ?");
@@ -128,17 +128,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (!empty($_FILES['new_images']['name'][0])) {
                     $upload_dir = 'assets/images/products/';
-                    if (!file_exists($upload_dir)) {
-                        mkdir($upload_dir, 0777, true);
-                    }
-
                     foreach ($_FILES['new_images']['tmp_name'] as $key => $tmp_name) {
                         if ($_FILES['new_images']['error'][$key] === UPLOAD_ERR_OK) {
-                            $file_extension = strtolower(pathinfo($_FILES['new_images']['name'][$key], PATHINFO_EXTENSION));
-                            $new_filename = uniqid() . '.' . $file_extension;
-                            $image_path = $upload_dir . $new_filename;
-
-                            if (move_uploaded_file($tmp_name, $image_path)) {
+                            $image_path = store_safe_image($tmp_name, $_FILES['new_images']['error'][$key], $_FILES['new_images']['size'][$key], rtrim($upload_dir, '/'));
+                            if ($image_path) {
                                 $is_main = 0;
                                 $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
                                 $stmt->execute([$id, $image_path, $is_main]);
@@ -692,6 +685,7 @@ foreach ($products as $product) {
                     </div>
                     <div class="card-body">
                         <form method="POST" enctype="multipart/form-data" class="mb-4">
+                            <?= csrf_input() ?>
                             <input type="hidden" name="action" value="add">
 
                             <div class="mb-3 form-floating">
@@ -828,12 +822,14 @@ foreach ($products as $product) {
                                     <?php endif; ?>
                                     <div class="d-flex align-items-center mt-2">
                                         <form method="POST" class="me-1">
+                                            <?= csrf_input() ?>
                                             <input type="hidden" name="action" value="update_stock">
                                             <input type="hidden" name="change" value="-1">
                                             <input type="hidden" name="id" value="<?= $product['id'] ?>">
                                             <button type="submit" class="btn btn-sm btn-outline-danger" <?= $product['stock'] <= 0 ? 'disabled' : '' ?> title="Restar 1" data-bs-toggle="tooltip">-</button>
                                         </form>
                                         <form method="POST" class="d-flex align-items-center mx-2" style="gap:4px;">
+                                            <?= csrf_input() ?>
                                             <input type="hidden" name="action" value="set_stock">
                                             <input type="hidden" name="id" value="<?= $product['id'] ?>">
                                             <input type="number" name="new_stock" value="<?= $product['stock'] ?>" min="0" class="form-control form-control-sm" style="width:60px;">
@@ -842,6 +838,7 @@ foreach ($products as $product) {
                                             </button>
                                         </form>
                                         <form method="POST">
+                                            <?= csrf_input() ?>
                                             <input type="hidden" name="action" value="update_stock">
                                             <input type="hidden" name="change" value="1">
                                             <input type="hidden" name="id" value="<?= $product['id'] ?>">
@@ -856,6 +853,7 @@ foreach ($products as $product) {
                                             <i class="bi bi-pencil-square"></i> Editar
                                         </button>
                                         <form method="POST" style="margin: 0;">
+                                            <?= csrf_input() ?>
                                             <input type="hidden" name="action" value="delete">
                                             <input type="hidden" name="id" value="<?= $product['id'] ?>">
                                             <button type="submit" class="btn btn-danger btn-sm w-100" onclick="return confirm('¿Eliminar este producto?')" title="Eliminar producto" data-bs-toggle="tooltip">
@@ -913,6 +911,7 @@ foreach ($products as $product) {
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form method="POST" enctype="multipart/form-data">
+                    <?= csrf_input() ?>
                     <div class="modal-body">
                         <input type="hidden" name="action" value="edit">
                         <input type="hidden" name="id" id="edit_id">
@@ -956,6 +955,10 @@ foreach ($products as $product) {
                                     <label class="form-label fw-600" for="edit_destacados"><i class="bi bi-star"></i> Orden Destacado</label>
                                     <input type="number" class="form-control" id="edit_destacados" name="destacados" min="0" max="99" value="0">
                                     <small class="text-muted d-block mt-2">0 = no destacado, 1-9 = orden de prioridad</small>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="edit_is_active" name="is_active" value="1">
+                                    <label class="form-check-label" for="edit_is_active">Publicado y visible en la tienda</label>
                                 </div>
                             </div>
                         </div>
@@ -1093,7 +1096,7 @@ function saveFeaturedOrder() {
             const payload = [...destacadosArr, ...removed];
             fetch('admin_products.php?action=save_featured_order', {
                 method: 'POST',
-                headers: {'Content-Type':'application/json'},
+                headers: {'Content-Type':'application/json', 'X-CSRF-Token': '<?= csrf_token() ?>'},
                 body: JSON.stringify(payload)
             })
             .then(r=>r.json())
@@ -1138,6 +1141,7 @@ function editProduct(product, images) {
     document.getElementById('edit_description').value = product.description;
     document.getElementById('edit_price').value = product.price;
     document.getElementById('edit_price_sale').value = product.price_sale || '';
+    document.getElementById('edit_is_active').checked = Number(product.is_active) === 1;
     document.getElementById('edit_category_id').value = product.category_id;
     document.getElementById('edit_destacados').value = product.destacados || 0;
 
@@ -1205,6 +1209,7 @@ function deleteImage(imageId, button) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': '<?= csrf_token() ?>',
             },
             body: `image_id=${imageId}`
         })

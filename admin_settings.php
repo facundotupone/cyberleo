@@ -3,6 +3,7 @@ require_once 'includes/auth_check.php';
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/security.php';
 
 $pdo->exec("CREATE TABLE IF NOT EXISTS store_settings (
     setting_key VARCHAR(80) PRIMARY KEY,
@@ -40,6 +41,7 @@ function upload_setting_image($inputName, $currentValue) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    require_csrf();
     try {
         $name = trim($_POST['store_name'] ?? '');
         $whatsapp = preg_replace('/\D/', '', $_POST['whatsapp_number'] ?? '');
@@ -59,6 +61,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'hero_subtitle' => mb_substr(trim($_POST['hero_subtitle'] ?? ''), 0, 240),
             'hero_background' => $heroBackground,
             'body_background' => $bodyBackground,
+            'reservation_minutes' => max(5, min(1440, (int)($_POST['reservation_minutes'] ?? 120))),
+            'admin_email' => filter_var($_POST['admin_email'] ?? '', FILTER_VALIDATE_EMAIL) ?: '',
+            'mail_from' => filter_var($_POST['mail_from'] ?? '', FILTER_VALIDATE_EMAIL) ?: '',
+            'payment_methods' => mb_substr(trim($_POST['payment_methods'] ?? ''), 0, 255),
         ] as $key => $value) save_setting($key, $value);
         $defaults = get_store_settings(); // Se recargará en la siguiente petición.
         $message = 'Configuración guardada correctamente.';
@@ -78,13 +84,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <main class="container py-4" style="max-width:850px">
 <h1 class="h2"><i class="bi bi-sliders"></i> Configuración de la tienda</h1><p class="text-muted">Los cambios se reflejan en el sitio público y en los mensajes de pedido.</p>
 <?php if ($message): ?><div class="alert alert-info"><?= htmlspecialchars($message) ?></div><?php endif; ?>
-<form method="post" enctype="multipart/form-data" class="card shadow-sm"><div class="card-body">
+<form method="post" enctype="multipart/form-data" class="card shadow-sm"><?= csrf_input() ?><div class="card-body">
 <div class="row g-3">
 <div class="col-md-6"><label class="form-label">Nombre de la tienda</label><input class="form-control" name="store_name" required value="<?= htmlspecialchars($defaults['store_name']) ?>"></div>
 <div class="col-md-6"><label class="form-label">WhatsApp de ventas</label><input class="form-control" name="whatsapp_number" required inputmode="numeric" value="<?= htmlspecialchars($defaults['whatsapp_number']) ?>"><small class="text-muted">Código de país + número, sin + ni espacios.</small></div>
 <div class="col-12"><label class="form-label">Instagram (opcional)</label><input class="form-control" type="url" name="instagram_url" value="<?= htmlspecialchars($defaults['instagram_url']) ?>"></div>
 <div class="col-12"><label class="form-label">Título principal</label><input class="form-control" name="hero_title" required value="<?= htmlspecialchars($defaults['hero_title']) ?>"></div>
 <div class="col-12"><label class="form-label">Subtítulo principal</label><textarea class="form-control" name="hero_subtitle" rows="2" required><?= htmlspecialchars($defaults['hero_subtitle']) ?></textarea></div>
+<div class="col-md-4"><label class="form-label">Reserva (minutos)</label><input class="form-control" type="number" min="5" max="1440" name="reservation_minutes" value="<?= (int)$defaults['reservation_minutes'] ?>"></div>
+<div class="col-md-4"><label class="form-label">Correo administrador</label><input class="form-control" type="email" name="admin_email" value="<?= htmlspecialchars($defaults['admin_email']) ?>"></div>
+<div class="col-md-4"><label class="form-label">Remitente de correos</label><input class="form-control" type="email" name="mail_from" value="<?= htmlspecialchars($defaults['mail_from']) ?>"></div>
+<div class="col-12"><label class="form-label">Métodos de pago (separados por coma)</label><input class="form-control" name="payment_methods" value="<?= htmlspecialchars($defaults['payment_methods']) ?>"></div>
 <div class="col-md-6"><label class="form-label">Fondo del encabezado</label><input class="form-control" type="file" name="hero_background_file" accept="image/jpeg,image/png,image/webp"><?php if ($defaults['hero_background']): ?><img class="img-thumbnail mt-2" style="max-height:100px" src="<?= htmlspecialchars($defaults['hero_background']) ?>" alt="Fondo actual"><?php endif; ?></div>
 <div class="col-md-6"><label class="form-label">Fondo del sitio</label><input class="form-control" type="file" name="body_background_file" accept="image/jpeg,image/png,image/webp"><?php if ($defaults['body_background']): ?><img class="img-thumbnail mt-2" style="max-height:100px" src="<?= htmlspecialchars($defaults['body_background']) ?>" alt="Fondo actual"><?php endif; ?></div>
 </div>

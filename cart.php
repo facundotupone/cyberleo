@@ -384,14 +384,6 @@ function removeFromCart(productId) {
     updateCartCount();
 }
 
-function removeFromCart(productId) {
-    let cart = JSON.parse(localStorage.getItem('cart')) || [];
-    cart = cart.filter(item => item.productId != productId);
-    localStorage.setItem('cart', JSON.stringify(cart));
-    loadCartItems();
-    updateCartCount();
-}
-
 function updateCartCount() {
     const cart = JSON.parse(localStorage.getItem('cart')) || [];
     const count = cart.reduce((total, item) => total + item.quantity, 0);
@@ -409,20 +401,24 @@ document.getElementById('whatsapp-order').addEventListener('click', async functi
 
     button.classList.add('disabled');
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Registrando pedido...';
+    const whatsappWindow = window.open('', '_blank');
+    const idempotencyKey = sessionStorage.getItem('checkout_idempotency_key') || crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    sessionStorage.setItem('checkout_idempotency_key', idempotencyKey);
     try {
         const response = await fetch('create_order.php', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({items: cart})
+            body: JSON.stringify({items: cart, idempotencyKey})
         });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || 'No se pudo registrar el pedido.');
-        localStorage.removeItem('cart');
-        window.open(result.whatsappUrl, '_blank', 'noopener');
+        localStorage.removeItem('cart'); sessionStorage.removeItem('checkout_idempotency_key');
+        if (result.whatsappUrl) whatsappWindow.location = result.whatsappUrl; else whatsappWindow.close();
         loadCartItems();
         updateCartCount();
         alert(`Pedido #${result.orderId} registrado. Te llevamos a WhatsApp para coordinarlo.`);
     } catch (error) {
+        if (whatsappWindow) whatsappWindow.close();
         alert(error.message);
         button.classList.remove('disabled');
         button.innerHTML = '<i class="bi bi-whatsapp me-2"></i>Enviar Pedido por WhatsApp';

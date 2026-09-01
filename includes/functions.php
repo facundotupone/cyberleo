@@ -15,6 +15,10 @@ function get_store_settings() {
         'hero_subtitle' => 'Encontrá notebooks, componentes y periféricos con stock actualizado.',
         'hero_background' => '',
         'body_background' => '',
+        'reservation_minutes' => '120',
+        'admin_email' => '',
+        'mail_from' => '',
+        'payment_methods' => 'Efectivo, Transferencia, Mercado Pago',
     ];
     try {
         $rows = $pdo->query('SELECT setting_key, setting_value FROM store_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -65,7 +69,7 @@ function get_featured_products() {
         SELECT p.*, c.name as category_name 
         FROM products p 
         JOIN categories c ON p.category_id = c.id 
-        WHERE p.destacados > 0 
+        WHERE p.destacados > 0 AND p.is_active = 1
         ORDER BY p.destacados ASC
     ");
     return $stmt->fetchAll(PDO::FETCH_ASSOC);

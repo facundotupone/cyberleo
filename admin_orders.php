@@ -3,9 +3,13 @@ require_once 'includes/auth_check.php';
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/security.php';
+require_once 'includes/orders.php';
 
 $message = '';
+expire_pending_orders($pdo);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'], $_POST['status'])) {
+    require_csrf();
     $orderId = filter_var($_POST['order_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     $status = $_POST['status'];
     if (!$orderId || !in_array($status, ['confirmed', 'cancelled'], true)) {
@@ -27,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'], $_POST['s
                     if ($item['product_id']) $restore->execute([$item['quantity'], $item['product_id']]);
                 }
             }
-            $pdo->prepare('UPDATE orders SET status = ? WHERE id = ?')->execute([$status, $orderId]);
+            $pdo->prepare("UPDATE orders SET status = ? WHERE id = ? AND expires_at > NOW()")->execute([$status, $orderId]);
             $pdo->commit();
             $message = $status === 'confirmed' ? 'Pedido confirmado.' : 'Pedido cancelado y stock repuesto.';
         } catch (Throwable $e) {
@@ -53,16 +57,16 @@ $orders = $pdo->query("SELECT o.*, GROUP_CONCAT(CONCAT(oi.product_name, ' × ', 
 <nav class="navbar navbar-dark bg-dark"><div class="container"><a class="navbar-brand" href="admin_products.php"><?= htmlspecialchars(STORE_NAME) ?> · Administración</a><div><a class="btn btn-outline-light btn-sm" href="admin_products.php">Productos</a> <a class="btn btn-outline-light btn-sm" href="admin_categories.php">Categorías</a></div></div></nav>
 <main class="container py-4">
     <h1 class="h2 mb-1"><i class="bi bi-receipt"></i> Pedidos</h1>
-    <p class="text-muted">Cada solicitud enviada a WhatsApp reserva el stock. Cancelar repone las unidades.</p>
+    <p class="text-muted">Cada solicitud reserva stock. Las reservas vencidas se liberan automáticamente.</p>
     <?php if ($message): ?><div class="alert alert-info"><?= htmlspecialchars($message) ?></div><?php endif; ?>
     <div class="table-responsive bg-white rounded shadow-sm">
-    <table class="table align-middle mb-0"><thead class="table-dark"><tr><th>#</th><th>Fecha</th><th>Productos</th><th>Total</th><th>Estado</th><th>Acción</th></tr></thead><tbody>
+    <table class="table align-middle mb-0"><thead class="table-dark"><tr><th>#</th><th>Fecha</th><th>Vence</th><th>Productos</th><th>Total</th><th>Estado</th><th>Acción</th></tr></thead><tbody>
     <?php foreach ($orders as $order): ?>
-        <tr><td><?= (int)$order['id'] ?></td><td><?= htmlspecialchars($order['created_at']) ?></td><td><?= htmlspecialchars($order['items'] ?: 'Sin productos') ?></td><td><?= format_price($order['total']) ?></td>
+        <tr><td><?= (int)$order['id'] ?></td><td><?= htmlspecialchars($order['created_at']) ?></td><td><?= htmlspecialchars($order['expires_at']) ?></td><td><?= htmlspecialchars($order['items'] ?: 'Sin productos') ?></td><td><?= format_price($order['total']) ?></td>
         <td><span class="badge text-bg-<?= $order['status'] === 'pending' ? 'warning' : ($order['status'] === 'confirmed' ? 'success' : 'secondary') ?>"><?= htmlspecialchars($order['status'] === 'pending' ? 'Pendiente' : ($order['status'] === 'confirmed' ? 'Confirmado' : 'Cancelado')) ?></span></td>
-        <td><?php if ($order['status'] === 'pending'): ?><form method="post" class="d-flex gap-1"><input type="hidden" name="order_id" value="<?= (int)$order['id'] ?>"><button name="status" value="confirmed" class="btn btn-sm btn-success">Confirmar</button><button name="status" value="cancelled" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Cancelar y reponer el stock?')">Cancelar</button></form><?php endif; ?></td></tr>
+        <td><?php if ($order['status'] === 'pending'): ?><form method="post" class="d-flex gap-1"><?= csrf_input() ?><input type="hidden" name="order_id" value="<?= (int)$order['id'] ?>"><button name="status" value="confirmed" class="btn btn-sm btn-success">Confirmar</button><button name="status" value="cancelled" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Cancelar y reponer el stock?')">Cancelar</button></form><?php endif; ?></td></tr>
     <?php endforeach; ?>
-    <?php if (!$orders): ?><tr><td colspan="6" class="text-center py-4 text-muted">Todavía no hay pedidos.</td></tr><?php endif; ?>
+    <?php if (!$orders): ?><tr><td colspan="7" class="text-center py-4 text-muted">Todavía no hay pedidos.</td></tr><?php endif; ?>
     </tbody></table></div>
 </main>
 </body></html>

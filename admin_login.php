@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once 'includes/security.php';
+start_secure_session();
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 
@@ -15,7 +16,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username']);
     $password = $_POST['password'];
 
-    if (!empty($username) && !empty($password)) {
+    $key = hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '') . '|' . strtolower($username));
+    $attempt = $_SESSION['login_attempts'][$key] ?? ['count' => 0, 'until' => 0];
+    if ($attempt['until'] > time()) {
+        $error = 'Usuario o contraseña incorrectos';
+    } elseif (!empty($username) && !empty($password)) {
         $stmt = $pdo->prepare("SELECT id, password FROM users WHERE username = ?");
         $stmt->execute([$username]);
         $user = $stmt->fetch();
@@ -29,10 +34,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$user['id']]);
         
             $_SESSION['admin_id'] = $user['id'];
+            unset($_SESSION['login_attempts'][$key]);
             header('Location: admin_products.php');
             exit;
         }
         else {
+            $attempt['count']++;
+            if ($attempt['count'] >= 5) { $attempt = ['count' => 0, 'until' => time() + 900]; }
+            $_SESSION['login_attempts'][$key] = $attempt;
             $error = 'Usuario o contraseña incorrectos';
         }
     } else {
@@ -47,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="./assets/images/favicon.ico" type="image/x-icon">
 
-    <title>Login Administrador - Rincón Freya</title>
+    <title>Login Administrador - <?= htmlspecialchars(STORE_NAME) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/css/style.css" rel="stylesheet">
 </head>
