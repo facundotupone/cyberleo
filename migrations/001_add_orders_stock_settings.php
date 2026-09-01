@@ -78,7 +78,9 @@ function require_column(PDO $pdo, $table, $columnName, $type, $nullable)
         fail("Incompatibilidad: falta la columna {$table}.{$columnName}; la migración no puede inventar su estructura existente.");
     }
 
-    if (strtolower($actual['column_type']) !== strtolower($type)
+    $actualType = preg_replace('/\(\d+\)/', '', strtolower($actual['column_type']));
+    $expectedType = preg_replace('/\(\d+\)/', '', strtolower($type));
+    if ($actualType !== $expectedType
         || $actual['is_nullable'] !== ($nullable ? 'YES' : 'NO')) {
         fail(
             "Incompatibilidad: {$table}.{$columnName} es {$actual['column_type']} "
