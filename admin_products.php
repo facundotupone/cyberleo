@@ -163,7 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->beginTransaction();
 
             try {
-                $stmt = $pdo->prepare("SELECT image_path FROM product_images WHERE product_id = ?");
+                $stmt = $pdo->prepare("SELECT id FROM products WHERE id = ? FOR UPDATE");
+                $stmt->execute([$product_id]);
+                if (!$stmt->fetchColumn()) throw new RuntimeException('Producto no encontrado.');
+                $stmt = $pdo->prepare("SELECT image_path FROM product_images WHERE product_id = ? FOR UPDATE");
                 $stmt->execute([$product_id]);
                 $images = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -171,10 +174,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $success = $stmt->execute([$product_id]);
 
                 if ($success) {
-                    foreach ($images as $image_path) {
-                        delete_image_if_unreferenced($pdo, $image_path);
-                    }
                     $pdo->commit();
+                    foreach ($images as $image_path) delete_image_if_unreferenced($pdo, $image_path);
                     $message = 'Producto eliminado exitosamente.';
                 } else {
                     $pdo->rollBack();
