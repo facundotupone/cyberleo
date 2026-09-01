@@ -237,6 +237,12 @@ function save_settings_with_images(
     $newPaths = [];
     $oldPaths = [];
     $backgrounds = [];
+    foreach ($backgroundKeys as $key) {
+        $upload = $uploads[$key] ?? null;
+        if (!empty($remove[$key]) && is_array($upload) && !empty($upload['name'])) {
+            throw new InvalidArgumentException('No se puede subir y quitar el mismo fondo.');
+        }
+    }
 
     $pdo->beginTransaction();
     try {
@@ -288,6 +294,20 @@ function save_settings_with_images(
         }
     }
     return ['backgrounds' => $backgrounds, 'cleanup' => $cleanup];
+}
+
+function repair_product_main_image(PDO $pdo, int $productId): ?string {
+    $product = $pdo->prepare('SELECT id FROM products WHERE id=? FOR UPDATE');
+    $product->execute([$productId]);
+    if (!$product->fetchColumn()) throw new RuntimeException('Producto no encontrado.');
+    $stmt = $pdo->prepare('SELECT id,image_path,is_main FROM product_images WHERE product_id=? ORDER BY id FOR UPDATE');
+    $stmt->execute([$productId]); $images = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $mains = array_values(array_filter($images, fn($i)=>(int)$i['is_main']===1));
+    $selected = count($mains) === 1 ? $mains[0] : ($mains[0] ?? ($images[0] ?? null));
+    $pdo->prepare('UPDATE product_images SET is_main=0 WHERE product_id=?')->execute([$productId]);
+    if ($selected) $pdo->prepare('UPDATE product_images SET is_main=1 WHERE id=?')->execute([$selected['id']]);
+    $pdo->prepare('UPDATE products SET image=? WHERE id=?')->execute([$selected['image_path'] ?? null,$productId]);
+    return $selected['image_path'] ?? null;
 }
 
 /**

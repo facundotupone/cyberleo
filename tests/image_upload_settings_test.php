@@ -52,5 +52,18 @@ try{
  // S-06
  ureset($pdo);$old=uold($root,'7');uset($pdo,'hero_background',$old);uset($pdo,'body_background','');$calls=0;$r=save_settings_with_images($pdo,[],['hero_background'=>upl($fixture)],[],$root,$move,function()use(&$calls){$calls++;return false;});
  uok($calls===1&&$r['cleanup'][$old]==='deletion_failed'&&usetting($pdo,'hero_background')===$r['backgrounds']['hero_background']&&is_file("$root/$old"),'S-06','failed post-commit unlink keeps new database state');
- if($passed!==11)throw new RuntimeException("Expected 11, got $passed");echo "Upload/settings tests: $passed passed, 0 failed\n";
+ // U-06
+ ureset($pdo);$pdo->exec("INSERT INTO products(id,name,description,price,stock,image,category_id)VALUES(1,'P','D',1,1,'bad',1)");
+ $pdo->exec("INSERT INTO product_images(product_id,image_path,is_main)VALUES(1,'$old',0),(1,'$shared',0)");
+ $new=store_image_batch([upl($fixture)],'products',$root,$move)[0];$pdo->beginTransaction();$pdo->prepare('INSERT INTO product_images(product_id,image_path,is_main)VALUES(1,?,0)')->execute([$new]);$selected=repair_product_main_image($pdo,1);$pdo->commit();
+ uok($selected===$old&&(int)$pdo->query('SELECT COUNT(*) FROM product_images WHERE product_id=1 AND is_main=1')->fetchColumn()===1&&(int)$pdo->query('SELECT COUNT(*) FROM product_images WHERE product_id=1')->fetchColumn()===3&&$pdo->query('SELECT image FROM products WHERE id=1')->fetchColumn()===$old,'U-06','editing repairs missing main image');
+ // S-07
+ ureset($pdo);$hero=uold($root,'8');$body=uold($root,'9');uset($pdo,'hero_background',$hero);uset($pdo,'body_background',$body);$moves=0;
+ try{save_settings_with_images($pdo,[],['hero_background'=>upl($fixture)],['hero_background'=>true],$root,function()use(&$moves){$moves++;return true;});$conflict=false;}catch(InvalidArgumentException){$conflict=true;}
+ uok($conflict&&$moves===0&&usetting($pdo,'hero_background')===$hero&&usetting($pdo,'body_background')===$body&&is_file("$root/$hero")&&is_file("$root/$body")&&!$pdo->inTransaction(),'S-07','conflicting background actions are rejected');
+ if($passed!==13)throw new RuntimeException("Expected 13, got $passed");echo "Upload/settings tests: $passed passed, 0 failed\n";
+ $renderPassed=0;$cart=file_get_contents(dirname(__DIR__).'/cart.php');$admin=file_get_contents(dirname(__DIR__).'/admin_products.php');
+ uok(str_contains($cart,'is_safe_product_image_path')&&str_contains($cart,'JSON_HEX_TAG')&&str_contains($cart,'(?:[a-f0-9]{13}|[a-f0-9]{32})'), 'C-01', 'cart exports only normalized product image paths');$renderPassed++;
+ uok(!str_contains($admin,'DEFAULT_PRODUCT_IMAGE')&&str_contains($admin,"addEventListener('error'")&&str_contains($admin,'productImageOrPlaceholder'), 'C-02', 'admin dynamic images use error listeners without default file');$renderPassed++;
+ echo "Image rendering checks: $renderPassed passed, 0 failed\n";
 }finally{$pdo->exec('DROP TRIGGER IF EXISTS upload_fail');urm($root);}

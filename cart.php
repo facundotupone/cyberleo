@@ -2,6 +2,7 @@
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/images.php';
 
 // Obtener las categorías para el menú
 $categories = get_categories();
@@ -12,12 +13,17 @@ $paymentMethods = array_filter(array_map('trim', explode(',', $storeSettings['pa
 $stmt = $pdo->prepare("SELECT id, name, price, price_sale, stock, image FROM products");
 $stmt->execute();
 $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+foreach ($products as &$product) {
+    if (!is_safe_product_image_path($product['image'])) $product['image'] = null;
+}
+unset($product);
 
 // Obtener imágenes adicionales de product_images
 $productImages = [];
 $stmtImages = $pdo->prepare("SELECT product_id, image_path FROM product_images ORDER BY is_main DESC");
 $stmtImages->execute();
 foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    if (!is_safe_product_image_path($row['image_path'])) continue;
     if (!isset($productImages[$row['product_id']])) {
         $productImages[$row['product_id']] = [];
     }
@@ -212,14 +218,8 @@ function getProductImage(productId) {
 }
 
 function isSafeLocalImagePath(imagePath) {
-    if (typeof imagePath !== 'string' || !imagePath.startsWith('assets/images/')) {
-        return false;
-    }
-
-    const relativePath = imagePath.slice('assets/images/'.length);
-    return relativePath.length > 0
-        && !relativePath.split('/').some(segment => segment === '.' || segment === '..' || segment === '')
-        && /^[a-zA-Z0-9._/-]+$/.test(imagePath);
+    return typeof imagePath === 'string'
+        && /^assets\/images\/products\/(?:[a-f0-9]{13}|[a-f0-9]{32})\.(?:jpg|jpeg|png|webp)$/i.test(imagePath);
 }
 
 function createImagePlaceholder() {

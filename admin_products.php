@@ -148,6 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                 }
+                repair_product_main_image($pdo, $id);
 
                 $pdo->commit();
                 $message = 'Producto actualizado exitosamente.';
@@ -1002,7 +1003,6 @@ foreach ($products as $product) {
 // --- Orden y guardado de destacados ---
 let featuredOrderList = null;
 let featuredOrderModal = null;
-const DEFAULT_PRODUCT_IMAGE = 'assets/images/products/default.jpg';
 const PRODUCT_IMAGE_PATH = /^assets\/images\/products\/(?:[a-f0-9]{13}|[a-f0-9]{32})\.(?:jpg|jpeg|png|webp)$/i;
 
 function validId(value) {
@@ -1012,7 +1012,7 @@ function validId(value) {
 }
 
 function safeProductImagePath(value) {
-    return typeof value === 'string' && PRODUCT_IMAGE_PATH.test(value) ? value : DEFAULT_PRODUCT_IMAGE;
+    return typeof value === 'string' && PRODUCT_IMAGE_PATH.test(value) ? value : null;
 }
 
 function icon(className) {
@@ -1031,16 +1031,30 @@ function actionButton(className, title, iconClass, listener) {
     button.addEventListener('click', listener);
     return button;
 }
+function productImageOrPlaceholder(path, className, styleText) {
+    const safePath = safeProductImagePath(path);
+    if (!safePath) {
+        const placeholder = document.createElement('span');
+        placeholder.className = `${className} d-inline-flex align-items-center justify-content-center bg-light text-muted`;
+        placeholder.style.cssText = styleText;
+        placeholder.appendChild(icon('bi bi-image'));
+        return placeholder;
+    }
+    const image = document.createElement('img');
+    image.src = safePath;
+    image.alt = '';
+    image.className = className;
+    image.style.cssText = styleText;
+    image.addEventListener('error', () => image.replaceWith(productImageOrPlaceholder(null, className, styleText)), {once: true});
+    return image;
+}
 
 function createFeaturedItem(product, position) {
     const item = document.createElement('div');
     item.className = 'list-group-item list-group-item-action d-flex align-items-center gap-2';
     item.dataset.id = String(product.id);
 
-    const image = document.createElement('img');
-    image.src = safeProductImagePath(product.image);
-    image.alt = '';
-    image.style.cssText = 'width:40px;height:40px;object-fit:cover;border-radius:6px;';
+    const image = productImageOrPlaceholder(product.image, '', 'width:40px;height:40px;object-fit:cover;border-radius:6px;');
 
     const name = document.createElement('span');
     name.textContent = typeof product.name === 'string' ? product.name : 'Producto';
@@ -1229,11 +1243,11 @@ function editProduct(product, images) {
             if (!image || !validId(image.id)) return;
             const imageDiv = document.createElement('div');
             imageDiv.className = 'image-container';
-            const thumbnail = document.createElement('img');
-            thumbnail.src = safeProductImagePath(image.image_path);
-            thumbnail.alt = 'Imagen del producto';
-            thumbnail.className = `image-thumbnail${Number(image.is_main) === 1 ? ' main-image' : ''}`;
-            thumbnail.style.cssText = 'width: 80px; height: 80px;';
+            const thumbnail = productImageOrPlaceholder(
+                image.image_path,
+                `image-thumbnail${Number(image.is_main) === 1 ? ' main-image' : ''}`,
+                'width:80px;height:80px;'
+            );
             const checkContainer = document.createElement('div');
             checkContainer.className = 'form-check mt-2 text-center';
             const mainImageInput = document.createElement('input');
