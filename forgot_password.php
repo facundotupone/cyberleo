@@ -32,11 +32,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Generar token
             $token = bin2hex(random_bytes(32)); // 64 caracteres
-            $expiresAt = date('Y-m-d H:i:s', time() + 3600); // 1 hora
-
             // Guardar en DB
-            $stmt = $pdo->prepare("UPDATE users SET reset_token = ?, reset_expires = ? WHERE id = ?");
-            $stmt->execute([$token, $expiresAt, $user['id']]);
+            $stmt = $pdo->prepare("UPDATE users SET reset_token = ?, reset_expires = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE id = ?");
+            $stmt->execute([$token, $user['id']]);
 
             // Link de reseteo
             $resetLink = rtrim(SITE_URL, '/') . "/reset_password.php?token=" . urlencode($token);
@@ -100,13 +98,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Enviar mail
             if (!send_store_mail($to, $subject, $message, $headers)) {
-                $pdo->prepare('UPDATE users SET reset_token = NULL, reset_expires = NULL WHERE id = ?')->execute([$user['id']]);
+                $pdo->prepare('UPDATE users SET reset_token = NULL, reset_expires = NULL WHERE id = ? AND reset_token = ?')->execute([$user['id'], $token]);
                 error_log('Password reset email delivery failed.');
             }
 
             // Redirigir al login con mensaje
         }
         $_SESSION['password_reset_notice'] = "Si el correo está registrado, recibirás instrucciones.";
+        header('Location: forgot_password.php'); exit;
+    }
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $notice) {
+        $_SESSION['password_reset_notice'] = $notice;
         header('Location: forgot_password.php'); exit;
     }
 }
