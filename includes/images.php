@@ -15,3 +15,6 @@ function is_safe_upload_path($path) {
     $real = realpath($path); $base = realpath('assets/images');
     return $real && $base && str_starts_with($real, $base . DIRECTORY_SEPARATOR);
 }
+function is_safe_product_image_path($path) {
+    return is_string($path) && preg_match('#^assets/images/products/[A-Za-z0-9_-]{16,}\.(jpe?g|png|webp)$#', $path);
+}
