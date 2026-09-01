@@ -1,4 +1,17 @@
+Options -Indexes
+
 RewriteEngine On
 
+# Denegar artefactos internos aunque se copien accidentalmente al document root.
+# Las reglas RewriteRule son compatibles con Apache y LiteSpeed y no dependen
+# de la sintaxis de autorización específica de Apache 2.4.
+RewriteRule "(^|/)\." - [F,L,NC]
+RewriteRule "^(tests|migrations)(/|$)" - [F,L,NC]
+RewriteRule "(^|/)(logs?)(/|$)" - [F,L,NC]
+RewriteRule "(^|/)(README([^/]*)?|schema(\.[^/]*)?)$" - [F,L,NC]
+RewriteRule "(^|/)(config(\.local)?|local\.config)(\.[^/]*)?$" - [F,L,NC]
+RewriteRule "\.(env|ini|log|sql|sqlite|bak|backup|dist|swp|ya?ml)$" - [F,L,NC]
+
+# Conservar el acceso histórico al panel.
 RewriteCond %{REQUEST_URI} ^/admin/?$
 RewriteRule ^.*$ /admin_products.php [L,R=301]

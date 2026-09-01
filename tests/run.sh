@@ -34,7 +34,10 @@ require_command() {
     }
 }
 
-for command in php mysql mysqladmin mariadbd mariadb-install-db; do
+require_command php
+php "$ROOT/tests/htaccess_security_test.php"
+
+for command in mysql mysqladmin mariadbd mariadb-install-db; do
     require_command "$command"
 done
 php -r 'exit(extension_loaded("pdo_mysql") ? 0 : 1);' || {
