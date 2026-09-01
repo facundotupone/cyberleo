@@ -1,27 +1,30 @@
 <?php
-session_start();
+require_once 'includes/security.php';
+start_secure_session();
 require_once 'includes/config.php';
 require_once 'includes/db.php';
+require_once 'includes/functions.php';
 
-$error = '';
+$notice = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email']);
 
     // Validación básica
     if (empty($email)) {
-        $error = "Ingrese su email.";
+        $notice = "Si el correo está registrado, recibirás instrucciones.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = "Formato de email inválido.";
+        $notice = "Si el correo está registrado, recibirás instrucciones.";
     }
 
-    if (!$error) {
+    if (!$notice) {
         // Buscar usuario por mail
         $stmt = $pdo->prepare("SELECT id, username, mail FROM users WHERE mail = ?");
         $stmt->execute([$email]);
         $user = $stmt->fetch();
 
-        if ($user) {
+        $settings = get_store_settings();
+        if ($user && filter_var($settings['mail_from'], FILTER_VALIDATE_EMAIL)) {
 
             // Generar token
             $token = bin2hex(random_bytes(32)); // 64 caracteres
@@ -36,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Email
             $to = $user['mail'];
-            $subject = "Recuperación de contraseña - " . STORE_NAME;
+            $subject = "Recuperación de contraseña - " . $settings['store_name'];
 
             $message = "
             <!DOCTYPE html>
@@ -45,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             <div style='max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;padding:30px;box-shadow:0 4px 18px rgba(0,0,0,0.08);'>
             
-                <h1 style='color:#2BBFBD;text-align:center;font-size:24px;'>" . STORE_NAME . "</h1>
+                <h1 style='color:#2BBFBD;text-align:center;font-size:24px;'>" . $settings['store_name'] . "</h1>
             
                 <h2 style='color:#333;margin:0 0 10px;font-size:20px;font-weight:600;text-align:center;'>
                     Recuperar contraseña
@@ -72,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
                 <p style='color:#888;font-size:12px;text-align:center;line-height:1.5;margin:0;'>
                     Este enlace es válido por 1 hora.<br>
-                    " . STORE_NAME . " © " . date('Y') . "
+                    " . $settings['store_name'] . " © " . date('Y') . "
                 </p>
             
             </div>
@@ -82,22 +85,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ";
 
             // Headers correctos
-            $headers  = "From: " . STORE_NAME . " <no-reply@localhost>\r\n";
-            $headers .= "Reply-To: no-reply@localhost\r\n";
+            $headers  = "From: " . $settings['store_name'] . " <{$settings['mail_from']}>\r\n";
+            $headers .= "Reply-To: " . ($settings['admin_email'] ?: $settings['mail_from']) . "\r\n";
             $headers .= "MIME-Version: 1.0\r\n";
             $headers .= "Content-type: text/html; charset=UTF-8\r\n";
 
 
             // Enviar mail
-            @mail($to, $subject, $message, $headers);
+            if (!mail($to, $subject, $message, $headers)) error_log('Password reset email delivery failed.');
 
             // Redirigir al login con mensaje
-            header("Location: admin_login.php?msg=recovery_sent");
-            exit;
-
-        } else {
-            $error = "El mail no está registrado.";
         }
+        $notice = "Si el correo está registrado, recibirás instrucciones.";
     }
 }
 ?>
@@ -129,8 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="card p-4">
                 <h2 class="mb-4 text-center">Recuperar contraseña</h2>
 
-                <?php if ($error): ?>
-                    <div class="alert alert-danger"><?= $error ?></div>
+                <?php if ($notice): ?>
+                    <div class="alert alert-info"><?= htmlspecialchars($notice) ?></div>
                 <?php endif; ?>
 
                 <form method="POST">

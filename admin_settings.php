@@ -4,11 +4,7 @@ require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
 require_once 'includes/security.php';
-
-$pdo->exec("CREATE TABLE IF NOT EXISTS store_settings (
-    setting_key VARCHAR(80) PRIMARY KEY,
-    setting_value TEXT NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+require_once 'includes/images.php';
 
 $defaults = get_store_settings();
 $message = '';
@@ -17,27 +13,6 @@ function save_setting($key, $value) {
     global $pdo;
     $stmt = $pdo->prepare('INSERT INTO store_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
     $stmt->execute([$key, $value]);
-}
-
-function upload_setting_image($inputName, $currentValue) {
-    if (empty($_FILES[$inputName]['name']) || $_FILES[$inputName]['error'] === UPLOAD_ERR_NO_FILE) return $currentValue;
-    if ($_FILES[$inputName]['error'] !== UPLOAD_ERR_OK || $_FILES[$inputName]['size'] > 5 * 1024 * 1024) {
-        throw new RuntimeException('La imagen debe pesar menos de 5 MB.');
-    }
-    $imageInfo = @getimagesize($_FILES[$inputName]['tmp_name']);
-    $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
-    if (!$imageInfo || !isset($allowed[$imageInfo['mime']])) {
-        throw new RuntimeException('Solo se permiten imágenes JPG, PNG o WebP.');
-    }
-    $directory = 'assets/images/settings/';
-    if (!is_dir($directory) && !mkdir($directory, 0755, true)) {
-        throw new RuntimeException('No se pudo crear el directorio de imágenes.');
-    }
-    $path = $directory . bin2hex(random_bytes(12)) . '.' . $allowed[$imageInfo['mime']];
-    if (!move_uploaded_file($_FILES[$inputName]['tmp_name'], $path)) {
-        throw new RuntimeException('No se pudo guardar la imagen.');
-    }
-    return $path;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -51,8 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $instagram = trim($_POST['instagram_url'] ?? '');
         if ($instagram !== '' && !filter_var($instagram, FILTER_VALIDATE_URL)) throw new RuntimeException('La URL de Instagram no es válida.');
 
-        $heroBackground = upload_setting_image('hero_background_file', $defaults['hero_background']);
-        $bodyBackground = upload_setting_image('body_background_file', $defaults['body_background']);
+        $heroBackground = empty($_FILES['hero_background_file']['name']) ? $defaults['hero_background'] : store_safe_image($_FILES['hero_background_file']['tmp_name'], $_FILES['hero_background_file']['error'], $_FILES['hero_background_file']['size'], 'assets/images/settings');
+        $bodyBackground = empty($_FILES['body_background_file']['name']) ? $defaults['body_background'] : store_safe_image($_FILES['body_background_file']['tmp_name'], $_FILES['body_background_file']['error'], $_FILES['body_background_file']['size'], 'assets/images/settings');
         foreach ([
             'store_name' => $name,
             'whatsapp_number' => $whatsapp,
@@ -66,12 +41,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'mail_from' => filter_var($_POST['mail_from'] ?? '', FILTER_VALIDATE_EMAIL) ?: '',
             'payment_methods' => mb_substr(trim($_POST['payment_methods'] ?? ''), 0, 255),
         ] as $key => $value) save_setting($key, $value);
-        $defaults = get_store_settings(); // Se recargará en la siguiente petición.
-        $message = 'Configuración guardada correctamente.';
+        header('Location: admin_settings.php?saved=1'); exit;
     } catch (Throwable $e) {
         $message = $e->getMessage();
     }
 }
+$message = isset($_GET['saved']) ? 'Configuración guardada correctamente.' : $message;
 ?>
 <!DOCTYPE html>
 <html lang="es"><head>

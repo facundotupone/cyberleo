@@ -163,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($success) {
                     foreach ($images as $image_path) {
-                        if (file_exists($image_path)) {
+                        if (is_safe_upload_path($image_path)) {
                             unlink($image_path);
                         }
                     }

@@ -45,7 +45,7 @@ try {
     $existing->execute([$idempotencyKey]);
     if ($existingId = $existing->fetchColumn()) {
         $pdo->commit();
-        echo json_encode(['success' => true, 'orderId' => (int)$existingId, 'message' => 'Pedido ya registrado.']);
+        echo json_encode(['success' => true, 'orderId' => (int)$existingId, 'whatsappUrl' => order_whatsapp_url($pdo, $existingId, $storeSettings), 'message' => 'Pedido ya registrado.']);
         exit;
     }
     $orderItems = [];
@@ -66,9 +66,9 @@ try {
         $total += $price * $quantity;
     }
 
-    $expiresAt = date('Y-m-d H:i:s', time() + reservation_minutes($storeSettings) * 60);
-    $stmt = $pdo->prepare("INSERT INTO orders (status, total, idempotency_key, expires_at) VALUES ('pending', ?, ?, ?)");
-    $stmt->execute([$total, $idempotencyKey, $expiresAt]);
+    $minutes = reservation_minutes($storeSettings);
+    $stmt = $pdo->prepare("INSERT INTO orders (status, total, idempotency_key, expires_at) VALUES ('pending', ?, ?, DATE_ADD(NOW(), INTERVAL $minutes MINUTE))");
+    $stmt->execute([$total, $idempotencyKey]);
     $orderId = (int)$pdo->lastInsertId();
     $itemStmt = $pdo->prepare('INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity) VALUES (?, ?, ?, ?, ?)');
     $stockStmt = $pdo->prepare('UPDATE products SET stock = stock - ? WHERE id = ?');
@@ -79,12 +79,7 @@ try {
     }
     $pdo->commit();
 
-    $message = "Hola " . $storeSettings['store_name'] . ", quiero confirmar el pedido #{$orderId}:\n\n";
-    foreach ($orderItems as $item) {
-        $message .= "{$item['product']['name']} x {$item['quantity']} = $" . number_format($item['price'] * $item['quantity'], 2, ',', '.') . "\n";
-    }
-    $message .= "\nTotal: $" . number_format($total, 2, ',', '.') . "\n\nQuedo atento/a para coordinar pago, envío o retiro.";
-    echo json_encode(['success' => true, 'orderId' => $orderId, 'whatsappUrl' => 'https://wa.me/' . $storeSettings['whatsapp_number'] . '?text=' . rawurlencode($message)]);
+    echo json_encode(['success' => true, 'orderId' => $orderId, 'whatsappUrl' => order_whatsapp_url($pdo, $orderId, $storeSettings)]);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();

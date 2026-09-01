@@ -16,26 +16,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'], $_POST['s
         $message = 'Actualización inválida.';
     } else {
         try {
-            $pdo->beginTransaction();
-            $stmt = $pdo->prepare('SELECT status FROM orders WHERE id = ? FOR UPDATE');
-            $stmt->execute([$orderId]);
-            $current = $stmt->fetchColumn();
-            if ($current !== 'pending') {
-                throw new RuntimeException('Este pedido ya fue procesado.');
-            }
-            if ($status === 'cancelled') {
-                $items = $pdo->prepare('SELECT product_id, quantity FROM order_items WHERE order_id = ?');
-                $items->execute([$orderId]);
-                $restore = $pdo->prepare('UPDATE products SET stock = stock + ? WHERE id = ?');
-                foreach ($items->fetchAll(PDO::FETCH_ASSOC) as $item) {
-                    if ($item['product_id']) $restore->execute([$item['quantity'], $item['product_id']]);
-                }
-            }
-            $pdo->prepare("UPDATE orders SET status = ? WHERE id = ? AND expires_at > NOW()")->execute([$status, $orderId]);
-            $pdo->commit();
-            $message = $status === 'confirmed' ? 'Pedido confirmado.' : 'Pedido cancelado y stock repuesto.';
+            $result = transition_order($pdo, $orderId, $status);
+            $message = $result === 'confirmed' ? 'Pedido confirmado.' : ($result === 'expired' ? 'El pedido venció y se repuso el stock.' : 'Pedido cancelado y stock repuesto.');
         } catch (Throwable $e) {
-            if ($pdo->inTransaction()) $pdo->rollBack();
             $message = $e->getMessage();
         }
     }
@@ -63,7 +46,7 @@ $orders = $pdo->query("SELECT o.*, GROUP_CONCAT(CONCAT(oi.product_name, ' × ', 
     <table class="table align-middle mb-0"><thead class="table-dark"><tr><th>#</th><th>Fecha</th><th>Vence</th><th>Productos</th><th>Total</th><th>Estado</th><th>Acción</th></tr></thead><tbody>
     <?php foreach ($orders as $order): ?>
         <tr><td><?= (int)$order['id'] ?></td><td><?= htmlspecialchars($order['created_at']) ?></td><td><?= htmlspecialchars($order['expires_at']) ?></td><td><?= htmlspecialchars($order['items'] ?: 'Sin productos') ?></td><td><?= format_price($order['total']) ?></td>
-        <td><span class="badge text-bg-<?= $order['status'] === 'pending' ? 'warning' : ($order['status'] === 'confirmed' ? 'success' : 'secondary') ?>"><?= htmlspecialchars($order['status'] === 'pending' ? 'Pendiente' : ($order['status'] === 'confirmed' ? 'Confirmado' : 'Cancelado')) ?></span></td>
+        <td><span class="badge text-bg-<?= $order['status'] === 'pending' ? 'warning' : ($order['status'] === 'confirmed' ? 'success' : 'secondary') ?>"><?= htmlspecialchars(['pending'=>'Pendiente','confirmed'=>'Confirmado','cancelled'=>'Cancelado','expired'=>'Vencido'][$order['status']] ?? $order['status']) ?></span></td>
         <td><?php if ($order['status'] === 'pending'): ?><form method="post" class="d-flex gap-1"><?= csrf_input() ?><input type="hidden" name="order_id" value="<?= (int)$order['id'] ?>"><button name="status" value="confirmed" class="btn btn-sm btn-success">Confirmar</button><button name="status" value="cancelled" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Cancelar y reponer el stock?')">Cancelar</button></form><?php endif; ?></td></tr>
     <?php endforeach; ?>
     <?php if (!$orders): ?><tr><td colspan="7" class="text-center py-4 text-muted">Todavía no hay pedidos.</td></tr><?php endif; ?>
