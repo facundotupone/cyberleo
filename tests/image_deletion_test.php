@@ -14,9 +14,9 @@ $pdo = new PDO($dsn, getenv('DB_USER') ?: 'root', getenv('DB_PASS') ?: '', [
 $root = sys_get_temp_dir() . '/cyberleo-images-' . bin2hex(random_bytes(8));
 mkdir($root . '/assets/images/products', 0700, true);
 
-function check(bool $condition, string $id): void {
+function check(bool $condition, string $id, string $description): void {
     if (!$condition) throw new RuntimeException("$id failed");
-    printf("%s OK\n", $id);
+    printf("%s PASS - %s\n", $id, $description);
 }
 function reset_database(PDO $pdo): void {
     $pdo->exec('SET FOREIGN_KEY_CHECKS=0; TRUNCATE product_images; TRUNCATE products; TRUNCATE categories; SET FOREIGN_KEY_CHECKS=1');
@@ -59,29 +59,33 @@ try {
     $two = path_for('22222222222222222222222222222222');
     $three = path_for('33333333333333333333333333333333');
 
-    check(resolve_safe_product_image_path('../secret.jpg', $root)['status'] === 'unsafe_path', 'D-01');
+    check(resolve_safe_product_image_path('../secret.jpg', $root)['status'] === 'unsafe_path', 'D-01', 'rechaza rutas fuera del directorio de productos');
     write_image($root, $one);
     $resolved = resolve_safe_product_image_path($one, $root);
-    check($resolved['status'] === 'resolved' && $resolved['path'] === file_for($root, $one), 'D-02');
-    check(resolve_safe_product_image_path($two, $root)['status'] === 'missing_file', 'D-03');
+    check($resolved['status'] === 'resolved' && $resolved['path'] === file_for($root, $one), 'D-02', 'resuelve una imagen de producto válida');
+    check(resolve_safe_product_image_path($two, $root)['status'] === 'missing_file', 'D-03', 'informa un archivo válido ausente');
 
     symlink('/etc/passwd', file_for($root, $two));
-    check(resolve_safe_product_image_path($two, $root)['status'] === 'symlink_path', 'D-04');
+    check(resolve_safe_product_image_path($two, $root)['status'] === 'symlink_path', 'D-04', 'rechaza enlaces simbólicos de archivos');
     unlink(file_for($root, $two));
     $linkRoot = "$root/link-root";
     mkdir("$linkRoot/assets/images", 0700, true);
     symlink(product_image_directory($root), "$linkRoot/assets/images/products");
-    check(resolve_safe_product_image_path($one, $linkRoot)['status'] === 'symlink_path', 'D-05');
+    check(resolve_safe_product_image_path($one, $linkRoot)['status'] === 'symlink_path', 'D-05', 'rechaza enlaces simbólicos en directorios');
     remove_tree($linkRoot);
 
     reset_database($pdo);
-    check(delete_unreferenced_product_image($pdo, $one, $root) === 'deleted' && !file_exists(file_for($root, $one)), 'D-06');
+    $called = false;
+    check(delete_unreferenced_product_image($pdo, $one, $root, static function (string $file) use (&$called): bool {
+        $called = true;
+        return unlink($file);
+    }) === 'deleted' && $called && !file_exists(file_for($root, $one)), 'D-06', 'usa el eliminador callable opcional tras verificar referencias');
     write_image($root, $one);
     $id = product($pdo, $one);
     image($pdo, $id, $one, 1);
-    check(delete_unreferenced_product_image($pdo, $one, $root) === 'still_referenced', 'D-07');
+    check(delete_unreferenced_product_image($pdo, $one, $root) === 'still_referenced', 'D-07', 'conserva la imagen referenciada por product_images');
     $pdo->exec('DELETE FROM product_images');
-    check(delete_unreferenced_product_image($pdo, $one, $root) === 'still_referenced', 'D-08');
+    check(delete_unreferenced_product_image($pdo, $one, $root) === 'still_referenced', 'D-08', 'conserva la imagen referenciada por products');
     $pdo->beginTransaction();
     try {
         cleanup_product_images_after_commit($pdo, [$one], $root);
@@ -90,34 +94,43 @@ try {
         $transactionGuarded = true;
     }
     $pdo->rollBack();
-    check($transactionGuarded, 'D-09');
+    check($transactionGuarded, 'D-09', 'impide limpiar archivos antes del commit');
 
     reset_database($pdo);
     write_image($root, $one);
     write_image($root, $two);
     $id = product($pdo, $one);
-    $main = image($pdo, $id, $one, 1);
+    $main = image($pdo, $id, $one, 0);
     $other = image($pdo, $id, $two, 0);
     $result = delete_product_image_record($pdo, $other);
-    check($result['status'] === 'deleted' && (int) $pdo->query("SELECT is_main FROM product_images WHERE id=$main")->fetchColumn() === 1, 'D-10');
+    check($result['status'] === 'deleted'
+        && (int) $pdo->query("SELECT is_main FROM product_images WHERE id=$main")->fetchColumn() === 1
+        && $pdo->query("SELECT image FROM products WHERE id=$id")->fetchColumn() === $one,
+        'D-10', 'repara el invariante principal incluso al borrar una imagen secundaria');
 
     reset_database($pdo);
     write_image($root, $one);
     write_image($root, $two);
+    write_image($root, $three);
     $id = product($pdo, $one);
     $main = image($pdo, $id, $one, 1);
     $replacement = image($pdo, $id, $two, 0);
+    image($pdo, $id, $three, 0);
     $result = delete_product_image_record($pdo, $main);
     check($result['status'] === 'deleted' && (int) $pdo->query("SELECT is_main FROM product_images WHERE id=$replacement")->fetchColumn() === 1
-        && $pdo->query("SELECT image FROM products WHERE id=$id")->fetchColumn() === $two, 'D-11');
+        && $pdo->query("SELECT image FROM products WHERE id=$id")->fetchColumn() === $two,
+        'D-11', 'elige por id la sustituta bajo bloqueo ordenado');
 
     reset_database($pdo);
     write_image($root, $one);
     $id = product($pdo, $one);
     $main = image($pdo, $id, $one, 1);
     delete_product_image_record($pdo, $main);
-    check($pdo->query("SELECT image FROM products WHERE id=$id")->fetchColumn() === null, 'D-12');
-    check(delete_product_image_record($pdo, 999999)['status'] === 'not_found' && !$pdo->inTransaction(), 'D-13');
+    check($pdo->query("SELECT image FROM products WHERE id=$id")->fetchColumn() === null
+        && (int) $pdo->query("SELECT COUNT(*) FROM product_images WHERE product_id=$id")->fetchColumn() === 0,
+        'D-12', 'deja la principal nula al borrar la última imagen');
+    check(delete_product_image_record($pdo, 999999)['status'] === 'not_found' && !$pdo->inTransaction(),
+        'D-13', 'no abre una transacción persistente para una imagen inexistente');
 
     reset_database($pdo);
     write_image($root, $one);
@@ -128,7 +141,8 @@ try {
     $result = delete_product_record($pdo, $id);
     $states = cleanup_product_images_after_commit($pdo, $result['paths'], $root);
     check($result['status'] === 'deleted' && $states[$one] === 'deleted' && $states[$two] === 'deleted'
-        && !file_exists(file_for($root, $one)) && !file_exists(file_for($root, $two)), 'D-14');
+        && !file_exists(file_for($root, $one)) && !file_exists(file_for($root, $two)),
+        'D-14', 'elimina el producto y limpia sus archivos tras el commit');
 
     reset_database($pdo);
     write_image($root, $three);
@@ -138,11 +152,13 @@ try {
     image($pdo, $second, $three, 1);
     $result = delete_product_record($pdo, $first);
     $states = cleanup_product_images_after_commit($pdo, $result['paths'], $root);
-    check($states[$three] === 'still_referenced' && file_exists(file_for($root, $three)), 'D-15');
+    check($states[$three] === 'still_referenced' && file_exists(file_for($root, $three)),
+        'D-15', 'conserva el archivo compartido por otro producto');
 
     check(cleanup_product_images_after_commit($pdo, ['not-an-image', $two], $root) === [
         'not-an-image' => 'unsafe_path', $two => 'missing_file'
-    ], 'D-16');
+    ], 'D-16', 'devuelve estados seguros para rutas inválidas o ausentes');
+    printf("16 passed, 0 failed\n");
 } finally {
     remove_tree($root);
 }

@@ -59,7 +59,7 @@ function is_safe_upload_path($path, ?string $root = null): bool {
     return resolve_safe_product_image_path($path, $root)['status'] === 'resolved';
 }
 
-function delete_unreferenced_product_image(PDO $pdo, $path, ?string $root = null): string {
+function delete_unreferenced_product_image(PDO $pdo, $path, ?string $root = null, ?callable $deleteFile = null): string {
     if ($pdo->inTransaction()) throw new LogicException('Image deletion requires a committed database transaction.');
 
     $resolved = resolve_safe_product_image_path($path, $root);
@@ -71,7 +71,13 @@ function delete_unreferenced_product_image(PDO $pdo, $path, ?string $root = null
     $check->execute([$path, $path]);
     if ((int) $check->fetchColumn() > 0) return 'still_referenced';
 
-    if (!@unlink($resolved['path'])) {
+    try {
+        $deleted = $deleteFile ? $deleteFile($resolved['path']) : @unlink($resolved['path']);
+    } catch (Throwable $e) {
+        error_log('Could not delete unreferenced product image: ' . $e->getMessage());
+        return 'deletion_failed';
+    }
+    if ($deleted !== true) {
         error_log('Could not delete unreferenced product image.');
         return 'deletion_failed';
     }
@@ -81,12 +87,14 @@ function delete_unreferenced_product_image(PDO $pdo, $path, ?string $root = null
 /**
  * @return array<string,string> paths indexed by their cleanup state
  */
-function cleanup_product_images_after_commit(PDO $pdo, array $paths, ?string $root = null): array {
+function cleanup_product_images_after_commit(PDO $pdo, array $paths, ?string $root = null, ?callable $deleteFile = null): array {
     if ($pdo->inTransaction()) throw new LogicException('Image cleanup requires a committed database transaction.');
 
     $results = [];
     foreach (array_unique($paths) as $path) {
-        if (is_string($path)) $results[$path] = delete_unreferenced_product_image($pdo, $path, $root);
+        if (is_string($path)) {
+            $results[$path] = delete_unreferenced_product_image($pdo, $path, $root, $deleteFile);
+        }
     }
     return $results;
 }
@@ -101,11 +109,7 @@ function delete_product_image_record(PDO $pdo, int $imageId): array {
 
     $pdo->beginTransaction();
     try {
-        $statement = $pdo->prepare(
-            'SELECT pi.product_id, pi.image_path, pi.is_main '
-            . 'FROM product_images pi INNER JOIN products p ON p.id = pi.product_id '
-            . 'WHERE pi.id = ? FOR UPDATE'
-        );
+        $statement = $pdo->prepare('SELECT product_id, image_path FROM product_images WHERE id = ?');
         $statement->execute([$imageId]);
         $image = $statement->fetch(PDO::FETCH_ASSOC);
         if (!$image) {
@@ -113,22 +117,46 @@ function delete_product_image_record(PDO $pdo, int $imageId): array {
             return ['status' => 'not_found', 'path' => null];
         }
 
-        $pdo->prepare('DELETE FROM product_images WHERE id = ?')->execute([$imageId]);
-        if ((int) $image['is_main'] === 1) {
-            $next = $pdo->prepare(
-                'SELECT id, image_path FROM product_images WHERE product_id = ? ORDER BY id LIMIT 1 FOR UPDATE'
-            );
-            $next->execute([$image['product_id']]);
-            $replacement = $next->fetch(PDO::FETCH_ASSOC) ?: null;
-            $pdo->prepare('UPDATE product_images SET is_main = 0 WHERE product_id = ?')->execute([$image['product_id']]);
-            if ($replacement) {
-                $pdo->prepare('UPDATE product_images SET is_main = 1 WHERE id = ?')->execute([$replacement['id']]);
-            }
-            $pdo->prepare('UPDATE products SET image = ? WHERE id = ?')
-                ->execute([$replacement['image_path'] ?? null, $image['product_id']]);
+        // Keep lock acquisition deterministic: product first, then its image rows by id.
+        $product = $pdo->prepare('SELECT id FROM products WHERE id = ? FOR UPDATE');
+        $product->execute([$image['product_id']]);
+        if ($product->fetchColumn() === false) {
+            $pdo->rollBack();
+            return ['status' => 'not_found', 'path' => null];
         }
+
+        $images = $pdo->prepare(
+            'SELECT id, image_path FROM product_images WHERE product_id = ? ORDER BY id ASC FOR UPDATE'
+        );
+        $images->execute([$image['product_id']]);
+        $lockedImages = $images->fetchAll(PDO::FETCH_ASSOC);
+        $lockedImage = null;
+        foreach ($lockedImages as $candidate) {
+            if ((int) $candidate['id'] === $imageId) {
+                $lockedImage = $candidate;
+                break;
+            }
+        }
+        if (!$lockedImage) {
+            $pdo->rollBack();
+            return ['status' => 'not_found', 'path' => null];
+        }
+
+        $pdo->prepare('DELETE FROM product_images WHERE id = ?')->execute([$imageId]);
+        $next = $pdo->prepare(
+            'SELECT id, image_path FROM product_images WHERE product_id = ? ORDER BY id ASC LIMIT 1 FOR UPDATE'
+        );
+        $next->execute([$image['product_id']]);
+        $replacement = $next->fetch(PDO::FETCH_ASSOC) ?: null;
+        $pdo->prepare('UPDATE product_images SET is_main = 0 WHERE product_id = ?')->execute([$image['product_id']]);
+        if ($replacement) {
+            $pdo->prepare('UPDATE product_images SET is_main = 1 WHERE id = ?')->execute([$replacement['id']]);
+        }
+        $pdo->prepare('UPDATE products SET image = ? WHERE id = ?')
+            ->execute([$replacement['image_path'] ?? null, $image['product_id']]);
+
         $pdo->commit();
-        return ['status' => 'deleted', 'path' => $image['image_path']];
+        return ['status' => 'deleted', 'path' => $lockedImage['image_path']];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
         throw $e;
@@ -152,7 +180,10 @@ function delete_product_record(PDO $pdo, int $productId): array {
             $pdo->rollBack();
             return ['status' => 'not_found', 'paths' => []];
         }
-        $images = $pdo->prepare('SELECT image_path FROM product_images WHERE product_id = ? FOR UPDATE');
+        // Lock in the same product-then-image/id order as single-image deletion.
+        $images = $pdo->prepare(
+            'SELECT image_path FROM product_images WHERE product_id = ? ORDER BY id ASC FOR UPDATE'
+        );
         $images->execute([$productId]);
         $paths = $images->fetchAll(PDO::FETCH_COLUMN);
         if (is_string($mainPath)) $paths[] = $mainPath;
