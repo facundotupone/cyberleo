@@ -248,9 +248,11 @@ try {
 
     $css = theme_css_custom_properties($defaults);
     tok(
-        !str_contains($css, '; }')
+        !str_contains($css, '</')
         && !str_contains($css, 'url(')
-        && !str_contains($css, '<')
+        && !str_contains($css, 'expression(')
+        && !str_contains($css, '@import')
+        && !preg_match('/[{;]\s*[a-z-]+\s*:[^;]*[<>"\']/', $css)
         && str_contains($css, '--brand-blue: #0057b8')
         && str_contains($css, '--button-radius: 8px'),
         'T-27',
