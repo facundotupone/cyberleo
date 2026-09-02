@@ -1,11 +1,17 @@
 <?php
 if (!isset($categories)) { $categories = get_categories(); }
 if (!isset($storeSettings)) { $storeSettings = get_store_settings(); }
+require_once __DIR__ . '/../includes/theme.php';
+if (!isset($themeSettings)) { $themeSettings = resolve_theme_settings($storeSettings); }
 $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
+$brandLogoPath = is_safe_brand_logo_path($themeSettings['brand_logo'] ?? '')
+    ? $themeSettings['brand_logo']
+    : THEME_OFFICIAL_LOGO;
+$navClass = 'navbar navbar-expand-lg site-navbar sticky-top'
+    . (($themeSettings['nav_style'] ?? 'white') === 'navy' ? ' site-navbar-navy' : '');
 ?>
-<nav class="navbar navbar-expand-lg site-navbar sticky-top" aria-label="Navegación principal">
+<nav class="<?= htmlspecialchars($navClass) ?>" aria-label="Navegación principal">
     <div class="container">
-        <?php $brandLogoPath = 'assets/images/brand/' . 'cyberleo-logo.png'; ?>
         <a class="navbar-brand" href="index.php" title="<?= htmlspecialchars($storeSettings['store_name']) ?>">
             <img
                 src="<?= htmlspecialchars($brandLogoPath, ENT_QUOTES, 'UTF-8') ?>"

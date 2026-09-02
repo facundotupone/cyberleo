@@ -27,13 +27,14 @@ function store_safe_image(
     $directory,
     ?string $root = null,
     ?callable $moveFile = null,
-    ?callable $deleteFile = null
+    ?callable $deleteFile = null,
+    ?array $allowedMimeMap = null
 ): string {
     if ($error !== UPLOAD_ERR_OK || $size < 1 || $size > MAX_IMAGE_BYTES || !is_file($tmpName)) {
         throw new RuntimeException('Imagen inválida o demasiado grande.');
     }
     $mime = (new finfo(FILEINFO_MIME_TYPE))->file($tmpName);
-    $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+    $extensions = $allowedMimeMap ?? ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
     $dimensions = @getimagesize($tmpName);
     if (!isset($extensions[$mime]) || !$dimensions || $dimensions[0] > 6000 || $dimensions[1] > 6000) throw new RuntimeException('Formato o dimensiones de imagen no permitidos.');
     $relativeDirectory = image_storage_relative_directory((string) $directory, $root);
@@ -233,21 +234,27 @@ function save_settings_with_images(
     ?callable $moveFile = null,
     ?callable $deleteFile = null
 ): array {
-    $backgroundKeys = ['hero_background', 'body_background'];
+    require_once __DIR__ . '/theme.php';
+    $imageKeys = ['hero_background', 'body_background', 'brand_logo', 'brand_favicon'];
+    $pngOnly = ['brand_logo' => true, 'brand_favicon' => true];
+    $officialFallback = [
+        'brand_logo' => THEME_OFFICIAL_LOGO,
+        'brand_favicon' => '',
+    ];
     $newPaths = [];
     $oldPaths = [];
-    $backgrounds = [];
-    foreach ($backgroundKeys as $key) {
+    $images = [];
+    foreach ($imageKeys as $key) {
         $upload = $uploads[$key] ?? null;
         if (!empty($remove[$key]) && is_array($upload) && !empty($upload['name'])) {
-            throw new InvalidArgumentException('No se puede subir y quitar el mismo fondo.');
+            throw new InvalidArgumentException('No se puede subir y quitar la misma imagen.');
         }
     }
 
     $pdo->beginTransaction();
     try {
         $select = $pdo->prepare('SELECT setting_value FROM store_settings WHERE setting_key = ? FOR UPDATE');
-        foreach ($backgroundKeys as $key) {
+        foreach ($imageKeys as $key) {
             $select->execute([$key]);
             $old = $select->fetchColumn();
             $old = is_string($old) ? $old : '';
@@ -255,20 +262,28 @@ function save_settings_with_images(
             $upload = $uploads[$key] ?? null;
             $hasUpload = is_array($upload) && !empty($upload['name']);
             if ($hasUpload) {
-                $backgrounds[$key] = store_safe_image(
+                $mimeMap = !empty($pngOnly[$key]) ? ['image/png' => 'png'] : null;
+                $images[$key] = store_safe_image(
                     $upload['tmp_name'] ?? '',
                     $upload['error'] ?? UPLOAD_ERR_NO_FILE,
                     $upload['size'] ?? 0,
                     'assets/images/settings',
                     $root,
                     $moveFile,
-                    $deleteFile
+                    $deleteFile,
+                    $mimeMap
                 );
-                $newPaths[] = $backgrounds[$key];
+                $newPaths[] = $images[$key];
             } elseif (!empty($remove[$key])) {
-                $backgrounds[$key] = '';
+                $images[$key] = $officialFallback[$key] ?? '';
             } else {
-                $backgrounds[$key] = $old;
+                $images[$key] = array_key_exists($key, $values) ? (string) $values[$key] : $old;
+                if ($key === 'brand_logo' && ($images[$key] === '' || !is_safe_brand_logo_path($images[$key]))) {
+                    $images[$key] = THEME_OFFICIAL_LOGO;
+                }
+                if ($key === 'brand_favicon' && $images[$key] !== '' && !is_safe_brand_favicon_path($images[$key])) {
+                    $images[$key] = '';
+                }
             }
         }
 
@@ -276,7 +291,12 @@ function save_settings_with_images(
             'INSERT INTO store_settings (setting_key, setting_value) VALUES (?, ?) '
             . 'ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
         );
-        foreach (array_merge($values, $backgrounds) as $key => $value) {
+        $allowed = array_flip(theme_allowed_setting_keys());
+        $merged = array_merge($values, $images);
+        foreach ($merged as $key => $value) {
+            if (!isset($allowed[(string) $key])) {
+                continue;
+            }
             $upsert->execute([(string) $key, (string) $value]);
         }
         $pdo->commit();
@@ -287,13 +307,13 @@ function save_settings_with_images(
     }
 
     $cleanup = [];
-    foreach ($backgroundKeys as $key) {
+    foreach ($imageKeys as $key) {
         $old = $oldPaths[$key];
-        if ($old !== '' && $old !== $backgrounds[$key]) {
+        if ($old !== '' && $old !== $images[$key] && is_safe_settings_image_path($old)) {
             $cleanup[$old] = delete_unreferenced_image($pdo, $old, $root, $deleteFile);
         }
     }
-    return ['backgrounds' => $backgrounds, 'cleanup' => $cleanup];
+    return ['backgrounds' => $images, 'cleanup' => $cleanup];
 }
 
 function repair_product_main_image(PDO $pdo, int $productId): ?string {

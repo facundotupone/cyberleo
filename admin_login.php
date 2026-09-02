@@ -4,6 +4,7 @@ start_secure_session();
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/theme.php';
 
 // Si ya está logueado, redirigir al panel de administración
 if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
@@ -55,6 +56,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Login Administrador - <?= htmlspecialchars(STORE_NAME) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/css/style.css" rel="stylesheet">
+    <style><?php
+        $themeSettings = resolve_theme_settings(get_store_settings());
+        echo theme_css_custom_properties($themeSettings);
+        $brandLogoPath = is_safe_brand_logo_path($themeSettings['brand_logo']) ? $themeSettings['brand_logo'] : THEME_OFFICIAL_LOGO;
+    ?></style>
 </head>
 <body class="admin-login-page">
     <div class="container my-5 flex-grow-1">
@@ -63,7 +69,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="card login-card">
                     <div class="card-body p-4">
                         <div class="text-center">
-                            <?php $brandLogoPath = 'assets/images/brand/' . 'cyberleo-logo.png'; ?>
                             <img
                                 src="<?= htmlspecialchars($brandLogoPath, ENT_QUOTES, 'UTF-8') ?>"
                                 alt="CyberLeo"

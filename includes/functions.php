@@ -7,7 +7,8 @@ function get_store_settings() {
     static $settings = null;
     if ($settings !== null) return $settings;
 
-    $settings = [
+    require_once __DIR__ . '/theme.php';
+    $settings = array_merge([
         'store_name' => STORE_NAME,
         'whatsapp_number' => WHATSAPP_NUMBER,
         'instagram_url' => STORE_INSTAGRAM,
@@ -19,17 +20,24 @@ function get_store_settings() {
         'admin_email' => '',
         'mail_from' => '',
         'payment_methods' => 'Efectivo, Transferencia, Mercado Pago',
-    ];
+    ], theme_default_settings());
     try {
         $rows = $pdo->query('SELECT setting_key, setting_value FROM store_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
+        $emptyOk = array_flip(array_merge(theme_empty_allowed_keys(), theme_boolean_keys()));
         foreach ($rows as $key => $value) {
-            if (array_key_exists($key, $settings) && $value !== '') $settings[$key] = $value;
+            if (!array_key_exists($key, $settings)) continue;
+            if ($value === '' && !isset($emptyOk[$key])) continue;
+            $settings[$key] = $value;
         }
     } catch (PDOException $e) {
         // La tienda sigue mostrando valores seguros por defecto hasta importar schema.sql.
         error_log($e->getMessage());
     }
     return $settings;
+}
+
+function get_theme_settings(): array {
+    return resolve_theme_settings(get_store_settings());
 }
 
 function get_categories() {
@@ -66,9 +74,9 @@ function format_price($price) {
 function get_featured_products() {
     global $pdo;
     $stmt = $pdo->query("
-        SELECT p.*, c.name as category_name 
-        FROM products p 
-        JOIN categories c ON p.category_id = c.id 
+        SELECT p.*, c.name as category_name
+        FROM products p
+        JOIN categories c ON p.category_id = c.id
         WHERE p.destacados > 0 AND p.is_active = 1
         ORDER BY p.destacados ASC
     ");

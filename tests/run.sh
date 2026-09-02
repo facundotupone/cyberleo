@@ -148,6 +148,8 @@ TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=roo
     php "$ROOT/tests/image_deletion_regression_test.php"
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/image_upload_settings_test.php"
+TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
+    php "$ROOT/tests/theme_settings_test.php"
 
 printf 'Verificando inventario de imágenes con fixtures...\n'
 INVENTORY_ROOT="$WORK_DIR/image-inventory"

@@ -158,6 +158,7 @@ settings_form() {
     shift || true
     request POST admin_settings.php \
         -F "csrf_token=$CSRF_TOKEN" \
+        -F 'settings_action=save' \
         -F "store_name=$store_name" \
         -F 'whatsapp_number=5491100000000' \
         -F 'instagram_url=' \
@@ -167,6 +168,23 @@ settings_form() {
         -F 'admin_email=admin-http@example.test' \
         -F 'mail_from=store-http@example.test' \
         -F 'payment_methods=Efectivo' \
+        -F 'brand_primary_color=#0057b8' \
+        -F 'brand_secondary_color=#00aeef' \
+        -F 'brand_navy_color=#071a33' \
+        -F 'brand_background_color=#f3f8fc' \
+        -F 'brand_text_color=#111827' \
+        -F 'brand_font=system' \
+        -F 'nav_style=white' \
+        -F 'button_radius=medium' \
+        -F 'card_radius=medium' \
+        -F 'hero_button_text=Explorar catálogo' \
+        -F 'hero_button_url=#productos-destacados' \
+        -F 'hero_height=normal' \
+        -F 'hero_alignment=center' \
+        -F 'hero_overlay=medium' \
+        -F 'show_search=1' \
+        -F 'show_categories=1' \
+        -F 'show_featured_products=1' \
         "$@"
 }
 cli_env=(
@@ -804,6 +822,103 @@ assert_sql H-BACKGROUND-CLEANUP '' "SELECT setting_value FROM store_settings WHE
 [[ ! -e "$ROOT/$BACKGROUND_SHARED" && ! -e "$ROOT/$BACKGROUND_SHARED_REPLACEMENT" ]] ||
     fail H-BACKGROUND-CLEANUP 'la restauración final dejó fondos de prueba'
 pass H-BACKGROUND-CLEANUP
+
+printf 'Pruebas HTTP de identidad visual...\n'
+request GET admin_settings.php
+assert_status H-THEME-PAGE 200
+assert_body_contains H-THEME-PAGE 'Identidad visual'
+assert_body_contains H-THEME-PAGE 'Portada'
+assert_body_contains H-THEME-PAGE 'Restaurar identidad CyberLeo'
+assert_body_contains H-THEME-PAGE 'Vista previa'
+assert_body_contains H-THEME-PAGE 'assets/js/theme-preview.js'
+CSRF_TOKEN="$(csrf_from_body)"
+
+request POST admin_settings.php \
+    -F "csrf_token=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" \
+    -F 'settings_action=save' \
+    -F 'store_name=ShouldNotPersist' \
+    -F 'whatsapp_number=5491100000000' \
+    -F 'hero_title=x' -F 'hero_subtitle=y' \
+    -F 'brand_primary_color=#0057b8' -F 'brand_secondary_color=#00aeef' \
+    -F 'brand_navy_color=#071a33' -F 'brand_background_color=#f3f8fc' -F 'brand_text_color=#111827' \
+    -F 'brand_font=system' -F 'nav_style=white' -F 'button_radius=medium' -F 'card_radius=medium' \
+    -F 'hero_button_text=Explorar catálogo' -F 'hero_button_url=#productos-destacados' \
+    -F 'hero_height=normal' -F 'hero_alignment=center' -F 'hero_overlay=medium'
+assert_status H-THEME-CSRF 403
+assert_sql H-THEME-CSRF 'HTTP Test Store' "SELECT setting_value FROM store_settings WHERE setting_key='store_name'"
+pass H-THEME-CSRF
+
+settings_form 'HTTP Theme Alt' \
+    -F 'brand_primary_color=#003366' \
+    -F 'nav_style=navy' \
+    -F 'brand_font=inter' \
+    -F 'button_radius=high' \
+    -F 'card_radius=low' \
+    -F 'hero_button_text=Ver ofertas' \
+    -F 'hero_button_url=category.php?id=1' \
+    -F 'hero_height=large' \
+    -F 'hero_alignment=left' \
+    -F 'hero_overlay=strong'
+assert_status H-THEME-SAVE 302
+assert_header_contains H-THEME-SAVE 'Location: admin_settings.php?saved=1'
+assert_sql H-THEME-SAVE '#003366' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"
+assert_sql H-THEME-SAVE 'navy' "SELECT setting_value FROM store_settings WHERE setting_key='nav_style'"
+assert_sql H-THEME-SAVE 'Ver ofertas' "SELECT setting_value FROM store_settings WHERE setting_key='hero_button_text'"
+assert_sql H-THEME-SAVE 'category.php?id=1' "SELECT setting_value FROM store_settings WHERE setting_key='hero_button_url'"
+pass H-THEME-SAVE
+
+settings_form 'HTTP Theme Bad' -F 'brand_primary_color=#0057b8;}body{x:1'
+assert_status H-THEME-BAD-COLOR 200
+assert_body_contains H-THEME-BAD-COLOR 'Color inválido'
+assert_sql H-THEME-BAD-COLOR '#003366' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"
+pass H-THEME-BAD-COLOR
+
+settings_form 'HTTP Theme BadUrl' -F 'hero_button_url=javascript:alert(1)'
+assert_status H-THEME-BAD-URL 200
+assert_body_contains H-THEME-BAD-URL 'Enlace del botón'
+assert_sql H-THEME-BAD-URL 'category.php?id=1' "SELECT setting_value FROM store_settings WHERE setting_key='hero_button_url'"
+pass H-THEME-BAD-URL
+
+OFFICIAL_LOGO_HASH="$(sha256sum "$ROOT/assets/images/brand/cyberleo-logo.png" | awk '{print $1}')"
+THEME_COUNT_BEFORE="$(settings_image_file_count)"
+settings_form 'HTTP Theme Logo' -F "brand_logo_file=@$HTTP_TMP/tiny.png;type=image/png"
+assert_status H-THEME-LOGO 302
+CUSTOM_LOGO="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='brand_logo'")"
+[[ "$CUSTOM_LOGO" =~ ^assets/images/settings/[a-f0-9]{32}\.png$ && -f "$ROOT/$CUSTOM_LOGO" ]] ||
+    fail H-THEME-LOGO "logo personalizado inválido <$CUSTOM_LOGO>"
+[[ "$(settings_image_file_count)" == "$((THEME_COUNT_BEFORE + 1))" ]] ||
+    fail H-THEME-LOGO 'conteo de archivos de settings inesperado tras logo'
+[[ "$(sha256sum "$ROOT/assets/images/brand/cyberleo-logo.png" | awk '{print $1}')" == "$OFFICIAL_LOGO_HASH" ]] ||
+    fail H-THEME-LOGO 'el logo oficial fue modificado'
+CREATED_IMAGES+=("$CUSTOM_LOGO")
+pass H-THEME-LOGO
+
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+sql "UPDATE store_settings SET setting_value='5491199999999' WHERE setting_key='whatsapp_number'"
+sql "INSERT INTO store_settings(setting_key,setting_value) VALUES('payment_methods','Efectivo, Mercado Pago') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_cyberleo'
+assert_status H-THEME-RESTORE 302
+assert_header_contains H-THEME-RESTORE 'Location: admin_settings.php?restored=1'
+assert_sql H-THEME-RESTORE '#0057b8' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"
+assert_sql H-THEME-RESTORE 'white' "SELECT setting_value FROM store_settings WHERE setting_key='nav_style'"
+assert_sql H-THEME-RESTORE 'assets/images/brand/cyberleo-logo.png' "SELECT setting_value FROM store_settings WHERE setting_key='brand_logo'"
+assert_sql H-THEME-RESTORE '5491199999999' "SELECT setting_value FROM store_settings WHERE setting_key='whatsapp_number'"
+assert_sql H-THEME-RESTORE 'Efectivo, Mercado Pago' "SELECT setting_value FROM store_settings WHERE setting_key='payment_methods'"
+[[ ! -f "$ROOT/$CUSTOM_LOGO" ]] || fail H-THEME-RESTORE 'logo personalizado no fue limpiado'
+[[ -f "$ROOT/assets/images/brand/cyberleo-logo.png" ]] || fail H-THEME-RESTORE 'falta el logo oficial'
+[[ "$(sha256sum "$ROOT/assets/images/brand/cyberleo-logo.png" | awk '{print $1}')" == "$OFFICIAL_LOGO_HASH" ]] ||
+    fail H-THEME-RESTORE 'logo oficial alterado tras restauración'
+pass H-THEME-RESTORE
+
+request GET index.php
+assert_status H-THEME-HOME 200
+assert_body_contains H-THEME-HOME '--brand-blue: #0057b8'
+assert_body_contains H-THEME-HOME 'assets/images/brand/cyberleo-logo.png'
+assert_body_excludes H-THEME-HOME 'javascript:'
+pass H-THEME-HOME
 
 printf 'Prueba XSS por HTTP...\n'
 sql 'UPDATE products SET stock=2 WHERE id=2'

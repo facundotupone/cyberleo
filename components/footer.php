@@ -1,8 +1,14 @@
-<?php if (!isset($storeSettings)) { $storeSettings = get_store_settings(); } ?>
+<?php
+if (!isset($storeSettings)) { $storeSettings = get_store_settings(); }
+require_once __DIR__ . '/../includes/theme.php';
+if (!isset($themeSettings)) { $themeSettings = resolve_theme_settings($storeSettings); }
+$brandLogoPath = is_safe_brand_logo_path($themeSettings['brand_logo'] ?? '')
+    ? $themeSettings['brand_logo']
+    : THEME_OFFICIAL_LOGO;
+?>
 <footer class="footer pt-4 pb-3" role="contentinfo">
     <div class="container">
         <div class="text-center footer-brand">
-            <?php $brandLogoPath = 'assets/images/brand/' . 'cyberleo-logo.png'; ?>
             <a href="index.php" title="<?= htmlspecialchars($storeSettings['store_name']) ?>">
                 <img
                     src="<?= htmlspecialchars($brandLogoPath, ENT_QUOTES, 'UTF-8') ?>"

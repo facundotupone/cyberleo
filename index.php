@@ -66,17 +66,32 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 </style>
 </head>
 <body>
+    <?php
+    require_once 'includes/theme.php';
+    $themeSettings = resolve_theme_settings($storeSettings);
+    $heroClasses = ['hero-section'];
+    $heroClasses[] = 'hero-height-' . $themeSettings['hero_height'];
+    $heroClasses[] = 'hero-align-' . $themeSettings['hero_alignment'];
+    if (!empty($storeSettings['hero_background']) && is_safe_settings_image_path($storeSettings['hero_background'])) {
+        $heroClasses[] = 'hero-has-image';
+        $heroClasses[] = 'hero-overlay-' . $themeSettings['hero_overlay'];
+    }
+    $heroButtonUrl = is_safe_local_theme_url($themeSettings['hero_button_url'])
+        ? $themeSettings['hero_button_url']
+        : '#productos-destacados';
+    ?>
     <?php require_once 'components/nav.php'; ?>
     <main class="container mt-3">
-        <section class="hero-section<?= !empty($storeSettings['hero_background']) ? ' hero-has-image' : '' ?>" aria-label="<?= htmlspecialchars($storeSettings['store_name']) ?>">
-            <div class="hero-content text-center text-white">
+        <section class="<?= htmlspecialchars(implode(' ', $heroClasses)) ?>" aria-label="<?= htmlspecialchars($storeSettings['store_name']) ?>">
+            <div class="hero-content text-white<?= $themeSettings['hero_alignment'] === 'left' ? '' : ' text-center' ?>">
                 <h1 class="text-white"><?= htmlspecialchars($storeSettings['hero_title']) ?></h1>
                 <p class="hero-subtitle mb-0"><?= htmlspecialchars($storeSettings['hero_subtitle']) ?></p>
-                <a href="#productos-destacados" class="btn btn-primary hero-cta mt-3">
-                    <i class="bi bi-grid-3x3-gap-fill" aria-hidden="true"></i> Explorar catálogo
+                <a href="<?= htmlspecialchars($heroButtonUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn btn-primary hero-cta mt-3">
+                    <i class="bi bi-grid-3x3-gap-fill" aria-hidden="true"></i> <?= htmlspecialchars($themeSettings['hero_button_text']) ?>
                 </a>
             </div>
         </section>
+        <?php if ($themeSettings['show_search'] === '1'): ?>
         <section class="row justify-content-center search-section" aria-label="Buscador de productos">
             <div class="col-md-7 col-lg-6 position-relative">
                 <div class="input-group">
@@ -88,7 +103,9 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 <div id="searchResults" class="position-absolute bg-white shadow-sm rounded p-2" style="display: none; z-index: 1000; width: 100%;"></div>
             </div>
         </section>
+        <?php endif; ?>
 
+        <?php if ($themeSettings['show_featured_products'] === '1'): ?>
         <!-- Sección de Productos Destacados -->
         <h2 id="productos-destacados" class="text-center mb-3 mt-2 h4 fw-bold">Productos Destacados</h2>
         <section class="row g-4" aria-label="Productos destacados">
@@ -234,7 +251,9 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         <?php endforeach; ?>
         <?php endif; ?>
         </section>
+        <?php endif; ?>
 
+        <?php if ($themeSettings['show_categories'] === '1'): ?>
         <section class="row mb-1 mt-4" aria-label="Categorías y subcategorías">
             <?php foreach($categories as $category):
                 $subcategories = isset($all_subcategories[$category['id']]) ? $all_subcategories[$category['id']] : [];
@@ -264,6 +283,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             </div>
             <?php endforeach; ?>
         </section>
+        <?php endif; ?>
 
     </main>
 
