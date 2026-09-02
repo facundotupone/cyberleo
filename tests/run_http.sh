@@ -1723,7 +1723,7 @@ assert_body_contains H-CATALOG3-HOME 'product-card-align-center'
 assert_body_contains H-CATALOG3-HOME 'OFERTÓN'
 assert_body_contains H-CATALOG3-HOME 'Sumar al carrito'
 assert_body_contains H-CATALOG3-HOME 'Copiar enlace'
-assert_body_excludes H-CATALOG3-HOME 'bi-instagram'
+assert_body_contains H-CATALOG3-HOME 'bi-link-45deg'
 pass H-CATALOG3-HOME
 
 request GET 'category.php?id=1'
@@ -1837,12 +1837,12 @@ assert_body_excludes H-CATALOG3-HIDDEN '(Stock:'
 pass H-CATALOG3-HIDDEN
 
 settings_form 'HTTP XSS Catalog' \
-    -F 'featured_section_title=<script>globalThis.catalogXssExecuted=1</script>XSS Title' \
-    -F 'featured_empty_text=<img src=x onerror=globalThis.catalogXssExecuted=2>Vacío' \
-    -F 'catalog_empty_text=<svg onload=globalThis.catalogXssExecuted=3>Cat' \
-    -F 'product_sale_badge_text=<script>bad</script>BADGE' \
-    -F 'product_add_button_text=<img src=x onerror=1>Botón' \
-    -F 'product_out_of_stock_text=<b>OOS</b>' \
+    --form-string 'featured_section_title=<script>globalThis.catalogXssExecuted=1</script>XSS Title' \
+    --form-string 'featured_empty_text=<img src=x onerror=globalThis.catalogXssExecuted=2>Vacío' \
+    --form-string 'catalog_empty_text=<svg onload=globalThis.catalogXssExecuted=3>Cat' \
+    --form-string 'product_sale_badge_text=<script>bad</script>BADGE' \
+    --form-string 'product_add_button_text=<img src=x onerror=1>Botón' \
+    --form-string 'product_out_of_stock_text=<b>OOS</b>' \
     -F 'featured_columns=3' \
     -F 'catalog_columns=3' \
     -F 'product_card_style=elevated' \
@@ -1868,8 +1868,10 @@ sql "UPDATE categories SET name='<b>CatXSS</b>' WHERE id=1"
 request GET index.php
 assert_status H-CATALOG3-XSS 200
 assert_body_excludes H-CATALOG3-XSS '<script>globalThis.catalogXssExecuted=1</script>'
-assert_body_excludes H-CATALOG3-XSS 'onerror=globalThis.catalogXssExecuted'
+assert_body_excludes H-CATALOG3-XSS '<img src=x onerror=globalThis.catalogXssExecuted'
 assert_body_excludes H-CATALOG3-XSS '<script>globalThis.catalogXssExecuted=9</script>'
+assert_body_excludes H-CATALOG3-XSS 'onerror="'
+assert_body_excludes H-CATALOG3-XSS "onerror='"
 assert_body_contains H-CATALOG3-XSS 'XSS Title'
 assert_body_contains H-CATALOG3-XSS '&lt;script&gt;'
 pass H-CATALOG3-XSS
@@ -2091,11 +2093,11 @@ request POST admin_settings.php \
 run_catalog3_chrome hidden B-CATALOG3-HIDDEN
 
 settings_form 'HTTP XSS Catalog' \
-    -F 'featured_section_title=<script>globalThis.catalogXssExecuted=1</script>XSS Title' \
-    -F 'featured_empty_text=<img src=x onerror=globalThis.catalogXssExecuted=2>Vacío' \
-    -F 'catalog_empty_text=<svg onload=globalThis.catalogXssExecuted=3>Cat' \
-    -F 'product_sale_badge_text=<script>bad</script>BADGE' \
-    -F 'product_add_button_text=<img src=x onerror=1>Botón' \
+    --form-string 'featured_section_title=<script>globalThis.catalogXssExecuted=1</script>XSS Title' \
+    --form-string 'featured_empty_text=<img src=x onerror=globalThis.catalogXssExecuted=2>Vacío' \
+    --form-string 'catalog_empty_text=<svg onload=globalThis.catalogXssExecuted=3>Cat' \
+    --form-string 'product_sale_badge_text=<script>bad</script>BADGE' \
+    --form-string 'product_add_button_text=<img src=x onerror=1>Botón' \
     -F 'featured_columns=3' \
     -F 'catalog_columns=3' \
     -F 'product_description_mode=expandable' \
@@ -2118,6 +2120,12 @@ assert_body_contains H-CATALOG3-CART 'data-oos-text="Agotado"'
 assert_body_contains H-CATALOG3-CART 'data-product-id='
 assert_body_contains H-CATALOG3-CART 'data-product-price='
 pass H-CATALOG3-CART
+
+# Restaurar payload XSS del fixture para la regresión H-XSS-*
+sql "UPDATE products SET name='<script>globalThis.xssExecuted=1;document.title=\"XSS_EXECUTED\"</script>', description='\"><img src=x onerror=globalThis.xssExecuted=2>', stock=2 WHERE id=2"
+sql "UPDATE products SET name='HTTP order product', description='Order fixture', destacados=1 WHERE id=1"
+sql "UPDATE categories SET name='HTTP fixtures' WHERE id=1"
+settings_form 'HTTP Test Store'
 
 printf 'Prueba XSS por HTTP...\n'
 sql 'UPDATE products SET stock=2 WHERE id=2'
