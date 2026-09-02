@@ -270,6 +270,18 @@ button:focus-visible,
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
+    background: var(--brand-white) !important;
+    border-color: var(--brand-white) !important;
+    color: var(--brand-navy) !important;
+    font-weight: 700;
+}
+
+.hero-cta:hover,
+.hero-cta:focus,
+.hero-cta:active {
+    background: var(--brand-cyan) !important;
+    border-color: var(--brand-cyan) !important;
+    color: var(--brand-navy) !important;
 }
 
 @media (max-width: 768px) {
