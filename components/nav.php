@@ -5,9 +5,10 @@ $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
 ?>
 <nav class="navbar navbar-expand-lg site-navbar sticky-top" aria-label="Navegación principal">
     <div class="container">
+        <?php $brandLogoPath = 'assets/images/brand/' . 'cyberleo-logo.png'; ?>
         <a class="navbar-brand" href="index.php" title="<?= htmlspecialchars($storeSettings['store_name']) ?>">
             <img
-                src="assets/images/brand/cyberleo-logo.png"
+                src="<?= htmlspecialchars($brandLogoPath, ENT_QUOTES, 'UTF-8') ?>"
                 alt="CyberLeo"
                 class="brand-logo"
                 width="220"

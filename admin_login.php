@@ -63,8 +63,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="card login-card">
                     <div class="card-body p-4">
                         <div class="text-center">
+                            <?php $brandLogoPath = 'assets/images/brand/' . 'cyberleo-logo.png'; ?>
                             <img
-                                src="assets/images/brand/cyberleo-logo.png"
+                                src="<?= htmlspecialchars($brandLogoPath, ENT_QUOTES, 'UTF-8') ?>"
                                 alt="CyberLeo"
                                 class="brand-logo brand-logo-login"
                                 width="240"

@@ -2,9 +2,10 @@
 <footer class="footer pt-4 pb-3" role="contentinfo">
     <div class="container">
         <div class="text-center footer-brand">
+            <?php $brandLogoPath = 'assets/images/brand/' . 'cyberleo-logo.png'; ?>
             <a href="index.php" title="<?= htmlspecialchars($storeSettings['store_name']) ?>">
                 <img
-                    src="assets/images/brand/cyberleo-logo.png"
+                    src="<?= htmlspecialchars($brandLogoPath, ENT_QUOTES, 'UTF-8') ?>"
                     alt="CyberLeo"
                     class="brand-logo brand-logo-sm"
                     width="150"
