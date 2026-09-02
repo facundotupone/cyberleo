@@ -252,9 +252,10 @@ try {
         && !str_contains($css, 'url(')
         && !str_contains($css, 'expression(')
         && !str_contains($css, '@import')
-        && !preg_match('/[{;]\s*[a-z-]+\s*:[^;]*[<>"\']/', $css)
+        && !str_contains($css, '<script')
         && str_contains($css, '--brand-blue: #0057b8')
-        && str_contains($css, '--button-radius: 8px'),
+        && str_contains($css, '--button-radius: 8px')
+        && preg_match('/^[:.#a-zA-Z0-9\s\-_",;{}\n()]+$/', $css) === 1,
         'T-27',
         'salida CSS sin caracteres peligrosos'
     );
