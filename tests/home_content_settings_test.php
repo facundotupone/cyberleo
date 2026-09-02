@@ -211,14 +211,13 @@ try {
     hok(hget($pdo, 'body_background') === $promoPath, 'HC-19c', 'body_background no tocado por restore Stage 2');
 
     hset($pdo, 'body_background', '');
-    $r2 = restore_home_content_defaults($pdo);
-    foreach ($r2['cleanup_candidates'] as $path) {
-        delete_unreferenced_image($pdo, $path, $root);
-    }
-    hok(!is_file($root . '/' . $promoPath), 'HC-20', 'limpieza posterior al commit sin referencias');
+    $cleanupAfterShare = delete_unreferenced_image($pdo, $promoPath, $root);
+    hok($cleanupAfterShare === 'deleted' && !is_file($root . '/' . $promoPath), 'HC-20', 'limpieza posterior al commit sin referencias');
 
     $r3 = restore_home_content_defaults($pdo);
     hok($r3['restored']['benefits_enabled'] === '1', 'HC-21', 'segunda restauración idempotente');
+    $r4 = restore_home_content_defaults($pdo);
+    hok($r4['restored']['promo_enabled'] === '0' && $r4['cleanup_candidates'] === [], 'HC-21b', 'tercera restauración sin cleanup pendiente');
 
     hok(hash_file('sha256', $official) === $officialHash, 'HC-22', 'logo oficial intacto');
 
