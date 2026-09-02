@@ -4,8 +4,6 @@ require_once 'db.php';
 
 function get_store_settings() {
     global $pdo;
-    static $settings = null;
-    if ($settings !== null) return $settings;
 
     require_once __DIR__ . '/theme.php';
     $settings = array_merge([
