@@ -1459,6 +1459,93 @@ assert_sql H-HOME2-HIDDEN-SAVE '0' "SELECT setting_value FROM store_settings WHE
 pass H-HOME2-HIDDEN-SAVE
 run_home2_chrome hidden H-HOME2-CHROME-HIDDEN
 
+printf 'Prueba show_search=0 (sin excepción JS)...\n'
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=save' \
+    -F 'store_name=HTTP Test Store' \
+    -F 'whatsapp_number=5491100000000' \
+    -F 'instagram_url=https://instagram.com/cyberleo' \
+    -F 'hero_title=HTTP hero' \
+    -F 'hero_subtitle=HTTP subtitle' \
+    -F 'reservation_minutes=120' \
+    -F 'admin_email=admin-http@example.test' \
+    -F 'mail_from=store-http@example.test' \
+    -F 'payment_methods=Efectivo' \
+    -F 'brand_primary_color=#0057b8' \
+    -F 'brand_secondary_color=#00aeef' \
+    -F 'brand_navy_color=#071a33' \
+    -F 'brand_background_color=#f3f8fc' \
+    -F 'brand_text_color=#111827' \
+    -F 'brand_font=system' \
+    -F 'nav_style=white' \
+    -F 'button_radius=medium' \
+    -F 'card_radius=medium' \
+    -F 'hero_button_text=Explorar catálogo' \
+    -F 'hero_button_url=#productos-destacados' \
+    -F 'hero_height=normal' \
+    -F 'hero_alignment=center' \
+    -F 'hero_overlay=medium' \
+    -F 'show_categories=1' \
+    -F 'show_featured_products=1' \
+    -F 'announcement_style=primary' \
+    -F 'announcement_text=' \
+    -F 'announcement_url=' \
+    -F 'promo_title=' \
+    -F 'promo_text=' \
+    -F 'promo_button_text=Ver más' \
+    -F 'promo_button_url=#' \
+    -F 'home_order_featured=1' \
+    -F 'home_order_promo=2' \
+    -F 'home_order_categories=3' \
+    -F 'home_order_benefits=4' \
+    -F 'benefits_enabled=1' \
+    -F 'benefit_1_icon=bi-truck' \
+    -F 'benefit_1_title=Envíos y entregas' \
+    -F 'benefit_1_text=Coordinamos la entrega o retiro de tu compra.' \
+    -F 'benefit_2_icon=bi-shield-check' \
+    -F 'benefit_2_title=Compra segura' \
+    -F 'benefit_2_text=Stock actualizado y pedido confirmado por WhatsApp.' \
+    -F 'benefit_3_icon=bi-headset' \
+    -F 'benefit_3_title=Atención personalizada' \
+    -F 'benefit_3_text=Te asesoramos para elegir la mejor opción.' \
+    -F 'footer_description=Tecnología, periféricos y soluciones para tu equipo.' \
+    -F 'footer_instagram_text=Seguinos en Instagram' \
+    -F 'footer_whatsapp_text=Contactar por WhatsApp' \
+    -F 'footer_show_logo=1' \
+    -F 'footer_show_instagram=1' \
+    -F 'footer_show_whatsapp=1' \
+    -F 'business_hours=' \
+    -F 'business_location='
+assert_status H-HOME2-SEARCH-OFF-SAVE 302
+assert_sql H-HOME2-SEARCH-OFF-SAVE '0' "SELECT setting_value FROM store_settings WHERE setting_key='show_search'"
+pass H-HOME2-SEARCH-OFF-SAVE
+
+request GET index.php
+assert_status H-HOME2-SEARCH-OFF 200
+assert_body_excludes H-HOME2-SEARCH-OFF 'id="searchProducts"'
+assert_body_excludes H-HOME2-SEARCH-OFF 'id="searchResults"'
+assert_body_contains H-HOME2-SEARCH-OFF 'id="productos-destacados"'
+assert_body_contains H-HOME2-SEARCH-OFF 'id="categorias"'
+assert_body_contains H-HOME2-SEARCH-OFF 'id="beneficios"'
+pass H-HOME2-SEARCH-OFF
+
+run_home2_chrome search-hidden H-HOME2-CHROME-SEARCH-HIDDEN
+
+settings_form 'HTTP Test Store' \
+    -F 'show_search=1' \
+    -F 'show_categories=1' \
+    -F 'show_featured_products=1' \
+    -F 'home_order_featured=1' \
+    -F 'home_order_promo=2' \
+    -F 'home_order_categories=3' \
+    -F 'home_order_benefits=4'
+assert_status H-HOME2-SEARCH-ON-SAVE 302
+assert_sql H-HOME2-SEARCH-ON-SAVE '1' "SELECT setting_value FROM store_settings WHERE setting_key='show_search'"
+pass H-HOME2-SEARCH-ON-SAVE
+
 # Instagram vacío no muestra enlace roto
 settings_form 'HTTP Test Store' \
     -F 'instagram_url=' \

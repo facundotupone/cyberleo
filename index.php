@@ -239,57 +239,61 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             });
         });
 
-        // Buscador de productos
-        let searchTimeout;
-        document.getElementById('searchProducts').addEventListener('input', function(e) {
-            const searchTerm = e.target.value.trim();
+        // Buscador de productos (solo si show_search renderizó ambos nodos)
+        (function initProductSearch() {
+            const searchInput = document.getElementById('searchProducts');
             const resultsContainer = document.getElementById('searchResults');
-            clearTimeout(searchTimeout);
-            if (searchTerm.length < 2) {
-                resultsContainer.style.display = 'none';
+            if (!searchInput || !resultsContainer) {
                 return;
             }
-            searchTimeout = setTimeout(() => {
-                fetch(`search_products.php?q=${encodeURIComponent(searchTerm)}`)
-                    .then(response => response.json())
-                    .then(products => {
-                        if (products.length > 0) {
-                            resultsContainer.replaceChildren();
-                            products.forEach(product => {
-                                const link = document.createElement('a');
-                                link.href = `category.php?id=${encodeURIComponent(product.category_id)}&sub=${encodeURIComponent(product.subcategory_id || '')}`;
-                                link.className = 'search-result p-2 border-bottom text-decoration-none text-dark d-block';
-                                const row = document.createElement('div'); row.className = 'd-flex align-items-center';
-                                if (typeof product.image === 'string' && /^assets\/images\/[a-zA-Z0-9_./-]+$/.test(product.image)) {
-                                    const image = document.createElement('img');
-                                    image.src = product.image; image.alt = product.name || ''; image.style.cssText = 'width:50px;height:50px;object-fit:cover;margin-right:10px;';
-                                    row.appendChild(image);
-                                }
-                                const content = document.createElement('div');
-                                const name = document.createElement('h6'); name.className = 'mb-0'; name.textContent = product.name || '';
-                                const category = document.createElement('small'); category.className = 'text-muted'; category.textContent = product.category_name || '';
-                                const prices = document.createElement('div'); prices.className = 'd-flex justify-content-between';
-                                const price = document.createElement('span'); price.className = 'text-primary'; price.textContent = `$${Number(product.price).toFixed(2)}`;
-                                const stock = document.createElement('small'); stock.className = Number(product.stock) > 0 ? 'text-success' : 'text-danger'; stock.textContent = Number(product.stock) > 0 ? 'Disponible' : 'Sin stock';
-                                prices.append(price, stock); content.append(name, category, prices); row.appendChild(content); link.appendChild(row); resultsContainer.appendChild(link);
-                            });
-                            resultsContainer.style.display = 'block';
-                        } else {
-                            resultsContainer.innerHTML = '<div class="p-2">No se encontraron productos</div>';
-                            resultsContainer.style.display = 'block';
-                        }
-                    });
-            }, 300);
-        });
 
-        // Cerrar resultados al hacer clic fuera
-        document.addEventListener('click', function(e) {
-            const resultsContainer = document.getElementById('searchResults');
-            const searchInput = document.getElementById('searchProducts');
-            if (!resultsContainer.contains(e.target) && e.target !== searchInput) {
-                resultsContainer.style.display = 'none';
-            }
-        });
+            let searchTimeout;
+            searchInput.addEventListener('input', function(e) {
+                const searchTerm = e.target.value.trim();
+                clearTimeout(searchTimeout);
+                if (searchTerm.length < 2) {
+                    resultsContainer.style.display = 'none';
+                    return;
+                }
+                searchTimeout = setTimeout(() => {
+                    fetch(`search_products.php?q=${encodeURIComponent(searchTerm)}`)
+                        .then(response => response.json())
+                        .then(products => {
+                            if (products.length > 0) {
+                                resultsContainer.replaceChildren();
+                                products.forEach(product => {
+                                    const link = document.createElement('a');
+                                    link.href = `category.php?id=${encodeURIComponent(product.category_id)}&sub=${encodeURIComponent(product.subcategory_id || '')}`;
+                                    link.className = 'search-result p-2 border-bottom text-decoration-none text-dark d-block';
+                                    const row = document.createElement('div'); row.className = 'd-flex align-items-center';
+                                    if (typeof product.image === 'string' && /^assets\/images\/[a-zA-Z0-9_./-]+$/.test(product.image)) {
+                                        const image = document.createElement('img');
+                                        image.src = product.image; image.alt = product.name || ''; image.style.cssText = 'width:50px;height:50px;object-fit:cover;margin-right:10px;';
+                                        row.appendChild(image);
+                                    }
+                                    const content = document.createElement('div');
+                                    const name = document.createElement('h6'); name.className = 'mb-0'; name.textContent = product.name || '';
+                                    const category = document.createElement('small'); category.className = 'text-muted'; category.textContent = product.category_name || '';
+                                    const prices = document.createElement('div'); prices.className = 'd-flex justify-content-between';
+                                    const price = document.createElement('span'); price.className = 'text-primary'; price.textContent = `$${Number(product.price).toFixed(2)}`;
+                                    const stock = document.createElement('small'); stock.className = Number(product.stock) > 0 ? 'text-success' : 'text-danger'; stock.textContent = Number(product.stock) > 0 ? 'Disponible' : 'Sin stock';
+                                    prices.append(price, stock); content.append(name, category, prices); row.appendChild(content); link.appendChild(row); resultsContainer.appendChild(link);
+                                });
+                                resultsContainer.style.display = 'block';
+                            } else {
+                                resultsContainer.innerHTML = '<div class="p-2">No se encontraron productos</div>';
+                                resultsContainer.style.display = 'block';
+                            }
+                        });
+                }, 300);
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!resultsContainer.contains(e.target) && e.target !== searchInput) {
+                    resultsContainer.style.display = 'none';
+                }
+            });
+        })();
 
         function toggleDescription(button) {
             const container = button.closest('.description-container');

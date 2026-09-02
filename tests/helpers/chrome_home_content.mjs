@@ -7,8 +7,9 @@ let currentUrl = base || '(missing base URL)';
 let ws;
 let nextId = 0;
 const pending = new Map();
+const browserErrors = [];
 
-const context = message => `${message} [stage=${stage} url=${currentUrl}]`;
+const context = message => `${message} [mode=${mode} stage=${stage} url=${currentUrl}]`;
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const withTimeout = (promise, milliseconds, description) => {
   let timer;
@@ -88,10 +89,16 @@ const sectionOrder = async () => evaluate(`(() => {
   });
 })()`);
 
+const assertNoBrowserErrors = () => {
+  if (browserErrors.length === 0) return;
+  const detail = browserErrors.map(entry => entry.message).join(' | ');
+  throw new Error(context(`browser error: ${detail}`));
+};
+
 try {
   requireValue(port && base, 'usage: chrome_home_content.mjs <debug-port> <base-url> <mode>');
   requireValue(
-    ['default', 'alt-order', 'hidden', 'banner', 'benefits', 'footer', 'mobile', 'restore'].includes(mode),
+    ['default', 'alt-order', 'hidden', 'banner', 'benefits', 'footer', 'mobile', 'restore', 'search-hidden'].includes(mode),
     'invalid mode',
   );
   requireValue(typeof globalThis.WebSocket === 'function', 'global WebSocket is unavailable');
@@ -122,6 +129,30 @@ try {
         request.resolve(message.result);
       }
     }
+    if (message.method === 'Runtime.exceptionThrown') {
+      const details = message.params?.exceptionDetails || {};
+      const text = details.exception?.description || details.text || 'Runtime.exceptionThrown';
+      browserErrors.push({
+        type: 'exception',
+        message: String(text),
+        stage,
+        url: currentUrl,
+      });
+    }
+    if (message.method === 'Runtime.consoleAPICalled') {
+      const type = message.params?.type;
+      if (type === 'error' || type === 'assert') {
+        const args = (message.params?.args || [])
+          .map(arg => arg.value ?? arg.description ?? arg.type)
+          .join(' ');
+        browserErrors.push({
+          type: `console.${type}`,
+          message: String(args || 'console error'),
+          stage,
+          url: currentUrl,
+        });
+      }
+    }
   });
 
   await call('Page.enable');
@@ -136,7 +167,7 @@ try {
     });
   } else {
     await call('Emulation.setDeviceMetricsOverride', {
-      width: 1280,
+      width: mode === 'search-hidden' ? 1440 : 1280,
       height: 900,
       deviceScaleFactor: 1,
       mobile: false,
@@ -145,6 +176,7 @@ try {
 
   await navigate('/index.php', 'home');
   await sleep(1000);
+  assertNoBrowserErrors();
 
   const hasOverflow = await evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth + 1');
   requireValue(!hasOverflow, 'horizontal overflow detected');
@@ -174,6 +206,35 @@ try {
     requireValue(!order.includes('featured'), 'featured should be hidden');
     requireValue(!order.includes('categories'), 'categories should be hidden');
     requireValue(order.includes('benefits'), 'benefits should remain');
+  }
+
+  if (mode === 'search-hidden') {
+    const state = await evaluate(`(() => {
+      const hero = document.querySelector('.hero-section');
+      const cart = document.querySelector('.floating-cart');
+      const sections = [...document.querySelectorAll('#productos-destacados, #promo-banner, #categorias, #beneficios')];
+      const visibleSection = sections.some(el => {
+        const cs = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        return cs.display !== 'none' && box.height > 20;
+      });
+      const heroVisible = !!hero && getComputedStyle(hero).display !== 'none' && hero.getBoundingClientRect().height > 40;
+      const cartVisible = !!cart && getComputedStyle(cart).display !== 'none';
+      return {
+        hasSearchProducts: !!document.getElementById('searchProducts'),
+        hasSearchResults: !!document.getElementById('searchResults'),
+        ready: document.readyState === 'complete',
+        heroVisible,
+        visibleSection,
+        cartVisible,
+      };
+    })()`);
+    requireValue(state.ready, 'document not complete');
+    requireValue(!state.hasSearchProducts, '#searchProducts should be absent');
+    requireValue(!state.hasSearchResults, '#searchResults should be absent');
+    requireValue(state.heroVisible, 'hero should be visible');
+    requireValue(state.visibleSection, 'expected at least one content section');
+    requireValue(state.cartVisible, 'floating cart should be visible');
   }
 
   if (mode === 'banner') {
@@ -241,7 +302,8 @@ try {
     }
   }
 
-  console.log(JSON.stringify({ok: true, mode, order: await sectionOrder()}, null, 2));
+  assertNoBrowserErrors();
+  console.log(JSON.stringify({ok: true, mode, order: await sectionOrder(), browserErrors: 0}, null, 2));
   ws.close();
   process.exit(0);
 } catch (error) {
