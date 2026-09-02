@@ -46,9 +46,17 @@ foreach (['products', 'settings'] as $scope) {
     }
 }
 
-require_once $realRoot . '/includes/config.php';
-require_once $realRoot . '/includes/db.php';
-require_once $realRoot . '/includes/images.php';
+$publicConfig = $realRoot . '/includes/config.php';
+$fallbackRoot = dirname(__DIR__);
+if (is_file($publicConfig) && !is_link($publicConfig)) {
+    require_once $publicConfig;
+    require_once $realRoot . '/includes/db.php';
+    require_once $realRoot . '/includes/images.php';
+} else {
+    require_once $fallbackRoot . '/includes/config.php';
+    require_once $fallbackRoot . '/includes/db.php';
+    require_once $fallbackRoot . '/includes/images.php';
+}
 
 $counts = ['total'=>0, 'correct'=>0, 'missing'=>0, 'unsafe'=>0, 'main_inconsistencies'=>0];
 $check = static function (?string $path, string $scope) use (&$counts, $realRoot): void {
