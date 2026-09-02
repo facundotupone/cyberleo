@@ -36,7 +36,7 @@ assert_status() {
 assert_body_contains() {
     local id=$1
     local expected=$2
-    if ! LC_ALL=C rg --fixed-strings --quiet "$expected" "$HTTP_BODY"; then
+    if ! LC_ALL=C rg --fixed-strings --quiet -e "$expected" -- "$HTTP_BODY"; then
         fail "$id" "la respuesta no contiene <$expected>"
     fi
 }
@@ -44,7 +44,7 @@ assert_body_contains() {
 assert_body_excludes() {
     local id=$1
     local unexpected=$2
-    if LC_ALL=C rg --fixed-strings --quiet "$unexpected" "$HTTP_BODY"; then
+    if LC_ALL=C rg --fixed-strings --quiet -e "$unexpected" -- "$HTTP_BODY"; then
         fail "$id" "la respuesta contiene contenido inseguro <$unexpected>"
     fi
 }
