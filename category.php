@@ -38,8 +38,8 @@ if ($product_id) {
         exit;
     }
 
-    $products = $subcategory_id ? 
-        get_products_by_subcategory($category_id, $subcategory_id) : 
+    $products = $subcategory_id ?
+        get_products_by_subcategory($category_id, $subcategory_id) :
         get_products_by_category($category_id);
 }
 ?>
@@ -117,9 +117,9 @@ if ($product_id) {
                 <?php echo count($products); ?> producto<?php echo count($products) !== 1 ? 's' : ''; ?> encontrado<?php echo count($products) !== 1 ? 's' : ''; ?>
             </p>
         </div>
-        
+
         <!-- Filtros de subcategoría si existen -->
-        <?php if (!$subcategory_id): 
+        <?php if (!$subcategory_id):
             $subcategories = get_subcategories($category_id);
             if (!empty($subcategories)): ?>
         <div class="dropdown">
@@ -136,9 +136,9 @@ if ($product_id) {
         </div>
         <?php endif; endif; ?>
     </div>
-    
+
     <div id="cart-message"></div>
-    
+
     <div class="row g-4">
         <?php if (empty($products)): ?>
         <div class="col-12">
@@ -147,13 +147,13 @@ if ($product_id) {
             </div>
         </div>
         <?php else: ?>
-        <?php foreach ($products as $product): 
+        <?php foreach ($products as $product):
             // Obtener todas las imágenes del producto
             $stmt = $pdo->prepare("SELECT image_path FROM product_images WHERE product_id = ? ORDER BY is_main DESC");
-           
+
             $stmt->execute([$product['id']]);
             $images = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-            
+
             // Si no hay imágenes en product_images, usar la imagen de products como respaldo
             if (empty($images) && !empty($product['image'])) {
                 $images = [$product['image']];
@@ -173,8 +173,8 @@ if ($product_id) {
                                 <div class="carousel-inner h-100">
                                     <?php foreach($images as $index => $image): ?>
                                         <div class="carousel-item h-100 <?= $index === 0 ? 'active' : '' ?>">
-                                            <img src="<?= htmlspecialchars($image) ?>" 
-                                                 class="d-block w-100" 
+                                            <img src="<?= htmlspecialchars($image) ?>"
+                                                 class="d-block w-100"
                                                  alt="<?= htmlspecialchars($product['name']) ?>">
                                         </div>
                                     <?php endforeach; ?>
@@ -189,8 +189,8 @@ if ($product_id) {
                                 </button>
                             </div>
                         <?php else: ?>
-                            <img src="<?= htmlspecialchars($images[0]) ?>" 
-                                 class="single-product-image" 
+                            <img src="<?= htmlspecialchars($images[0]) ?>"
+                                 class="single-product-image"
                                  alt="<?= htmlspecialchars($product['name']) ?>">
                         <?php endif; ?>
                     <?php else: ?>
@@ -203,7 +203,7 @@ if ($product_id) {
                 <div class="card-body">
                     <h5 class="card-title"><?php echo htmlspecialchars($product['name']); ?></h5>
                     <div class="description-container">
-                        <?php 
+                        <?php
                         $full_description = htmlspecialchars($product['description']);
                         $short_description = mb_substr($full_description, 0, 200);
                         $has_more = strlen($full_description) > 200;
@@ -231,14 +231,14 @@ if ($product_id) {
                                 (Stock: <?php echo $product['stock']; ?>)
                             </small>
                         </div>
-                        <button class="btn btn-primary btn-sm add-to-cart" 
+                        <button class="btn btn-primary btn-sm add-to-cart"
                             data-product-id="<?php echo $product['id']; ?>"
                             data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
                             data-product-price="<?php echo (!empty($product['price_sale']) && $product['price_sale'] > 0) ? $product['price_sale'] : $product['price']; ?>"
                             data-product-stock="<?php echo $product['stock']; ?>"
                             data-product-stock-original="<?php echo $product['stock']; ?>"
                             <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
-                            <i class="bi bi-cart-plus"></i> 
+                            <i class="bi bi-cart-plus"></i>
                             <?php echo ($product['stock'] <= 0) ? 'Sin stock' : 'Agregar al carrito'; ?>
                         </button>
                     </div>
@@ -257,13 +257,13 @@ if ($product_id) {
                             target="_blank" title="Compartir en Facebook" class="btn btn-primary btn-sm rounded-circle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
                                 <i class="bi bi-facebook"></i>
                             </a>
-                            <a href="#" onclick="navigator.clipboard.writeText('<?= $shareUrl ?>'); 
-                               const toast = document.createElement('div'); 
-                               toast.className = 'alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3'; 
-                               toast.style.zIndex = '9999'; 
-                               toast.innerHTML = 'Link copiado al portapapeles'; 
-                               document.body.appendChild(toast); 
-                               setTimeout(() => toast.remove(), 2000); 
+                            <a href="#" onclick="navigator.clipboard.writeText('<?= $shareUrl ?>');
+                               const toast = document.createElement('div');
+                               toast.className = 'alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3';
+                               toast.style.zIndex = '9999';
+                               toast.innerHTML = 'Link copiado al portapapeles';
+                               document.body.appendChild(toast);
+                               setTimeout(() => toast.remove(), 2000);
                                return false;"
                             title="Copiar link para Instagram" class="btn btn-gradient btn-sm rounded-circle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%); color: white; border: none;">
                                 <i class="bi bi-instagram"></i>

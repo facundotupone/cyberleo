@@ -99,7 +99,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             </div>
         </div>
         <?php else: ?>
-        <?php foreach ($featured_products as $product): 
+        <?php foreach ($featured_products as $product):
             // Usar imágenes precargadas
             $images = isset($images_by_product[$product['id']]) ? $images_by_product[$product['id']] : [];
             if (empty($images) && !empty($product['image'])) {
@@ -120,8 +120,8 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                                 <div class="carousel-inner h-100">
                                     <?php foreach($images as $index => $image): ?>
                                         <div class="carousel-item h-100 <?= $index === 0 ? 'active' : '' ?>">
-                                            <img src="<?= htmlspecialchars($image) ?>" 
-                                                 class="d-block w-100" 
+                                            <img src="<?= htmlspecialchars($image) ?>"
+                                                 class="d-block w-100"
                                                  alt="<?= htmlspecialchars($product['name']) ?>"
                                                  loading="lazy">
                                         </div>
@@ -137,8 +137,8 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                                 </button>
                             </div>
                         <?php else: ?>
-                            <img src="<?= htmlspecialchars($images[0]) ?>" 
-                                 class="single-product-image" 
+                            <img src="<?= htmlspecialchars($images[0]) ?>"
+                                 class="single-product-image"
                                  alt="<?= htmlspecialchars($product['name']) ?>"
                                  loading="lazy">
                         <?php endif; ?>
@@ -158,10 +158,10 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                             </span>
                         </a>
                     </div>
-                    
+
                     <h5 class="card-title"><?php echo htmlspecialchars($product['name']); ?></h5>
                     <div class="description-container">
-                        <?php 
+                        <?php
                         $full_description = htmlspecialchars($product['description']);
                         $short_description = mb_substr($full_description, 0, 200);
                         $has_more = strlen($full_description) > 200;
@@ -189,14 +189,14 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                                 (Stock: <?php echo $product['stock']; ?>)
                             </small>
                         </div>
-                        <button class="btn btn-primary btn-sm add-to-cart" 
+                        <button class="btn btn-primary btn-sm add-to-cart"
                             data-product-id="<?php echo $product['id']; ?>"
                             data-product-name="<?php echo htmlspecialchars($product['name']); ?>"
                             data-product-price="<?php echo (!empty($product['price_sale']) && $product['price_sale'] > 0) ? $product['price_sale'] : $product['price']; ?>"
                             data-product-stock="<?php echo $product['stock']; ?>"
                             data-product-stock-original="<?php echo $product['stock']; ?>"
                             <?php echo ($product['stock'] <= 0) ? 'disabled' : ''; ?>>
-                            <i class="bi bi-cart-plus"></i> 
+                            <i class="bi bi-cart-plus"></i>
                             <?php echo ($product['stock'] <= 0) ? 'Sin stock' : 'Agregar al carrito'; ?>
                         </button>
                     </div>
@@ -215,13 +215,13 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                             target="_blank" title="Compartir en Facebook" class="btn btn-primary btn-sm rounded-circle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
                                 <i class="bi bi-facebook"></i>
                             </a>
-                            <a href="#" onclick="navigator.clipboard.writeText('<?= $shareUrl ?>'); 
-                               const toast = document.createElement('div'); 
-                               toast.className = 'alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3'; 
-                               toast.style.zIndex = '9999'; 
-                               toast.innerHTML = 'Link copiado al portapapeles'; 
-                               document.body.appendChild(toast); 
-                               setTimeout(() => toast.remove(), 2000); 
+                            <a href="#" onclick="navigator.clipboard.writeText('<?= $shareUrl ?>');
+                               const toast = document.createElement('div');
+                               toast.className = 'alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3';
+                               toast.style.zIndex = '9999';
+                               toast.innerHTML = 'Link copiado al portapapeles';
+                               document.body.appendChild(toast);
+                               setTimeout(() => toast.remove(), 2000);
                                return false;"
                             title="Copiar link para Instagram" class="btn btn-gradient btn-sm rounded-circle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%); color: white; border: none;">
                                 <i class="bi bi-instagram"></i>
@@ -234,9 +234,9 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         <?php endforeach; ?>
         <?php endif; ?>
         </section>
-        
+
         <section class="row mb-1 mt-4" aria-label="Categorías y subcategorías">
-            <?php foreach($categories as $category): 
+            <?php foreach($categories as $category):
                 $subcategories = isset($all_subcategories[$category['id']]) ? $all_subcategories[$category['id']] : [];
             ?>
             <div class="col-md-3 mb-3">
@@ -249,7 +249,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                         <div class="subcategories-container mb-3">
                             <?php if (!empty($subcategories)): ?>
                                 <?php foreach($subcategories as $subcategory): ?>
-                                    <a href="category.php?id=<?php echo $category['id']; ?>&sub=<?php echo $subcategory['id']; ?>" 
+                                    <a href="category.php?id=<?php echo $category['id']; ?>&sub=<?php echo $subcategory['id']; ?>"
                                     class="badge text-decoration-none m-1">
                                         <?php echo htmlspecialchars($subcategory['name']); ?>
                                     </a>
@@ -264,9 +264,9 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             </div>
             <?php endforeach; ?>
         </section>
-        
+
     </main>
-                    
+
     <?php require_once 'components/footer.php'; ?>
     <a href="cart.php" class="floating-cart">
         <i class="bi bi-cart" style="font-size: 24px;"></i>
@@ -290,7 +290,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 document.querySelectorAll('.add-to-cart').forEach(function(btn) {
                     var productId = btn.getAttribute('data-product-id');
                     var stockOriginal = parseInt(btn.getAttribute('data-product-stock-original'), 10);
-                    
+
                     // Sumar todas las cantidades del mismo producto.
                     let totalQuantity = 0;
                     cart.forEach(item => {
@@ -298,7 +298,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                             totalQuantity += parseInt(item.quantity) || 0;
                         }
                     });
-                    
+
                     let stockVisual = stockOriginal - totalQuantity;
                     btn.setAttribute('data-product-stock', stockVisual);
 
@@ -362,7 +362,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     }
                     localStorage.setItem('cart', JSON.stringify(cart));
                     updateCartCount();
-                    
+
                     // Mostrar mensaje de éxito
                     const notification = document.createElement('div');
                     notification.className = 'alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3';
@@ -435,7 +435,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             const fullDesc = container.querySelector('.full-description');
             const ellipsis = container.querySelector('.ellipsis');
             const isShowingFull = button.getAttribute('data-showing-full') === 'true';
-        
+
             if (isShowingFull) {
                 shortDesc.style.display = '';
                 ellipsis.style.display = '';
