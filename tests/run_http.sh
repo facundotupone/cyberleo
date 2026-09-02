@@ -2693,13 +2693,16 @@ assert_status H-SYSTEM5-AUTH 302
 pass H-SYSTEM5-AUTH
 
 HTTP_COOKIE="$ADMIN_COOKIE"
-request GET admin_login.php
-CSRF_TOKEN="$(csrf_from_body)"
-request POST admin_login.php \
-  --data-urlencode "csrf_token=$CSRF_TOKEN" \
-  --data-urlencode 'username=http-admin' \
-  --data-urlencode "password=$WINNING_PASSWORD"
 request GET admin_system.php
+if [[ "$HTTP_STATUS" == "302" ]]; then
+  request GET admin_login.php
+  CSRF_TOKEN="$(csrf_from_body)"
+  request POST admin_login.php \
+    --data-urlencode "csrf_token=$CSRF_TOKEN" \
+    --data-urlencode 'username=http-admin' \
+    --data-urlencode "password=$WINNING_PASSWORD"
+  request GET admin_system.php
+fi
 assert_status H-SYSTEM5-PANEL 200
 assert_body_contains H-SYSTEM5-PANEL 'Estado del sistema'
 assert_body_contains H-SYSTEM5-PANEL 'PASS'
