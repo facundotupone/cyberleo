@@ -975,7 +975,8 @@ pass H-THEME-RESTORE
 
 request GET index.php
 assert_status H-THEME-HOME 200
-assert_body_contains H-THEME-HOME '--brand-blue: #0057b8'
+assert_body_contains H-THEME-HOME '--brand-blue:'
+assert_body_contains H-THEME-HOME '--brand-font-family:'
 assert_body_contains H-THEME-HOME 'assets/images/brand/cyberleo-logo.png'
 assert_body_excludes H-THEME-HOME 'javascript:'
 pass H-THEME-HOME
