@@ -8,11 +8,13 @@ require_once 'includes/images.php';
 require_once 'includes/theme.php';
 require_once 'includes/home_content.php';
 require_once 'includes/catalog_display.php';
+require_once 'includes/checkout_display.php';
 
 $defaults = get_store_settings();
 $theme = resolve_theme_settings($defaults);
 $home = resolve_home_content_settings($defaults);
 $catalog = resolve_catalog_display_settings($defaults);
+$checkout = resolve_checkout_display_settings($defaults);
 $message = '';
 $messageType = 'info';
 $contrastWarnings = theme_contrast_warnings($theme);
@@ -66,6 +68,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($action === 'restore_checkout_display') {
+            $pdo->beginTransaction();
+            try {
+                restore_checkout_display_defaults($pdo);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            header('Location: admin_settings.php?checkout_restored=1');
+            exit;
+        }
+
         $name = trim($_POST['store_name'] ?? '');
         $whatsapp = preg_replace('/\D/', '', $_POST['whatsapp_number'] ?? '');
         if ($name === '' || mb_strlen($name) > 80 || strlen($whatsapp) < 8 || strlen($whatsapp) > 16) {
@@ -91,13 +106,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new PublicSettingsException(implode(' ', $catalogCollect['errors']));
         }
 
+        $checkoutCollect = collect_checkout_display_settings_from_post($_POST);
+        if ($checkoutCollect['errors']) {
+            throw new PublicSettingsException(implode(' ', $checkoutCollect['errors']));
+        }
+
         $heroTitle = sanitize_theme_plain_text((string) ($_POST['hero_title'] ?? ''), 140);
         $heroSubtitle = sanitize_theme_plain_text((string) ($_POST['hero_subtitle'] ?? ''), 240);
         if ($heroTitle === '' || $heroSubtitle === '') {
             throw new PublicSettingsException('Completá el título y el subtítulo de la portada.');
         }
 
-        $values = array_merge($themeCollect['values'], $homeCollect['values'], $catalogCollect['values'], [
+        $values = array_merge($themeCollect['values'], $homeCollect['values'], $catalogCollect['values'], $checkoutCollect['values'], [
             'store_name' => $name,
             'whatsapp_number' => $whatsapp,
             'instagram_url' => $instagram,
@@ -136,6 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
         $home = resolve_home_content_settings(array_merge($defaults, collect_home_content_settings_from_post($_POST)['values'] ?? []));
         $catalog = resolve_catalog_display_settings(array_merge($defaults, collect_catalog_display_settings_from_post($_POST)['values'] ?? []));
+        $checkout = resolve_checkout_display_settings(array_merge($defaults, collect_checkout_display_settings_from_post($_POST)['values'] ?? []));
         $contrastWarnings = theme_contrast_warnings($theme);
     } catch (InvalidArgumentException $e) {
         $message = $e->getMessage();
@@ -144,6 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
         $home = resolve_home_content_settings(array_merge($defaults, collect_home_content_settings_from_post($_POST)['values'] ?? []));
         $catalog = resolve_catalog_display_settings(array_merge($defaults, collect_catalog_display_settings_from_post($_POST)['values'] ?? []));
+        $checkout = resolve_checkout_display_settings(array_merge($defaults, collect_checkout_display_settings_from_post($_POST)['values'] ?? []));
         $contrastWarnings = theme_contrast_warnings($theme);
     } catch (Throwable $e) {
         error_log('admin_settings: ' . $e->getMessage());
@@ -153,6 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
         $home = resolve_home_content_settings(array_merge($defaults, collect_home_content_settings_from_post($_POST)['values'] ?? []));
         $catalog = resolve_catalog_display_settings(array_merge($defaults, collect_catalog_display_settings_from_post($_POST)['values'] ?? []));
+        $checkout = resolve_checkout_display_settings(array_merge($defaults, collect_checkout_display_settings_from_post($_POST)['values'] ?? []));
         $contrastWarnings = theme_contrast_warnings($theme);
     }
 }
@@ -167,6 +190,7 @@ if (isset($_GET['restored'])) {
     $theme = resolve_theme_settings($defaults);
     $home = resolve_home_content_settings($defaults);
     $catalog = resolve_catalog_display_settings($defaults);
+    $checkout = resolve_checkout_display_settings($defaults);
     $contrastWarnings = theme_contrast_warnings($theme);
 }
 if (isset($_GET['home_restored'])) {
@@ -176,6 +200,7 @@ if (isset($_GET['home_restored'])) {
     $theme = resolve_theme_settings($defaults);
     $home = resolve_home_content_settings($defaults);
     $catalog = resolve_catalog_display_settings($defaults);
+    $checkout = resolve_checkout_display_settings($defaults);
     $contrastWarnings = theme_contrast_warnings($theme);
 }
 if (isset($_GET['catalog_restored'])) {
@@ -185,6 +210,17 @@ if (isset($_GET['catalog_restored'])) {
     $theme = resolve_theme_settings($defaults);
     $home = resolve_home_content_settings($defaults);
     $catalog = resolve_catalog_display_settings($defaults);
+    $checkout = resolve_checkout_display_settings($defaults);
+    $contrastWarnings = theme_contrast_warnings($theme);
+}
+if (isset($_GET['checkout_restored'])) {
+    $message = 'Carrito y pedido restaurados. Se conservaron identidad visual, portada, catálogo y datos comerciales.';
+    $messageType = 'success';
+    $defaults = get_store_settings();
+    $theme = resolve_theme_settings($defaults);
+    $home = resolve_home_content_settings($defaults);
+    $catalog = resolve_catalog_display_settings($defaults);
+    $checkout = resolve_checkout_display_settings($defaults);
     $contrastWarnings = theme_contrast_warnings($theme);
 }
 
@@ -212,6 +248,8 @@ $imageFitOptions = ['contain' => 'Contain (completa)', 'cover' => 'Cover (recort
 $descModeOptions = ['hidden' => 'Oculta', 'compact' => 'Compacta', 'expandable' => 'Expandible'];
 $descLenOptions = ['100' => '100', '160' => '160', '200' => '200', '300' => '300'];
 $columnOptions = ['2' => '2', '3' => '3', '4' => '4'];
+$cartLayoutOptions = ['standard' => 'Estándar', 'compact' => 'Compacto'];
+$cartImageSizeOptions = ['compact' => 'Compacta', 'normal' => 'Normal', 'large' => 'Grande'];
 $iconLabels = [
     'bi-truck' => 'Envío',
     'bi-shield-check' => 'Seguridad',
@@ -773,6 +811,197 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
                     <input class="form-control" id="product_out_of_stock_text" name="product_out_of_stock_text" maxlength="30" value="<?= htmlspecialchars($catalog['product_out_of_stock_text']) ?>">
                 </div>
             </div>
+
+            <hr>
+            <h2 class="h4 mb-3" id="checkout-display-heading">Carrito y pedido</h2>
+            <p class="text-muted small">Personalizá textos, resumen comercial y el mensaje de WhatsApp. Sin HTML, CSS ni JavaScript personalizados. WhatsApp, pagos y minutos de reserva siguen en Datos comerciales.</p>
+            <div class="row g-3 mb-4">
+                <div class="col-12"><h3 class="h6 mb-0">Textos del carrito</h3></div>
+                <div class="col-md-6">
+                    <label class="form-label" for="cart_page_title">Título de página</label>
+                    <input class="form-control" id="cart_page_title" name="cart_page_title" maxlength="80" value="<?= htmlspecialchars($checkout['cart_page_title']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="cart_items_title">Título de productos</label>
+                    <input class="form-control" id="cart_items_title" name="cart_items_title" maxlength="80" value="<?= htmlspecialchars($checkout['cart_items_title']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="cart_summary_title">Título del resumen</label>
+                    <input class="form-control" id="cart_summary_title" name="cart_summary_title" maxlength="80" value="<?= htmlspecialchars($checkout['cart_summary_title']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="cart_total_label">Etiqueta de total</label>
+                    <input class="form-control" id="cart_total_label" name="cart_total_label" maxlength="40" value="<?= htmlspecialchars($checkout['cart_total_label']) ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="cart_empty_title">Título vacío</label>
+                    <input class="form-control" id="cart_empty_title" name="cart_empty_title" maxlength="80" value="<?= htmlspecialchars($checkout['cart_empty_title']) ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="cart_empty_text">Texto vacío</label>
+                    <input class="form-control" id="cart_empty_text" name="cart_empty_text" maxlength="160" value="<?= htmlspecialchars($checkout['cart_empty_text']) ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="cart_empty_button_text">Botón vacío</label>
+                    <input class="form-control" id="cart_empty_button_text" name="cart_empty_button_text" maxlength="60" value="<?= htmlspecialchars($checkout['cart_empty_button_text']) ?>">
+                </div>
+
+                <div class="col-12"><h3 class="h6 mb-0 mt-2">Entrega y pagos</h3></div>
+                <div class="col-md-6">
+                    <label class="form-label" for="cart_delivery_title">Título de envío</label>
+                    <input class="form-control" id="cart_delivery_title" name="cart_delivery_title" maxlength="80" value="<?= htmlspecialchars($checkout['cart_delivery_title']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="cart_delivery_methods_title">Título formas de entrega</label>
+                    <input class="form-control" id="cart_delivery_methods_title" name="cart_delivery_methods_title" maxlength="80" value="<?= htmlspecialchars($checkout['cart_delivery_methods_title']) ?>">
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="cart_delivery_text">Texto de envío</label>
+                    <textarea class="form-control" id="cart_delivery_text" name="cart_delivery_text" rows="2" maxlength="280"><?= htmlspecialchars($checkout['cart_delivery_text']) ?></textarea>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label" for="cart_delivery_methods">Formas de entrega (separadas por comas)</label>
+                    <input class="form-control" id="cart_delivery_methods" name="cart_delivery_methods" maxlength="500" value="<?= htmlspecialchars($checkout['cart_delivery_methods']) ?>" placeholder="Retiro en local, Envío a domicilio">
+                    <small class="text-muted">Máximo 8 opciones, 50 caracteres c/u, sin duplicados.</small>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="cart_payment_title">Título de pagos</label>
+                    <input class="form-control" id="cart_payment_title" name="cart_payment_title" maxlength="80" value="<?= htmlspecialchars($checkout['cart_payment_title']) ?>">
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="cart_payment_note">Nota de pagos</label>
+                    <input class="form-control" id="cart_payment_note" name="cart_payment_note" maxlength="160" value="<?= htmlspecialchars($checkout['cart_payment_note']) ?>">
+                    <small class="text-muted">Los métodos de pago se editan arriba en Datos comerciales (<code>payment_methods</code>).</small>
+                </div>
+                <div class="col-12">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="cart_show_delivery_info" name="cart_show_delivery_info" value="1"<?= $checkout['cart_show_delivery_info'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_show_delivery_info">Mostrar info de envío</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="cart_show_delivery_methods" name="cart_show_delivery_methods" value="1"<?= $checkout['cart_show_delivery_methods'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_show_delivery_methods">Mostrar formas de entrega</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="cart_show_payment_methods" name="cart_show_payment_methods" value="1"<?= $checkout['cart_show_payment_methods'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_show_payment_methods">Mostrar métodos de pago</label>
+                    </div>
+                </div>
+
+                <div class="col-12"><h3 class="h6 mb-0 mt-2">Botones y estados</h3></div>
+                <div class="col-md-6">
+                    <label class="form-label" for="cart_order_button_text">Botón de pedido</label>
+                    <input class="form-control" id="cart_order_button_text" name="cart_order_button_text" maxlength="60" value="<?= htmlspecialchars($checkout['cart_order_button_text']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="cart_continue_button_text">Seguir comprando</label>
+                    <input class="form-control" id="cart_continue_button_text" name="cart_continue_button_text" maxlength="60" value="<?= htmlspecialchars($checkout['cart_continue_button_text']) ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="cart_available_text">Texto disponible</label>
+                    <input class="form-control" id="cart_available_text" name="cart_available_text" maxlength="40" value="<?= htmlspecialchars($checkout['cart_available_text']) ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="cart_stock_template">Plantilla sin stock</label>
+                    <input class="form-control" id="cart_stock_template" name="cart_stock_template" maxlength="80" value="<?= htmlspecialchars($checkout['cart_stock_template']) ?>">
+                    <small class="text-muted">Placeholder: <code>{stock}</code></small>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="cart_registering_text">Registrando…</label>
+                    <input class="form-control" id="cart_registering_text" name="cart_registering_text" maxlength="80" value="<?= htmlspecialchars($checkout['cart_registering_text']) ?>">
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="cart_success_template">Plantilla de éxito</label>
+                    <input class="form-control" id="cart_success_template" name="cart_success_template" maxlength="180" value="<?= htmlspecialchars($checkout['cart_success_template']) ?>">
+                    <small class="text-muted">Placeholder obligatorio: <code>{order_id}</code></small>
+                </div>
+
+                <div class="col-12"><h3 class="h6 mb-0 mt-2">Imágenes y diseño</h3></div>
+                <div class="col-md-4 col-6">
+                    <label class="form-label" for="cart_layout">Diseño</label>
+                    <select class="form-select" id="cart_layout" name="cart_layout">
+                        <?php foreach ($cartLayoutOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $checkout['cart_layout'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4 col-6">
+                    <label class="form-label" for="cart_image_fit">Ajuste de imagen</label>
+                    <select class="form-select" id="cart_image_fit" name="cart_image_fit">
+                        <?php foreach ($imageFitOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $checkout['cart_image_fit'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4 col-6">
+                    <label class="form-label" for="cart_image_size">Tamaño de imagen</label>
+                    <select class="form-select" id="cart_image_size" name="cart_image_size">
+                        <?php foreach ($cartImageSizeOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $checkout['cart_image_size'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="cart_show_images" name="cart_show_images" value="1"<?= $checkout['cart_show_images'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_show_images">Mostrar imágenes</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="cart_show_sale_badge" name="cart_show_sale_badge" value="1"<?= $checkout['cart_show_sale_badge'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_show_sale_badge">Badge de liquidación</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="cart_show_old_price" name="cart_show_old_price" value="1"<?= $checkout['cart_show_old_price'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_show_old_price">Precio anterior</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="cart_show_stock_status" name="cart_show_stock_status" value="1"<?= $checkout['cart_show_stock_status'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_show_stock_status">Estado de stock</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="cart_summary_sticky" name="cart_summary_sticky" value="1"<?= $checkout['cart_summary_sticky'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_summary_sticky">Resumen sticky</label>
+                    </div>
+                </div>
+
+                <div class="col-12"><h3 class="h6 mb-0 mt-2">Reserva</h3></div>
+                <div class="col-12">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="cart_show_reservation_note" name="cart_show_reservation_note" value="1"<?= $checkout['cart_show_reservation_note'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_show_reservation_note">Mostrar nota de reserva</label>
+                    </div>
+                    <label class="form-label" for="cart_reservation_text">Texto de reserva</label>
+                    <input class="form-control" id="cart_reservation_text" name="cart_reservation_text" maxlength="200" value="<?= htmlspecialchars($checkout['cart_reservation_text']) ?>">
+                    <small class="text-muted">Placeholder obligatorio: <code>{minutes}</code>. Los minutos salen de Datos comerciales.</small>
+                </div>
+
+                <div class="col-12"><h3 class="h6 mb-0 mt-2">Términos comerciales</h3></div>
+                <div class="col-12">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="cart_terms_enabled" name="cart_terms_enabled" value="1"<?= $checkout['cart_terms_enabled'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="cart_terms_enabled">Mostrar condiciones comerciales</label>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label" for="cart_terms_text">Texto de condiciones</label>
+                    <input class="form-control" id="cart_terms_text" name="cart_terms_text" maxlength="280" value="<?= htmlspecialchars($checkout['cart_terms_text']) ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="cart_terms_url">URL relativa de condiciones</label>
+                    <input class="form-control" id="cart_terms_url" name="cart_terms_url" maxlength="180" value="<?= htmlspecialchars($checkout['cart_terms_url']) ?>" placeholder="terminos.php">
+                    <small class="text-muted">Solo rutas locales seguras. Sin <code>javascript:</code>, <code>data:</code> ni URLs absolutas.</small>
+                </div>
+
+                <div class="col-12"><h3 class="h6 mb-0 mt-2">Plantilla de WhatsApp</h3></div>
+                <div class="col-12">
+                    <label class="form-label" for="order_whatsapp_template">Mensaje del pedido</label>
+                    <textarea class="form-control font-monospace" id="order_whatsapp_template" name="order_whatsapp_template" rows="6" maxlength="800"><?= htmlspecialchars($checkout['order_whatsapp_template']) ?></textarea>
+                    <small class="text-muted d-block mt-1">
+                        Permitidos: <code>{store_name}</code> (opcional), <code>{order_id}</code>, <code>{items}</code>, <code>{total}</code> (obligatorios una sola vez).
+                        El mensaje usa datos del pedido guardado, no del navegador. No se envían mensajes reales desde el panel.
+                    </small>
+                </div>
+            </div>
         </div>
         <div class="card-footer bg-white d-flex flex-wrap gap-2 justify-content-between">
             <button type="submit" class="btn btn-primary"><i class="bi bi-save" aria-hidden="true"></i> Guardar cambios</button>
@@ -795,6 +1024,11 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
             <?= csrf_input() ?>
             <input type="hidden" name="settings_action" value="restore_catalog_display">
             <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Restaurar catálogo predeterminado</button>
+        </form>
+        <form method="post" id="restore-checkout-display-form">
+            <?= csrf_input() ?>
+            <input type="hidden" name="settings_action" value="restore_checkout_display">
+            <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Restaurar carrito y pedido</button>
         </form>
     </div>
 
@@ -894,6 +1128,74 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
                 </div>
             </div>
             <p class="small text-muted mb-0">Columnas destacados: <strong id="catalog-preview-featured-cols">3</strong> · Catálogo: <strong id="catalog-preview-catalog-cols">3</strong> · Fit: <span id="catalog-preview-fit">contain</span> · Altura: <span id="catalog-preview-height">normal</span></p>
+
+            <h3 class="h6 mt-4">Carrito y pedido</h3>
+            <p class="small text-muted mb-2" id="checkout-preview-meta">Vista previa del carrito</p>
+            <div id="checkout-preview-card" class="checkout-preview-card border rounded p-3 mb-3 bg-white">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <strong id="checkout-preview-page-title">Carrito de Compras</strong>
+                    <span id="checkout-preview-sticky-flag" class="badge bg-secondary" hidden>Sticky</span>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-7">
+                        <div class="small text-muted mb-1" id="checkout-preview-items-title">Productos en tu carrito</div>
+                        <div class="d-flex gap-2 align-items-start border rounded p-2">
+                            <div id="checkout-preview-image-wrap" class="checkout-preview-image-wrap flex-shrink-0">
+                                <div id="checkout-preview-image" class="checkout-preview-image-sim" aria-hidden="true"></div>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex flex-wrap gap-1 align-items-center mb-1">
+                                    <span id="checkout-preview-sale-badge" class="badge bg-danger">LIQUIDACIÓN</span>
+                                    <strong id="checkout-preview-product-name">Producto de ejemplo</strong>
+                                </div>
+                                <div class="small mb-1">
+                                    <span id="checkout-preview-old-price" class="text-decoration-line-through text-muted me-1">$150.000,00</span>
+                                    <span id="checkout-preview-price" class="fw-bold text-danger">$129.999,00</span>
+                                </div>
+                                <div class="small">Cant: <span id="checkout-preview-qty">2</span> · Subtotal: <span id="checkout-preview-subtotal">$259.998,00</span></div>
+                                <div id="checkout-preview-stock-wrap" class="small mt-1">
+                                    <span id="checkout-preview-available" class="text-success me-2">Disponible</span>
+                                    <span id="checkout-preview-stock" class="text-danger">Solo 3 disponibles</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="border rounded p-2 mt-2 text-center text-muted">
+                            <div id="checkout-preview-empty-title">Tu carrito está vacío</div>
+                            <div class="small" id="checkout-preview-empty-text">Agrega algunos productos para comenzar</div>
+                            <span class="btn btn-sm btn-outline-primary mt-2" id="checkout-preview-empty-btn">Explorar productos</span>
+                        </div>
+                    </div>
+                    <div class="col-md-5">
+                        <div class="small text-muted mb-1" id="checkout-preview-summary-title">Resumen del pedido</div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span id="checkout-preview-total-label">Total:</span>
+                            <strong id="checkout-preview-total-value">$259.998,00</strong>
+                        </div>
+                        <div id="checkout-preview-delivery" class="small mb-2">
+                            <strong id="checkout-preview-delivery-title">Información de envío</strong>
+                            <div id="checkout-preview-delivery-text" class="text-muted"></div>
+                            <div id="checkout-preview-delivery-methods-wrap">
+                                <div id="checkout-preview-delivery-methods-title" class="mt-1">Formas de entrega:</div>
+                                <ul id="checkout-preview-delivery-methods" class="mb-0 ps-3"></ul>
+                            </div>
+                        </div>
+                        <div id="checkout-preview-payment" class="small mb-2">
+                            <strong id="checkout-preview-payment-title">Métodos de pago:</strong>
+                            <ul id="checkout-preview-payment-methods" class="mb-1 ps-3"></ul>
+                            <div id="checkout-preview-payment-note" class="text-muted"></div>
+                        </div>
+                        <div id="checkout-preview-reservation" class="small text-muted mb-2"></div>
+                        <div id="checkout-preview-terms-wrap" class="small mb-2" hidden>
+                            <span id="checkout-preview-terms"></span>
+                            <a id="checkout-preview-terms-link" href="#" rel="noopener noreferrer" target="_blank">Ver más</a>
+                        </div>
+                        <button type="button" class="btn btn-success btn-sm w-100 mb-1" id="checkout-preview-order-btn-el" disabled aria-disabled="true">
+                            <span id="checkout-preview-order-btn">Enviar Pedido por WhatsApp</span>
+                        </button>
+                        <span class="btn btn-outline-primary btn-sm w-100" id="checkout-preview-continue-btn">Seguir Comprando</span>
+                    </div>
+                </div>
+            </div>
             <p class="small text-muted mt-2 mb-0">La vista previa no guarda cambios. Usá “Guardar cambios” para persistir.</p>
         </div>
     </section>
@@ -904,5 +1206,6 @@ window.THEME_PREVIEW_BOOT = <?= json_encode($previewPayload, JSON_HEX_TAG | JSON
 <script src="<?= htmlspecialchars('assets/js/theme-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
 <script src="<?= htmlspecialchars('assets/js/home-content-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
 <script src="<?= htmlspecialchars('assets/js/catalog-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
+<script src="<?= htmlspecialchars('assets/js/checkout-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
 </body>
 </html>

@@ -19,12 +19,19 @@ function enforce_order_rate_limit(PDO $pdo) {
     } finally { $pdo->prepare('DO RELEASE_LOCK(?)')->execute([$lockName]); }
 }
 function order_whatsapp_url(PDO $pdo, $orderId, $settings) {
+    require_once __DIR__ . '/checkout_display.php';
     $stmt = $pdo->prepare('SELECT product_name, unit_price, quantity FROM order_items WHERE order_id = ?');
-    $stmt->execute([$orderId]); $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if (!$items) return null;
-    $message = "Hola {$settings['store_name']}, quiero confirmar el pedido #{$orderId}:\n\n"; $total = 0;
-    foreach ($items as $item) { $subtotal = $item['unit_price'] * $item['quantity']; $total += $subtotal; $message .= "{$item['product_name']} x {$item['quantity']} = $" . number_format($subtotal, 2, ',', '.') . "\n"; }
-    return 'https://wa.me/' . $settings['whatsapp_number'] . '?text=' . rawurlencode($message . "\nTotal: $" . number_format($total, 2, ',', '.'));
+    $stmt->execute([$orderId]);
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$items) {
+        return null;
+    }
+    $message = checkout_build_whatsapp_message($items, $orderId, is_array($settings) ? $settings : []);
+    if ($message === null || $message === '') {
+        return null;
+    }
+    $number = is_array($settings) ? (string) ($settings['whatsapp_number'] ?? '') : '';
+    return checkout_build_whatsapp_url($number, $message);
 }
 function restore_order_stock(PDO $pdo, $orderId) {
     $items = $pdo->prepare('SELECT product_id, quantity FROM order_items WHERE order_id = ?');

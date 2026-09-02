@@ -251,6 +251,42 @@ settings_form() {
         -F 'catalog_show_breadcrumbs=1' \
         -F 'catalog_show_product_count=1' \
         -F 'catalog_show_subcategory_filter=1' \
+        -F 'cart_page_title=Carrito de Compras' \
+        -F 'cart_items_title=Productos en tu carrito' \
+        -F 'cart_summary_title=Resumen del pedido' \
+        -F 'cart_total_label=Total:' \
+        -F 'cart_delivery_title=Información de envío' \
+        -F 'cart_delivery_text=Envíanos tu consulta y te responderemos a la brevedad para coordinar envío o retiro.' \
+        -F 'cart_delivery_methods_title=Formas de entrega:' \
+        -F 'cart_delivery_methods=' \
+        -F 'cart_payment_title=Métodos de pago:' \
+        -F 'cart_payment_note=Abonas al recibir tu pedido' \
+        -F 'cart_order_button_text=Enviar Pedido por WhatsApp' \
+        -F 'cart_continue_button_text=Seguir Comprando' \
+        -F 'cart_empty_title=Tu carrito está vacío' \
+        -F 'cart_empty_text=Agrega algunos productos para comenzar' \
+        -F 'cart_empty_button_text=Explorar productos' \
+        -F 'cart_available_text=Disponible' \
+        -F 'cart_stock_template=Solo {stock} disponibles' \
+        -F 'cart_registering_text=Registrando pedido...' \
+        -F 'cart_success_template=Pedido #{order_id} registrado. Te llevamos a WhatsApp para coordinarlo.' \
+        -F 'cart_reservation_text=El stock se reserva durante {minutes} minutos después de registrar el pedido.' \
+        -F 'order_whatsapp_template=Hola {store_name}, quiero confirmar el pedido #{order_id}:
+
+{items}
+
+Total: {total}' \
+        -F 'cart_layout=standard' \
+        -F 'cart_image_fit=cover' \
+        -F 'cart_image_size=normal' \
+        -F 'cart_show_images=1' \
+        -F 'cart_show_sale_badge=1' \
+        -F 'cart_show_old_price=1' \
+        -F 'cart_show_stock_status=1' \
+        -F 'cart_show_delivery_info=1' \
+        -F 'cart_show_payment_methods=1' \
+        -F 'cart_terms_text=' \
+        -F 'cart_terms_url=' \
         "$@"
 }
 cli_env=(
@@ -2167,6 +2203,354 @@ assert_body_contains H-CATALOG3-CART 'data-oos-text="Agotado"'
 assert_body_contains H-CATALOG3-CART 'data-product-id='
 assert_body_contains H-CATALOG3-CART 'data-product-price='
 pass H-CATALOG3-CART
+
+printf 'Pruebas HTTP Etapa 4 (carrito / checkout)...\n'
+settings_form 'HTTP Test Store'
+assert_status H-CHECKOUT4-DEFAULT-RESET 302
+pass H-CHECKOUT4-DEFAULT-RESET
+
+request GET cart.php
+assert_status H-CHECKOUT4-DEFAULT 200
+assert_body_contains H-CHECKOUT4-DEFAULT 'Carrito de Compras'
+assert_body_contains H-CHECKOUT4-DEFAULT 'Productos en tu carrito'
+assert_body_contains H-CHECKOUT4-DEFAULT 'Resumen del pedido'
+assert_body_contains H-CHECKOUT4-DEFAULT 'Enviar Pedido por WhatsApp'
+assert_body_contains H-CHECKOUT4-DEFAULT 'assets/js/cart-checkout.js'
+assert_body_contains H-CHECKOUT4-DEFAULT 'cart-checkout-boot'
+assert_body_contains H-CHECKOUT4-DEFAULT 'cart-layout-standard'
+assert_body_contains H-CHECKOUT4-DEFAULT 'Información de envío'
+assert_body_contains H-CHECKOUT4-DEFAULT 'Métodos de pago'
+assert_body_excludes H-CHECKOUT4-DEFAULT 'cart-reservation-note'
+pass H-CHECKOUT4-DEFAULT
+
+request GET admin_settings.php
+assert_status H-CHECKOUT4-ADMIN 200
+assert_body_contains H-CHECKOUT4-ADMIN 'Carrito y pedido'
+assert_body_contains H-CHECKOUT4-ADMIN 'checkout-preview-card'
+assert_body_contains H-CHECKOUT4-ADMIN 'assets/js/checkout-preview.js'
+assert_body_contains H-CHECKOUT4-ADMIN 'Restaurar carrito y pedido'
+pass H-CHECKOUT4-ADMIN
+
+settings_form 'HTTP Checkout Alt' \
+    -F 'cart_page_title=Carrito Alt' \
+    -F 'cart_items_title=Items Alt' \
+    -F 'cart_summary_title=Resumen Alt' \
+    -F 'cart_total_label=Importe:' \
+    -F 'cart_order_button_text=Pedir por WhatsApp' \
+    -F 'cart_continue_button_text=Volver al catálogo' \
+    -F 'cart_layout=compact' \
+    -F 'cart_image_fit=contain' \
+    -F 'cart_image_size=large' \
+    -F 'cart_show_images=1' \
+    -F 'cart_show_sale_badge=1' \
+    -F 'cart_show_old_price=1' \
+    -F 'cart_show_stock_status=1' \
+    -F 'cart_show_delivery_info=1' \
+    -F 'cart_show_delivery_methods=1' \
+    -F 'cart_delivery_methods=Retiro en local, Envío a domicilio' \
+    -F 'cart_show_payment_methods=1' \
+    -F 'cart_show_reservation_note=1' \
+    -F 'cart_summary_sticky=1' \
+    -F 'cart_terms_enabled=1' \
+    -F 'cart_terms_text=Condiciones de compra aplicables' \
+    -F 'cart_terms_url=terminos.php' \
+    -F 'cart_reservation_text=Reserva por {minutes} minutos.' \
+    -F 'order_whatsapp_template=Pedido #{order_id}
+
+{items}
+
+Total: {total}
+
+Tienda: {store_name}'
+assert_status H-CHECKOUT4-SAVE 302
+assert_sql H-CHECKOUT4-SAVE 'Carrito Alt' "SELECT setting_value FROM store_settings WHERE setting_key='cart_page_title'"
+assert_sql H-CHECKOUT4-SAVE 'compact' "SELECT setting_value FROM store_settings WHERE setting_key='cart_layout'"
+assert_sql H-CHECKOUT4-SAVE '1' "SELECT setting_value FROM store_settings WHERE setting_key='cart_show_delivery_methods'"
+assert_sql H-CHECKOUT4-SAVE '1' "SELECT setting_value FROM store_settings WHERE setting_key='cart_show_reservation_note'"
+assert_sql H-CHECKOUT4-SAVE '1' "SELECT setting_value FROM store_settings WHERE setting_key='cart_terms_enabled'"
+pass H-CHECKOUT4-SAVE
+
+request GET cart.php
+assert_status H-CHECKOUT4-ALT 200
+assert_body_contains H-CHECKOUT4-ALT 'Carrito Alt'
+assert_body_contains H-CHECKOUT4-ALT 'Items Alt'
+assert_body_contains H-CHECKOUT4-ALT 'Resumen Alt'
+assert_body_contains H-CHECKOUT4-ALT 'Importe:'
+assert_body_contains H-CHECKOUT4-ALT 'Pedir por WhatsApp'
+assert_body_contains H-CHECKOUT4-ALT 'cart-layout-compact'
+assert_body_contains H-CHECKOUT4-ALT 'cart-summary-sticky'
+assert_body_contains H-CHECKOUT4-ALT 'Retiro en local'
+assert_body_contains H-CHECKOUT4-ALT 'Envío a domicilio'
+assert_body_contains H-CHECKOUT4-ALT 'Reserva por'
+assert_body_contains H-CHECKOUT4-ALT 'Condiciones de compra aplicables'
+assert_body_contains H-CHECKOUT4-ALT 'terminos.php'
+pass H-CHECKOUT4-ALT
+
+settings_form 'HTTP Checkout Alt' \
+    -F 'cart_page_title=Carrito Oculto' \
+    -F 'cart_show_images=0' \
+    -F 'cart_show_sale_badge=0' \
+    -F 'cart_show_old_price=0' \
+    -F 'cart_show_stock_status=0' \
+    -F 'cart_show_delivery_info=0' \
+    -F 'cart_show_payment_methods=0' \
+    -F 'cart_show_reservation_note=0' \
+    -F 'cart_terms_enabled=0' \
+    -F 'cart_layout=standard'
+assert_status H-CHECKOUT4-HIDDEN-SAVE 302
+request GET cart.php
+assert_status H-CHECKOUT4-HIDDEN 200
+assert_body_contains H-CHECKOUT4-HIDDEN 'Carrito Oculto'
+assert_body_excludes H-CHECKOUT4-HIDDEN 'cart-delivery-block'
+assert_body_excludes H-CHECKOUT4-HIDDEN 'cart-payment-block'
+assert_body_excludes H-CHECKOUT4-HIDDEN 'cart-reservation-note'
+assert_body_excludes H-CHECKOUT4-HIDDEN 'cart-terms-block'
+pass H-CHECKOUT4-HIDDEN
+
+PREV_TITLE="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='cart_page_title'")"
+settings_form 'HTTP Checkout Alt' \
+    -F 'cart_page_title=No Debe Guardarse' \
+    -F 'cart_layout=neon'
+assert_status H-CHECKOUT4-BAD-OPTION 200
+assert_body_contains H-CHECKOUT4-BAD-OPTION 'Opción inválida'
+assert_sql H-CHECKOUT4-BAD-OPTION "$PREV_TITLE" "SELECT setting_value FROM store_settings WHERE setting_key='cart_page_title'"
+pass H-CHECKOUT4-BAD-OPTION
+
+PREV_SHOW="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='cart_show_images'")"
+settings_form 'HTTP Checkout Alt' \
+    -F 'cart_page_title=No Bool' \
+    -F 'cart_show_images=banana'
+assert_status H-CHECKOUT4-BAD-BOOLEAN 200
+assert_body_contains H-CHECKOUT4-BAD-BOOLEAN 'Booleano inválido'
+assert_body_excludes H-CHECKOUT4-BAD-BOOLEAN 'SQLSTATE'
+assert_body_excludes H-CHECKOUT4-BAD-BOOLEAN '/workspace/'
+assert_body_excludes H-CHECKOUT4-BAD-BOOLEAN 'Stack trace'
+assert_sql H-CHECKOUT4-BAD-BOOLEAN "$PREV_SHOW" "SELECT setting_value FROM store_settings WHERE setting_key='cart_show_images'"
+assert_sql H-CHECKOUT4-BAD-BOOLEAN "$PREV_TITLE" "SELECT setting_value FROM store_settings WHERE setting_key='cart_page_title'"
+pass H-CHECKOUT4-BAD-BOOLEAN
+
+settings_form 'HTTP Checkout Alt' \
+    -F 'cart_page_title=No Template' \
+    --form-string 'order_whatsapp_template=Hola {order_id} sin items ni total'
+assert_status H-CHECKOUT4-BAD-TEMPLATE 200
+assert_body_contains H-CHECKOUT4-BAD-TEMPLATE 'Plantilla de WhatsApp inválido'
+assert_sql H-CHECKOUT4-BAD-TEMPLATE "$PREV_TITLE" "SELECT setting_value FROM store_settings WHERE setting_key='cart_page_title'"
+pass H-CHECKOUT4-BAD-TEMPLATE
+
+settings_form 'HTTP Checkout Alt' \
+    -F 'cart_page_title=No URL' \
+    -F 'cart_terms_enabled=1' \
+    -F 'cart_terms_text=Leé los términos' \
+    -F 'cart_terms_url=javascript:alert(1)'
+assert_status H-CHECKOUT4-BAD-URL 200
+assert_body_contains H-CHECKOUT4-BAD-URL 'URL de términos inválido'
+assert_sql H-CHECKOUT4-BAD-URL "$PREV_TITLE" "SELECT setting_value FROM store_settings WHERE setting_key='cart_page_title'"
+pass H-CHECKOUT4-BAD-URL
+
+settings_form 'HTTP XSS Checkout' \
+    --form-string 'cart_page_title=<script>globalThis.checkoutXssExecuted=1</script>XSS Cart' \
+    --form-string 'cart_delivery_text=<img src=x onerror=globalThis.checkoutXssExecuted=2>Envío' \
+    --form-string 'cart_order_button_text=<svg onload=globalThis.checkoutXssExecuted=3>WA' \
+    -F 'cart_show_images=1' \
+    -F 'cart_show_delivery_info=1' \
+    -F 'cart_show_payment_methods=1' \
+    -F 'cart_layout=standard'
+assert_status H-CHECKOUT4-XSS-SAVE 302
+request GET cart.php
+assert_status H-CHECKOUT4-XSS 200
+assert_body_excludes H-CHECKOUT4-XSS '<script>globalThis.checkoutXssExecuted=1</script>'
+assert_body_excludes H-CHECKOUT4-XSS '<img src=x onerror=globalThis.checkoutXssExecuted'
+assert_body_excludes H-CHECKOUT4-XSS 'onerror="'
+assert_body_contains H-CHECKOUT4-XSS 'XSS Cart'
+assert_body_contains H-CHECKOUT4-XSS '&lt;script&gt;'
+pass H-CHECKOUT4-XSS
+
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+sql "UPDATE store_settings SET setting_value='compact' WHERE setting_key='cart_layout'"
+request POST admin_settings.php \
+    -F 'csrf_token=invalid' \
+    -F 'settings_action=restore_checkout_display'
+assert_status H-CHECKOUT4-RESTORE-CSRF 403
+assert_sql H-CHECKOUT4-RESTORE-CSRF 'compact' "SELECT setting_value FROM store_settings WHERE setting_key='cart_layout'"
+pass H-CHECKOUT4-RESTORE-CSRF
+
+sql "UPDATE store_settings SET setting_value='#fedcba' WHERE setting_key='brand_primary_color'"
+sql "UPDATE store_settings SET setting_value='Footer Keep Checkout' WHERE setting_key='footer_description'"
+sql "UPDATE store_settings SET setting_value='4' WHERE setting_key='featured_columns'"
+sql "UPDATE store_settings SET setting_value='5491199988877' WHERE setting_key='whatsapp_number'"
+sql "UPDATE store_settings SET setting_value='Transferencia, Efectivo' WHERE setting_key='payment_methods'"
+sql "UPDATE store_settings SET setting_value='77' WHERE setting_key='reservation_minutes'"
+STOCK_BEFORE="$(sql 'SELECT stock FROM products WHERE id=1')"
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_checkout_display'
+assert_status H-CHECKOUT4-RESTORE 302
+assert_header_contains H-CHECKOUT4-RESTORE 'Location: admin_settings.php?checkout_restored=1'
+assert_sql H-CHECKOUT4-RESTORE 'standard' "SELECT setting_value FROM store_settings WHERE setting_key='cart_layout'"
+assert_sql H-CHECKOUT4-RESTORE 'Carrito de Compras' "SELECT setting_value FROM store_settings WHERE setting_key='cart_page_title'"
+assert_sql H-CHECKOUT4-RESTORE '#fedcba' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"
+assert_sql H-CHECKOUT4-RESTORE 'Footer Keep Checkout' "SELECT setting_value FROM store_settings WHERE setting_key='footer_description'"
+assert_sql H-CHECKOUT4-RESTORE '4' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
+assert_sql H-CHECKOUT4-RESTORE '5491199988877' "SELECT setting_value FROM store_settings WHERE setting_key='whatsapp_number'"
+assert_sql H-CHECKOUT4-RESTORE 'Transferencia, Efectivo' "SELECT setting_value FROM store_settings WHERE setting_key='payment_methods'"
+assert_sql H-CHECKOUT4-RESTORE '77' "SELECT setting_value FROM store_settings WHERE setting_key='reservation_minutes'"
+assert_sql H-CHECKOUT4-RESTORE "$STOCK_BEFORE" 'SELECT stock FROM products WHERE id=1'
+pass H-CHECKOUT4-RESTORE
+
+request GET cart.php
+assert_status H-CHECKOUT4-CART 200
+assert_body_contains H-CHECKOUT4-CART 'Carrito de Compras'
+assert_body_contains H-CHECKOUT4-CART 'cart-layout-standard'
+pass H-CHECKOUT4-CART
+
+settings_form 'HTTP WA Template' \
+    -F 'whatsapp_number=5491100000000' \
+    -F 'store_name=CyberLeo WA' \
+    --form-string 'order_whatsapp_template=CONFIRMAR #{order_id}
+{items}
+TOTAL={total}
+SHOP={store_name}'
+assert_status H-CHECKOUT4-WHATSAPP-TEMPLATE-SAVE 302
+pass H-CHECKOUT4-WHATSAPP-TEMPLATE-SAVE
+
+sql 'UPDATE products SET stock=8, name="Notebook Pro", price=1000.00, price_sale=NULL WHERE id=1'
+CHECKOUT_KEY="$(printf 'c%.0s' {1..64})"
+CHECKOUT_PAYLOAD="{\"idempotencyKey\":\"$CHECKOUT_KEY\",\"items\":[{\"productId\":1,\"quantity\":2}]}"
+order_curl "$HTTP_TMP/checkout4-wa" "$CHECKOUT_PAYLOAD"
+assert_status H-CHECKOUT4-WHATSAPP-TEMPLATE 200
+WA_URL="$(json_file_value "$HTTP_TMP/checkout4-wa.body" whatsappUrl)"
+WA_ORDER="$(json_file_value "$HTTP_TMP/checkout4-wa.body" orderId)"
+[[ "$WA_URL" == https://wa.me/5491100000000?text=* ]] || fail H-CHECKOUT4-WHATSAPP-TEMPLATE "URL inválida: $WA_URL"
+php -r '
+$u=$argv[1]; $oid=$argv[2];
+$q=parse_url($u, PHP_URL_QUERY); parse_str($q, $p);
+$msg=rawurldecode($p["text"] ?? "");
+if (!str_contains($msg, "CONFIRMAR #".$oid)) { fwrite(STDERR, "missing order\n"); exit(1); }
+if (!str_contains($msg, "Notebook Pro x 2 = \$2.000,00")) { fwrite(STDERR, "bad items: $msg\n"); exit(1); }
+if (!str_contains($msg, "TOTAL=\$2.000,00")) { fwrite(STDERR, "bad total\n"); exit(1); }
+if (!str_contains($msg, "SHOP=CyberLeo WA")) { fwrite(STDERR, "bad shop\n"); exit(1); }
+' "$WA_URL" "$WA_ORDER" || fail H-CHECKOUT4-WHATSAPP-TEMPLATE 'mensaje WhatsApp inválido'
+assert_sql H-CHECKOUT4-WHATSAPP-TEMPLATE 6 'SELECT stock FROM products WHERE id=1'
+pass H-CHECKOUT4-WHATSAPP-TEMPLATE
+
+# Idempotencia / regresión de pedido con plantilla restaurada
+settings_form 'HTTP Test Store' -F 'whatsapp_number=5491100000000' -F 'store_name=HTTP Test Store'
+assert_status H-CHECKOUT4-ORDER-RESET 302
+sql 'UPDATE products SET stock=8 WHERE id=1'
+REG_KEY="$(printf 'd%.0s' {1..64})"
+REG_PAYLOAD="{\"idempotencyKey\":\"$REG_KEY\",\"items\":[{\"productId\":1,\"quantity\":1}]}"
+order_curl "$HTTP_TMP/checkout4-reg-a" "$REG_PAYLOAD"
+order_curl "$HTTP_TMP/checkout4-reg-b" "$REG_PAYLOAD"
+assert_status H-CHECKOUT4-ORDER-REGRESSION 200
+REG_ID="$(json_file_value "$HTTP_TMP/checkout4-reg-a.body" orderId)"
+[[ "$(json_file_value "$HTTP_TMP/checkout4-reg-b.body" orderId)" == "$REG_ID" ]] || fail H-CHECKOUT4-ORDER-REGRESSION 'idempotencia rota'
+REG_URL="$(json_file_value "$HTTP_TMP/checkout4-reg-a.body" whatsappUrl)"
+[[ "$REG_URL" == https://wa.me/* ]] || fail H-CHECKOUT4-ORDER-REGRESSION 'wa.me inválida'
+php -r '
+$u=$argv[1]; $oid=$argv[2];
+$q=parse_url($u, PHP_URL_QUERY); parse_str($q, $p);
+$msg=rawurldecode($p["text"] ?? "");
+if (!str_contains($msg, "pedido #".$oid)) { fwrite(STDERR, "missing default order line\n"); exit(1); }
+if (!str_contains($msg, "Total:")) { fwrite(STDERR, "missing total\n"); exit(1); }
+' "$REG_URL" "$REG_ID" || fail H-CHECKOUT4-ORDER-REGRESSION 'mensaje default inválido'
+assert_sql H-CHECKOUT4-ORDER-REGRESSION 1 "SELECT COUNT(*) FROM orders WHERE idempotency_key='$REG_KEY'"
+assert_sql H-CHECKOUT4-ORDER-REGRESSION 7 'SELECT stock FROM products WHERE id=1'
+pass H-CHECKOUT4-ORDER-REGRESSION
+
+settings_form 'HTTP Test Store' \
+    -F 'cart_page_title=Leak Probe Cart' \
+    -F 'cart_layout=invalid-layout-value'
+assert_status H-CHECKOUT4-INTERNAL-ERROR 200
+assert_body_contains H-CHECKOUT4-INTERNAL-ERROR 'Opción inválida'
+assert_body_excludes H-CHECKOUT4-INTERNAL-ERROR 'SQLSTATE'
+assert_body_excludes H-CHECKOUT4-INTERNAL-ERROR 'Stack trace'
+assert_body_excludes H-CHECKOUT4-INTERNAL-ERROR '/workspace/'
+assert_body_excludes H-CHECKOUT4-INTERNAL-ERROR 'PDOException'
+pass H-CHECKOUT4-INTERNAL-ERROR
+
+run_checkout4_chrome() {
+    local mode=$1
+    local id=$2
+    if [[ -z "$CHROME_BIN" ]] || ! command -v node >/dev/null 2>&1; then
+        fail "$id" 'google-chrome o node no disponibles'
+    fi
+    local port
+    port="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    local profile="$HTTP_TMP/chrome-checkout-$mode-profile"
+    mkdir -p "$profile"
+    local cmd=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$port" "--remote-allow-origins=*"
+        "--user-data-dir=$profile"
+        about:blank)
+    setsid "${cmd[@]}" >"$HTTP_TMP/chrome-checkout-$mode.out" 2>"$HTTP_TMP/chrome-checkout-$mode.log" & local cpid=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$port/json/list" >/dev/null && break; sleep .05; done
+    if timeout 55 env HTTP_TEST_ADMIN_PASSWORD="$WINNING_PASSWORD" node "$ROOT/tests/helpers/chrome_checkout_display.mjs" \
+        "$port" "$HTTP_BASE_URL" "$mode" >"$HTTP_TMP/chrome-checkout-$mode-test.out" 2>>"$HTTP_TMP/chrome-checkout-$mode.log"; then
+        sed -n '1,40p' "$HTTP_TMP/chrome-checkout-$mode-test.out"
+        rg -F --quiet '"browserErrors": 0' "$HTTP_TMP/chrome-checkout-$mode-test.out" ||
+            fail "$id" 'browserErrors distinto de 0'
+        pass "$id"
+    else
+        sed -n '1,200p' "$HTTP_TMP/chrome-checkout-$mode-test.out" >&2
+        sed -n '1,80p' "$HTTP_TMP/chrome-checkout-$mode.log" >&2
+        fail "$id" "Chromium checkout mode=$mode falló"
+    fi
+    kill -- "-$cpid" 2>/dev/null || kill "$cpid" 2>/dev/null || true
+    wait "$cpid" 2>/dev/null || true
+}
+
+CHROME_BIN="$(command -v google-chrome-stable || command -v google-chrome || true)"
+settings_form 'HTTP Test Store'
+sql "UPDATE products SET name='Producto Seguro', stock=8, price=129999.00, price_sale=99999.00, image='$SAFE_IMG' WHERE id=1"
+[[ -f "$ROOT/$SAFE_IMG" ]] || base64 --decode "$ROOT/tests/fixtures/tiny.png.b64" >"$ROOT/$SAFE_IMG"
+run_checkout4_chrome default B-CHECKOUT4-DEFAULT
+run_checkout4_chrome populated B-CHECKOUT4-POPULATED
+run_checkout4_chrome empty B-CHECKOUT4-EMPTY
+
+settings_form 'HTTP Checkout Chrome Alt' \
+    -F 'cart_page_title=Carrito Alt' \
+    -F 'cart_layout=standard' \
+    -F 'cart_show_delivery_info=1' \
+    -F 'cart_show_delivery_methods=1' \
+    -F 'cart_delivery_methods=Retiro, Envío' \
+    -F 'cart_show_reservation_note=1' \
+    -F 'cart_terms_enabled=1' \
+    -F 'cart_terms_text=Términos demo' \
+    -F 'cart_terms_url=terminos.php' \
+    -F 'cart_show_images=1' \
+    -F 'cart_show_payment_methods=1'
+run_checkout4_chrome alt B-CHECKOUT4-ALT
+
+settings_form 'HTTP Checkout Chrome Compact' \
+    -F 'cart_layout=compact' \
+    -F 'cart_image_fit=contain' \
+    -F 'cart_image_size=compact' \
+    -F 'cart_show_images=1'
+run_checkout4_chrome compact B-CHECKOUT4-COMPACT
+run_checkout4_chrome mobile-390 B-CHECKOUT4-MOBILE-390
+run_checkout4_chrome quantity B-CHECKOUT4-QUANTITY
+run_checkout4_chrome remove B-CHECKOUT4-REMOVE
+run_checkout4_chrome out-of-stock B-CHECKOUT4-OUT-OF-STOCK
+run_checkout4_chrome image-error B-CHECKOUT4-IMAGE-ERROR
+run_checkout4_chrome storage-corrupt B-CHECKOUT4-STORAGE-CORRUPT
+
+settings_form 'HTTP XSS Checkout Chrome' \
+    --form-string 'cart_page_title=<script>globalThis.checkoutXssExecuted=1</script>XSS Cart' \
+    --form-string 'cart_delivery_text=<img src=x onerror=globalThis.checkoutXssExecuted=2>Envío' \
+    -F 'cart_show_delivery_info=1'
+sql "UPDATE products SET name='<script>globalThis.checkoutXssExecuted=9</script>Prod' WHERE id=1"
+run_checkout4_chrome xss B-CHECKOUT4-XSS
+
+# Admin session already authenticated for preview/restore
+run_checkout4_chrome preview B-CHECKOUT4-PREVIEW
+run_checkout4_chrome restore B-CHECKOUT4-RESTORE
+
+settings_form 'HTTP Test Store'
+sql "UPDATE products SET name='HTTP order product', description='Order fixture', destacados=1, stock=8 WHERE id=1"
 
 # Restaurar payload XSS del fixture para la regresión H-XSS-*
 sql "UPDATE products SET name='<script>globalThis.xssExecuted=1;document.title=\"XSS_EXECUTED\"</script>', description='\"><img src=x onerror=globalThis.xssExecuted=2>', stock=2 WHERE id=2"

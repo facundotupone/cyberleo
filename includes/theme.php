@@ -152,10 +152,12 @@ function is_safe_local_theme_url(string $value): bool {
 function theme_allowed_setting_keys(): array {
     require_once __DIR__ . '/home_content.php';
     require_once __DIR__ . '/catalog_display.php';
+    require_once __DIR__ . '/checkout_display.php';
     return array_values(array_unique(array_merge(
         array_keys(theme_default_settings()),
         home_content_keys(),
         catalog_display_keys(),
+        checkout_display_keys(),
         [
             'store_name',
             'whatsapp_number',
