@@ -390,6 +390,7 @@ function maintenance_chmod_0600(string $path): void
         @unlink($path);
         maintenance_fail('No se pudieron aplicar permisos 0600.');
     }
+    clearstatcache(true, $path);
     $perms = fileperms($path);
     if ($perms === false || (($perms & 0777) !== 0600)) {
         @unlink($path);
@@ -399,6 +400,7 @@ function maintenance_chmod_0600(string $path): void
 
 function maintenance_assert_mode_0600(string $path, bool $deleteIfBad = false): void
 {
+    clearstatcache(true, $path);
     $perms = @fileperms($path);
     if ($perms === false || (($perms & 0777) !== 0600)) {
         if ($deleteIfBad) {
