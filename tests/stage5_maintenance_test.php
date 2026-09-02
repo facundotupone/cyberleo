@@ -137,12 +137,12 @@ $combined = $okInstall['stdout'] . $okInstall['stderr'];
 s5($okInstall['code'] === 0, 'S5-INST-OK', 'instalación nueva exitosa');
 s5(is_file($publicA . '/includes/config.local.php'), 'S5-INST-CONFIG', 'config.local.php creado');
 s5(!str_contains($combined, 'password-segura-12'), 'S5-INST-NO-SECRET-OUT', 'salida sin contraseña admin');
-s5(!str_contains($combined, 'APP_SECRET'), 'S5-INST-NO-SECRET-NAME', 'salida sin volcar APP_SECRET');
-
+s5(!preg_match('/APP_SECRET\s*=/', $combined), 'S5-INST-NO-SECRET-NAME', 'salida sin asignación de APP_SECRET');
 $configSrc = file_get_contents($publicA . '/includes/config.local.php');
 s5(is_string($configSrc) && str_contains($configSrc, 'APP_SECRET'), 'S5-INST-SECRET-FILE', 'APP_SECRET en config');
 preg_match("/define\\('APP_SECRET', '([a-f0-9]+)'\\)/", (string) $configSrc, $m);
 s5(isset($m[1]) && strlen($m[1]) === 64, 'S5-INST-SECRET-LEN', 'APP_SECRET 64 hex');
+s5(!str_contains($combined, $m[1]), 'S5-INST-NO-SECRET-VALUE', 'salida sin valor de APP_SECRET');
 $perms = substr(sprintf('%o', fileperms($publicA . '/includes/config.local.php')), -3);
 s5(in_array($perms, ['600', '400', '640', '644'], true), 'S5-INST-PERMS', 'permisos config restrictivos o legibles');
 

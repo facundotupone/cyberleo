@@ -46,7 +46,7 @@ function system_health_run_checks(?PDO $pdo = null, ?string $publicRoot = null):
     $add('config_complete', 'Configuración de base', $configComplete ? 'PASS' : 'FAIL', $configComplete ? 'Constantes presentes' : 'Config incompleta');
 
     $secretOk = defined('APP_SECRET') && is_string(APP_SECRET) && strlen(APP_SECRET) >= 32;
-    $add('app_secret', 'APP_SECRET', $secretOk ? 'PASS' : 'FAIL', $secretOk ? 'Presente y con longitud suficiente' : 'Ausente o demasiado corto');
+    $add('app_secret', 'Secreto de aplicación', $secretOk ? 'PASS' : 'FAIL', $secretOk ? 'Presente y con longitud suficiente' : 'Ausente o demasiado corto');
 
     $siteOk = defined('SITE_URL') && SITE_URL !== '';
     $httpsOk = $siteOk && (str_starts_with((string) SITE_URL, 'https://')
