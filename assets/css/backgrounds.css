@@ -39,7 +39,8 @@ html {
     scroll-behavior: smooth;
 }
 
-.navbar {
+/* Solo la barra pública blanca; no pisar .site-navbar-navy ni barras admin. */
+.site-navbar:not(.site-navbar-navy) {
     background-color: rgba(255, 255, 255, 0.98);
     border-bottom: 1px solid rgba(0, 87, 184, 0.1);
 }

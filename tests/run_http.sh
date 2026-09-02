@@ -20,6 +20,7 @@ MAIL_LOG="$HTTP_TMP/mail.log"
 SERVER_LOG="$HTTP_TMP/php-server.log"
 SERVER_PID=""
 CHROME_PID=""
+NAV_CHROME_PID=""
 UPLOAD_DIR="$ROOT/assets/images/products"
 mkdir -p "$UPLOAD_DIR"
 
@@ -28,6 +29,7 @@ cleanup() {
     trap - EXIT INT TERM
     rmdir "$MAIL_LOG" 2>/dev/null || true
     sql 'DROP TRIGGER IF EXISTS http_image_fail' >/dev/null 2>&1 || true
+    sql 'DROP TRIGGER IF EXISTS settings_internal_fail' >/dev/null 2>&1 || true
     if declare -p CREATED_IMAGES >/dev/null 2>&1; then
         local image
         for image in "${CREATED_IMAGES[@]}"; do
@@ -41,6 +43,10 @@ cleanup() {
     if [[ -n "$CHROME_PID" ]]; then
         kill -- "-$CHROME_PID" 2>/dev/null || kill "$CHROME_PID" 2>/dev/null || true
         wait "$CHROME_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$NAV_CHROME_PID" ]]; then
+        kill -- "-$NAV_CHROME_PID" 2>/dev/null || kill "$NAV_CHROME_PID" 2>/dev/null || true
+        wait "$NAV_CHROME_PID" 2>/dev/null || true
     fi
     if [[ $status -ne 0 && -s "$SERVER_LOG" ]]; then
         printf '\nPHP server log (%s):\n' "$SERVER_LOG" >&2
@@ -979,6 +985,87 @@ assert_body_contains H-THEME-HOME '--brand-blue: #0057b8'
 assert_body_contains H-THEME-HOME 'assets/images/brand/cyberleo-logo.png'
 assert_body_excludes H-THEME-HOME 'javascript:'
 pass H-THEME-HOME
+
+printf 'Pruebas HTTP de navegación navy (computed styles)...\n'
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+settings_form 'HTTP Test Store' -F 'nav_style=navy'
+assert_status H-NAV-SAVE-NAVY 302
+assert_sql H-NAV-SAVE-NAVY 'navy' "SELECT setting_value FROM store_settings WHERE setting_key='nav_style'"
+pass H-NAV-SAVE-NAVY
+
+CHROME_BIN="$(command -v google-chrome-stable || command -v google-chrome || true)"
+if [[ -n "$CHROME_BIN" ]] && command -v node >/dev/null 2>&1; then
+    NAV_CHROME_PORT="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    NAV_CHROME_COMMAND=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$NAV_CHROME_PORT" "--remote-allow-origins=*"
+        "--user-data-dir=$HTTP_TMP/chrome-nav-profile"
+        about:blank)
+    setsid "${NAV_CHROME_COMMAND[@]}" >"$HTTP_TMP/chrome-nav.out" 2>"$HTTP_TMP/chrome-nav.log" & NAV_CHROME_PID=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$NAV_CHROME_PORT/json/list" >/dev/null && break; sleep .05; done
+    if timeout 45 node "$ROOT/tests/helpers/chrome_nav_theme.mjs" \
+        "$NAV_CHROME_PORT" "$HTTP_BASE_URL" navy >"$HTTP_TMP/chrome-nav-test.out" 2>>"$HTTP_TMP/chrome-nav.log"; then
+        sed -n '1,40p' "$HTTP_TMP/chrome-nav-test.out"
+        pass H-NAV-NAVY-COMPUTED
+        pass H-NAV-NAVY-MOBILE
+    else
+        sed -n '1,160p' "$HTTP_TMP/chrome-nav-test.out" >&2
+        sed -n '1,80p' "$HTTP_TMP/chrome-nav.log" >&2
+        fail H-NAV-NAVY-COMPUTED 'Chromium no verificó estilos navy'
+    fi
+    kill -- "-$NAV_CHROME_PID" 2>/dev/null || kill "$NAV_CHROME_PID" 2>/dev/null || true
+    wait "$NAV_CHROME_PID" 2>/dev/null || true
+    NAV_CHROME_PID=""
+else
+    fail H-NAV-NAVY-COMPUTED 'google-chrome o node no están disponibles'
+fi
+
+settings_form 'HTTP Test Store' -F 'nav_style=white'
+assert_status H-NAV-SAVE-WHITE 302
+assert_sql H-NAV-SAVE-WHITE 'white' "SELECT setting_value FROM store_settings WHERE setting_key='nav_style'"
+pass H-NAV-SAVE-WHITE
+
+if [[ -n "$CHROME_BIN" ]] && command -v node >/dev/null 2>&1; then
+    NAV_CHROME_PORT="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    NAV_CHROME_COMMAND=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$NAV_CHROME_PORT" "--remote-allow-origins=*"
+        "--user-data-dir=$HTTP_TMP/chrome-nav-profile-white"
+        about:blank)
+    setsid "${NAV_CHROME_COMMAND[@]}" >"$HTTP_TMP/chrome-nav-white.out" 2>"$HTTP_TMP/chrome-nav-white.log" & NAV_CHROME_PID=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$NAV_CHROME_PORT/json/list" >/dev/null && break; sleep .05; done
+    if timeout 45 node "$ROOT/tests/helpers/chrome_nav_theme.mjs" \
+        "$NAV_CHROME_PORT" "$HTTP_BASE_URL" white >"$HTTP_TMP/chrome-nav-white-test.out" 2>>"$HTTP_TMP/chrome-nav-white.log"; then
+        sed -n '1,40p' "$HTTP_TMP/chrome-nav-white-test.out"
+        pass H-NAV-WHITE-COMPUTED
+    else
+        sed -n '1,160p' "$HTTP_TMP/chrome-nav-white-test.out" >&2
+        fail H-NAV-WHITE-COMPUTED 'Chromium no verificó estilos white'
+    fi
+    kill -- "-$NAV_CHROME_PID" 2>/dev/null || kill "$NAV_CHROME_PID" 2>/dev/null || true
+    wait "$NAV_CHROME_PID" 2>/dev/null || true
+    NAV_CHROME_PID=""
+else
+    fail H-NAV-WHITE-COMPUTED 'google-chrome o node no están disponibles'
+fi
+
+printf 'Prueba de mensajes internos en admin_settings...\n'
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+sql "CREATE TRIGGER settings_internal_fail BEFORE UPDATE ON store_settings FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='SQLSTATE internal path=/workspace/secret.sql'"
+settings_form 'HTTP Leak Probe'
+assert_status H-SETTINGS-INTERNAL 200
+assert_body_contains H-SETTINGS-INTERNAL 'No se pudo guardar la configuración. Intentá nuevamente.'
+assert_body_excludes H-SETTINGS-INTERNAL 'SQLSTATE'
+assert_body_excludes H-SETTINGS-INTERNAL '/workspace/'
+assert_body_excludes H-SETTINGS-INTERNAL 'secret.sql'
+assert_body_excludes H-SETTINGS-INTERNAL 'Stack trace'
+assert_body_excludes H-SETTINGS-INTERNAL 'PDOException'
+rg -q 'admin_settings:|SQLSTATE|settings_internal_fail' "$SERVER_LOG" ||
+    fail H-SETTINGS-INTERNAL 'el error interno no quedó registrado en el log del servidor'
+sql 'DROP TRIGGER IF EXISTS settings_internal_fail'
+pass H-SETTINGS-INTERNAL
 
 printf 'Prueba XSS por HTTP...\n'
 sql 'UPDATE products SET stock=2 WHERE id=2'

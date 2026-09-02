@@ -1,4 +1,3 @@
-
 <?php
 require_once 'db.php';
 
@@ -108,4 +107,3 @@ function get_products_by_subcategory($category_id, $subcategory_id) {
         return [];
     }
 }
-?>

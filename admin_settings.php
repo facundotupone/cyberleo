@@ -36,22 +36,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = trim($_POST['store_name'] ?? '');
         $whatsapp = preg_replace('/\D/', '', $_POST['whatsapp_number'] ?? '');
         if ($name === '' || mb_strlen($name) > 80 || strlen($whatsapp) < 8 || strlen($whatsapp) > 16) {
-            throw new RuntimeException('Ingresá un nombre y un WhatsApp válido, con código de país.');
+            throw new PublicSettingsException('Ingresá un nombre y un WhatsApp válido, con código de país.');
         }
         $instagram = trim($_POST['instagram_url'] ?? '');
         if ($instagram !== '' && !filter_var($instagram, FILTER_VALIDATE_URL)) {
-            throw new RuntimeException('La URL de Instagram no es válida.');
+            throw new PublicSettingsException('La URL de Instagram no es válida.');
         }
 
         $themeCollect = collect_theme_settings_from_post($_POST);
         if ($themeCollect['errors']) {
-            throw new RuntimeException(implode(' ', $themeCollect['errors']));
+            throw new PublicSettingsException(implode(' ', $themeCollect['errors']));
         }
 
         $heroTitle = sanitize_theme_plain_text((string) ($_POST['hero_title'] ?? ''), 140);
         $heroSubtitle = sanitize_theme_plain_text((string) ($_POST['hero_subtitle'] ?? ''), 240);
         if ($heroTitle === '' || $heroSubtitle === '') {
-            throw new RuntimeException('Completá el título y el subtítulo de la portada.');
+            throw new PublicSettingsException('Completá el título y el subtítulo de la portada.');
         }
 
         $values = array_merge($themeCollect['values'], [
@@ -84,8 +84,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         );
         header('Location: admin_settings.php?saved=1');
         exit;
-    } catch (Throwable $e) {
+    } catch (PublicSettingsException $e) {
         $message = $e->getMessage();
+        $messageType = 'danger';
+        $defaults = array_merge($defaults, $_POST);
+        $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
+        $contrastWarnings = theme_contrast_warnings($theme);
+    } catch (InvalidArgumentException $e) {
+        $message = $e->getMessage();
+        $messageType = 'danger';
+        $defaults = array_merge($defaults, $_POST);
+        $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
+        $contrastWarnings = theme_contrast_warnings($theme);
+    } catch (Throwable $e) {
+        error_log('admin_settings: ' . $e->getMessage());
+        $message = 'No se pudo guardar la configuración. Intentá nuevamente.';
         $messageType = 'danger';
         $defaults = array_merge($defaults, $_POST);
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));

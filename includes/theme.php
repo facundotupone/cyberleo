@@ -360,21 +360,32 @@ function collect_theme_settings_from_post(array $post): array {
 }
 
 /**
+ * User-facing settings validation/business errors (safe to display).
+ */
+class PublicSettingsException extends RuntimeException {
+}
+
+/**
  * Restore Stage-1 visual keys to CyberLeo defaults. Returns previous custom
  * image paths that may be cleaned after commit.
+ *
+ * Clears hero_background (gradient default) but preserves hero_title,
+ * hero_subtitle, body_background and commercial settings.
  *
  * @return array{restored:array<string,string>,cleanup_candidates:list<string>}
  */
 function restore_cyberleo_visual_identity(PDO $pdo): array {
     $defaults = theme_default_settings();
-    // Keep existing hero copy when present; only reset visual chrome + visibility.
-    $select = $pdo->prepare('SELECT setting_value FROM store_settings WHERE setting_key = ?');
+    $select = $pdo->prepare('SELECT setting_value FROM store_settings WHERE setting_key = ? FOR UPDATE');
     $oldLogo = '';
     $oldFavicon = '';
+    $oldHeroBackground = '';
     $select->execute(['brand_logo']);
     $oldLogo = (string) ($select->fetchColumn() ?: '');
     $select->execute(['brand_favicon']);
     $oldFavicon = (string) ($select->fetchColumn() ?: '');
+    $select->execute(['hero_background']);
+    $oldHeroBackground = (string) ($select->fetchColumn() ?: '');
 
     $upsert = $pdo->prepare(
         'INSERT INTO store_settings (setting_key, setting_value) VALUES (?, ?) '
@@ -383,13 +394,24 @@ function restore_cyberleo_visual_identity(PDO $pdo): array {
     foreach ($defaults as $key => $value) {
         $upsert->execute([$key, $value]);
     }
-    // Hero height/alignment/overlay/button defaults included above.
-    // Do not touch hero_title/subtitle/background content here beyond button chrome.
+    // Volver al degradado CyberLeo; no tocar hero_title/subtitle ni body_background.
+    $upsert->execute(['hero_background', '']);
+
+    $restored = array_merge($defaults, ['hero_background' => '']);
+    $cleanup = [];
+    foreach (
+        [
+            [$oldLogo, THEME_OFFICIAL_LOGO],
+            [$oldFavicon, ''],
+            [$oldHeroBackground, ''],
+        ] as [$old, $new]
+    ) {
+        if ($old !== '' && $old !== $new && is_safe_settings_image_path($old)) {
+            $cleanup[] = $old;
+        }
+    }
     return [
-        'restored' => $defaults,
-        'cleanup_candidates' => array_values(array_filter(
-            [$oldLogo, $oldFavicon],
-            static fn($p) => is_string($p) && is_safe_settings_image_path($p)
-        )),
+        'restored' => $restored,
+        'cleanup_candidates' => array_values(array_unique($cleanup)),
     ];
 }

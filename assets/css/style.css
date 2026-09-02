@@ -107,30 +107,6 @@ button:focus-visible,
     z-index: 1030;
 }
 
-.site-navbar-navy {
-    background: var(--brand-navy);
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
-.site-navbar-navy .nav-link {
-    color: rgba(255, 255, 255, 0.92);
-}
-
-.site-navbar-navy .nav-link:hover,
-.site-navbar-navy .nav-link:focus,
-.site-navbar-navy .nav-link.active {
-    color: var(--brand-white);
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.site-navbar-navy .navbar-toggler {
-    border-color: rgba(255, 255, 255, 0.35);
-}
-
-.site-navbar-navy .navbar-toggler-icon {
-    filter: invert(1);
-}
-
 .site-navbar .navbar-brand {
     display: inline-flex;
     align-items: center;
@@ -166,6 +142,31 @@ button:focus-visible,
 
 .site-navbar .navbar-toggler:focus {
     box-shadow: var(--focus-ring);
+}
+
+/* Variante navy: debe ir después de .site-navbar .nav-link (misma especificidad). */
+.site-navbar.site-navbar-navy {
+    background: var(--brand-navy);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.site-navbar.site-navbar-navy .nav-link {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.site-navbar.site-navbar-navy .nav-link:hover,
+.site-navbar.site-navbar-navy .nav-link:focus,
+.site-navbar.site-navbar-navy .nav-link.active {
+    color: var(--brand-white);
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.site-navbar.site-navbar-navy .navbar-toggler {
+    border-color: rgba(255, 255, 255, 0.45);
+}
+
+.site-navbar.site-navbar-navy .navbar-toggler-icon {
+    filter: invert(1) brightness(1.15);
 }
 
 .nav-cart-btn {

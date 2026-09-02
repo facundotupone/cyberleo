@@ -292,6 +292,112 @@ try {
     ]));
     tok($warnings !== [], 'T-31', 'advertencia de contraste bajo');
 
+    // R-HERO-01: fondo exclusivo se limpia y elimina tras commit
+    treset($pdo);
+    $heroOnly = 'assets/images/settings/' . str_repeat('c', 32) . '.png';
+    file_put_contents($root . '/' . $heroOnly, 'hero-only');
+    tset($pdo, 'hero_background', $heroOnly);
+    tset($pdo, 'hero_title', 'Título conservado');
+    tset($pdo, 'hero_subtitle', 'Subtítulo conservado');
+    tset($pdo, 'whatsapp_number', '5491100000000');
+    $pdo->beginTransaction();
+    $rHero = restore_cyberleo_visual_identity($pdo);
+    $pdo->commit();
+    foreach ($rHero['cleanup_candidates'] as $path) {
+        delete_unreferenced_image($pdo, $path, $root);
+    }
+    tok(
+        tget($pdo, 'hero_background') === ''
+        && !is_file($root . '/' . $heroOnly)
+        && in_array($heroOnly, $rHero['cleanup_candidates'], true),
+        'R-HERO-01',
+        'fondo personalizado exclusivo eliminado tras commit'
+    );
+
+    // R-HERO-02: archivo compartido con body_background se conserva
+    treset($pdo);
+    $sharedHero = 'assets/images/settings/' . str_repeat('d', 32) . '.png';
+    file_put_contents($root . '/' . $sharedHero, 'shared-hero');
+    tset($pdo, 'hero_background', $sharedHero);
+    tset($pdo, 'body_background', $sharedHero);
+    $pdo->beginTransaction();
+    $rSharedHero = restore_cyberleo_visual_identity($pdo);
+    $pdo->commit();
+    foreach ($rSharedHero['cleanup_candidates'] as $path) {
+        delete_unreferenced_image($pdo, $path, $root);
+    }
+    tok(
+        tget($pdo, 'hero_background') === ''
+        && tget($pdo, 'body_background') === $sharedHero
+        && is_file($root . '/' . $sharedHero),
+        'R-HERO-02',
+        'archivo compartido conservado tras limpiar hero_background'
+    );
+
+    // R-HERO-03: fallo SQL → rollback conserva valor y archivo
+    treset($pdo);
+    $heroFail = 'assets/images/settings/' . str_repeat('e', 32) . '.png';
+    file_put_contents($root . '/' . $heroFail, 'hero-fail');
+    tset($pdo, 'hero_background', $heroFail);
+    $pdo->exec("CREATE TRIGGER theme_fail BEFORE UPDATE ON store_settings FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fail'");
+    $failedHero = false;
+    try {
+        $pdo->beginTransaction();
+        restore_cyberleo_visual_identity($pdo);
+        $pdo->commit();
+    } catch (Throwable) {
+        $failedHero = true;
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+    } finally {
+        $pdo->exec('DROP TRIGGER IF EXISTS theme_fail');
+    }
+    tok(
+        $failedHero
+        && tget($pdo, 'hero_background') === $heroFail
+        && is_file($root . '/' . $heroFail),
+        'R-HERO-03',
+        'error SQL con rollback conserva hero_background'
+    );
+
+    // R-HERO-04: segunda restauración idempotente
+    treset($pdo);
+    tset($pdo, 'hero_background', '');
+    $pdo->beginTransaction();
+    restore_cyberleo_visual_identity($pdo);
+    $pdo->commit();
+    $pdo->beginTransaction();
+    $rTwice = restore_cyberleo_visual_identity($pdo);
+    $pdo->commit();
+    foreach ($rTwice['cleanup_candidates'] as $path) {
+        delete_unreferenced_image($pdo, $path, $root);
+    }
+    tok(
+        tget($pdo, 'hero_background') === ''
+        && tget($pdo, 'nav_style') === 'white'
+        && $rTwice['cleanup_candidates'] === [],
+        'R-HERO-04',
+        'segunda restauración idempotente'
+    );
+
+    // R-HERO-05: conserva título y subtítulo
+    treset($pdo);
+    tset($pdo, 'hero_title', 'Mi título custom');
+    tset($pdo, 'hero_subtitle', 'Mi subtítulo custom');
+    tset($pdo, 'hero_background', $heroFail);
+    file_put_contents($root . '/' . $heroFail, 'x');
+    $pdo->beginTransaction();
+    restore_cyberleo_visual_identity($pdo);
+    $pdo->commit();
+    tok(
+        tget($pdo, 'hero_title') === 'Mi título custom'
+        && tget($pdo, 'hero_subtitle') === 'Mi subtítulo custom'
+        && tget($pdo, 'hero_background') === '',
+        'R-HERO-05',
+        'hero_title y hero_subtitle se conservan'
+    );
+
     echo "Theme settings tests: $passed passed, 0 failed\n";
 } finally {
     $pdo->exec('DROP TRIGGER IF EXISTS theme_fail');
