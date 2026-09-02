@@ -88,7 +88,7 @@ actualizaciones. Nunca va en el ZIP. Permiso tipicamente `0600`.
 ## 5. Cron privado cada 5 minutos
 
 ```cron
-*/5 * * * * php /ruta/privada/cyberleo-private/cron/expire_reservations.php >> /ruta/privada/cron.log 2>&1
+*/5 * * * * php /ruta/privada/cyberleo-private/cron/expire_reservations.php --public-root=/ruta/absoluta/public_html >> /ruta/privada/cron.log 2>&1
 ```
 
 ## 6. Checklist

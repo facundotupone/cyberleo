@@ -13,6 +13,9 @@ RewriteRule "(^|/)(config(\.local)?|local\.config)(\.[^/]*)?$" - [F,L,NC]
 RewriteRule "(^|/)\.env(\..*)?$" - [F,L,NC]
 RewriteRule "\.(env|ini|log|sql|sqlite|bak|backup|dump|dist|swp|ya?ml)$" - [F,L,NC]
 RewriteRule "(^|/)[^/]+\.(bak|backup|dump|sql)(\.[^/]+)?$" - [F,L,NC]
+RewriteRule "(^|/)cyberleo-backup-[^/]+\.zip$" - [F,L,NC]
+RewriteRule "(^|/)backup\.zip$" - [F,L,NC]
+RewriteRule "\.(tar|tar\.gz|tgz|7z)$" - [F,L,NC]
 
 # Conservar el acceso histórico al panel.
 RewriteCond %{REQUEST_URI} ^/admin/?$

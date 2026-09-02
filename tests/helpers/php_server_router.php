@@ -25,6 +25,9 @@ if ($path !== '' && (
     || preg_match('#(^|/)\.env(\..*)?$#i', $path)
     || preg_match('#\.(env|ini|log|sql|sqlite|bak|backup|dump|dist|swp|ya?ml)$#i', $path)
     || preg_match('#(^|/)[^/]+\.(bak|backup|dump|sql)(\.[^/]+)?$#i', $path)
+    || preg_match('#(^|/)cyberleo-backup-[^/]+\.zip$#i', $path)
+    || preg_match('#(^|/)backup\.zip$#i', $path)
+    || preg_match('#\.(tar|tar\.gz|tgz|7z)$#i', $path)
 )) {
     $denied();
 }

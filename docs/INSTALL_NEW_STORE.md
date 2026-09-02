@@ -83,11 +83,12 @@ Abrí `/admin_login.php`, iniciá sesión y configurá la tienda desde
 
 ### 6. Cron privado
 
-Mantener `cron/` en el directorio privado, con su propia copia de configuración
-cuando corresponda, y programar cada 5 minutos:
+Mantener `cron/` en el directorio privado (junto a `scripts/lib/maintenance.php`
+e `includes/config.php` del paquete). El cron exige `--public-root` absoluto del
+release público y carga `config.php`, `db.php` y `orders.php` desde allí:
 
 ```cron
-*/5 * * * * php /ruta/privada/cyberleo-private/cron/expire_reservations.php >> /ruta/privada/cron.log 2>&1
+*/5 * * * * php /ruta/privada/cyberleo-private/cron/expire_reservations.php --public-root=/ruta/absoluta/public_html >> /ruta/privada/cron.log 2>&1
 ```
 
 ## Diagnóstico

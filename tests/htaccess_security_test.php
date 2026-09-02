@@ -60,6 +60,12 @@ $blocked = [
     'private/app.log',
     'dump.sql',
     'backup.bak',
+    'cyberleo-backup-20260902T120000Z-deadbeef.zip',
+    'backup.zip',
+    'backup.tar',
+    'backup.tar.gz',
+    'backup.tgz',
+    'backup.7z',
 ];
 foreach ($blocked as $path) {
     if (!$isDenied($path)) {
@@ -74,6 +80,7 @@ $public = [
     'admin_system.php',
     'assets/css/style.css',
     'assets/images/products/item.webp',
+    'assets/images/brand/cyberleo-logo.png',
 ];
 foreach ($public as $path) {
     if ($isDenied($path)) {

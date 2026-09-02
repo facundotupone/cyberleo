@@ -224,7 +224,8 @@ TEST_DB_SOCKET="$SOCKET" TEST_DB_NAME="$TEST_DB" \
 
 printf 'Paquetes finales Stage 5...\n'
 RUN_TESTS=0 "$ROOT/scripts/build_hostinger_release.sh"
-"$ROOT/scripts/build_private_tools.sh"
+TEST_DB_SOCKET="$SOCKET" TEST_DB_NAME="$TEST_DB" \
+    "$ROOT/scripts/build_private_tools.sh"
 "$ROOT/scripts/build_aesthetic_update.sh"
 
 # Confirmar artefactos y ausencia de sidecars .sha256

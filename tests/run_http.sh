@@ -371,7 +371,10 @@ sql "UPDATE orders SET expires_at=DATE_SUB(NOW(),INTERVAL 1 MINUTE) WHERE id=$OR
 p1=$!
 (
     cd "$ROOT"
-    "${cli_env[@]}" php cron/expire_reservations.php
+    "${cli_env[@]}" php -r '
+        require "includes/config.php"; require "includes/db.php"; require "includes/orders.php";
+        echo expire_pending_orders($pdo) . " reservas vencidas liberadas.\n";
+    '
 ) >"$HTTP_TMP/order04-expire" &
 p2=$!
 wait "$p1" || fail H-ORDER-04 'helper de cancelación falló'
@@ -389,11 +392,17 @@ ORDER05_ID="$(json_value orderId)"
 sql "UPDATE orders SET expires_at=DATE_SUB(NOW(),INTERVAL 1 MINUTE) WHERE id=$ORDER05_ID"
 (
     cd "$ROOT"
-    "${cli_env[@]}" php cron/expire_reservations.php
+    "${cli_env[@]}" php -r '
+        require "includes/config.php"; require "includes/db.php"; require "includes/orders.php";
+        echo expire_pending_orders($pdo) . " reservas vencidas liberadas.\n";
+    '
 ) >"$HTTP_TMP/order05-first"
 (
     cd "$ROOT"
-    "${cli_env[@]}" php cron/expire_reservations.php
+    "${cli_env[@]}" php -r '
+        require "includes/config.php"; require "includes/db.php"; require "includes/orders.php";
+        echo expire_pending_orders($pdo) . " reservas vencidas liberadas.\n";
+    '
 ) >"$HTTP_TMP/order05-second"
 rg --fixed-strings --quiet '1 reservas vencidas liberadas.' "$HTTP_TMP/order05-first" ||
     fail H-ORDER-05 'la primera ejecución del cron no liberó exactamente una reserva'
@@ -2732,12 +2741,30 @@ for path in \
   '.env' \
   'dump.sql' \
   'backups/x.zip' \
-  'dist/cyberleo-hostinger.zip'
+  'dist/cyberleo-hostinger.zip' \
+  'cyberleo-backup-20260902T120000Z-deadbeef.zip' \
+  'backup.zip' \
+  'backup.tar.gz'
 do
   request GET "$path"
   [[ "$HTTP_STATUS" == 403 || "$HTTP_STATUS" == 404 ]] || fail H-SYSTEM5-PRIVATE "esperado 403/404 para $path, got $HTTP_STATUS"
 done
 pass H-SYSTEM5-PRIVATE
+
+# Archivos de respaldo presentes en la raíz deben bloquearse (403/404).
+printf 'x' >"$ROOT/cyberleo-backup-20260902T120000Z-deadbeef.zip"
+printf 'x' >"$ROOT/backup.zip"
+printf 'x' >"$ROOT/backup.tar.gz"
+for path in \
+  'cyberleo-backup-20260902T120000Z-deadbeef.zip' \
+  'backup.zip' \
+  'backup.tar.gz'
+do
+  request GET "$path"
+  [[ "$HTTP_STATUS" == 403 || "$HTTP_STATUS" == 404 ]] || fail H-SYSTEM5-BACKUP-ARCH "esperado 403/404 para $path, got $HTTP_STATUS"
+done
+rm -f "$ROOT/cyberleo-backup-20260902T120000Z-deadbeef.zip" "$ROOT/backup.zip" "$ROOT/backup.tar.gz"
+pass H-SYSTEM5-BACKUP-ARCH
 
 request GET includes/
 [[ "$HTTP_STATUS" == 403 || "$HTTP_STATUS" == 404 ]] || fail H-SYSTEM5-LISTING "directory listing includes/ code=$HTTP_STATUS"

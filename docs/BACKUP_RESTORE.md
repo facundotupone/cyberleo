@@ -14,16 +14,20 @@ php scripts/backup_store.php \
 Reglas:
 
 - `--output-dir` absoluto, canónico, **fuera** de `public_html`, sin symlinks;
-- el ZIP se crea con permiso restrictivo (0600 cuando es posible);
-- `mysqldump` se ejecuta con `proc_open` en modo array;
+- el ZIP se crea con permiso **exactamente 0600** (si no, se elimina y falla);
+- `mysqldump` redirige stdout directamente a `database.sql` (sin cargar el dump
+  en memoria) y stderr a un temporal que se elimina tras el diagnóstico;
 - la contraseña viaja en un defaults-extra-file temporal 0600 que siempre se
   elimina;
-- no se incluye `config.local.php` ni credenciales.
+- no se incluye `config.local.php` ni credenciales;
+- antes de informar éxito se ejecuta la misma verificación completa que
+  `restore --verify`.
 
 Contenido:
 
 - `database.sql`
-- `assets/images/products/` (solo JPG/JPEG/PNG/WebP y `.htaccess`)
+- `assets/images/products/` (solo archivos planos JPG/JPEG/PNG/WebP y `.htaccess`;
+  **sin subdirectorios**)
 - `assets/images/settings/` (igual)
 - `manifest.json` (formato, versión, fecha UTC, commit si existe, base lógica
   sin usuario/clave, listado exacto con tamaño y SHA-256, exclusión explícita
@@ -35,8 +39,9 @@ Contenido:
 php scripts/restore_store.php --verify=/ruta/privada/backups/cyberleo-backup-....zip
 ```
 
-Comprueba manifiesto, hashes, ausencia de ZIP Slip / symlinks / archivos
-extras, y extensiones permitidas. No modifica nada.
+Comprueba manifiesto, hashes, ausencia de ZIP Slip / symlinks / duplicados /
+rutas no normalizadas / archivos extras, y extensiones permitidas. No modifica
+nada.
 
 ## Restore solo sobre ambiente vacío
 
@@ -53,13 +58,15 @@ Requisitos:
 - uploads vacíos salvo sus `.htaccess` del release;
 - verificación completa del ZIP **antes** de escribir.
 
-El restore:
+El restore (orden estricto):
 
-- importa `database.sql` con `mysql`/`proc_open` sin exponer credenciales;
-- restaura solo imágenes permitidas;
-- preserva los `.htaccess` actuales del release;
-- ejecuta diagnóstico;
-- informa cantidades (usuarios, categorías, productos, pedidos, settings).
+1. verifica ZIP/manifiesto/hashes/base vacía/uploads;
+2. importa `database.sql` (stdin desde archivo, sin `file_get_contents` del dump);
+3. solo si el SQL tuvo éxito, copia imágenes y registra cada archivo creado;
+4. si una copia falla, elimina **solo** los archivos creados por ese intento
+   (nunca `.htaccess` ni preexistentes) y avisa que hay que recrear la base
+   temporal vacía;
+5. ejecuta diagnóstico e informa cantidades.
 
 **No** existe un modo que borre o sobrescriba automáticamente una instalación
 existente. El rollback de producción sigue siendo manual (ver

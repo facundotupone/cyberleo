@@ -37,9 +37,6 @@ function maintenance_path_has_symlink(string $path): bool
     return false;
 }
 
-/**
- * Resolve an absolute, canonical, non-symlink, non-root directory.
- */
 function maintenance_require_absolute_dir(string $path, string $label, bool $mustExist = true): string
 {
     $path = trim($path);
@@ -92,6 +89,8 @@ function maintenance_expected_public_files(): array
         'includes/config.php',
         'includes/db.php',
         'includes/functions.php',
+        'includes/orders.php',
+        'includes/images.php',
         'assets/images/products/.htaccess',
         'assets/images/settings/.htaccess',
         'assets/images/brand/cyberleo-logo.png',
@@ -107,7 +106,6 @@ function maintenance_validate_public_root(string $path): string
             maintenance_fail("--public-root no parece un release CyberLeo válido (falta {$relative}).");
         }
     }
-    // Evitar apuntar al repositorio privado por error.
     foreach (['.git', 'tests', 'scripts', 'migrations', 'docs', 'cron'] as $marker) {
         if (is_dir($root . DIRECTORY_SEPARATOR . $marker)) {
             maintenance_fail("--public-root parece el repositorio o herramientas privadas (encontró {$marker}/). Usá el release público.");
@@ -137,6 +135,76 @@ function maintenance_schema_path(): string
         maintenance_fail('schema.sql privado ausente junto a las herramientas.');
     }
     return $path;
+}
+
+function maintenance_has_control_chars(string $value): bool
+{
+    return (bool) preg_match('/[\x00-\x1F\x7F]/', $value);
+}
+
+function maintenance_validate_db_name(string $name): bool
+{
+    if ($name === '' || strlen($name) > 64) {
+        return false;
+    }
+    if (str_starts_with($name, '-')) {
+        return false;
+    }
+    return (bool) preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]*$/', $name);
+}
+
+function maintenance_validate_db_user(string $user): bool
+{
+    if ($user === '' || strlen($user) > 80 || maintenance_has_control_chars($user)) {
+        return false;
+    }
+    return !str_starts_with($user, '-');
+}
+
+function maintenance_validate_db_host(string $host): bool
+{
+    if ($host === '' || strlen($host) > 255 || maintenance_has_control_chars($host)) {
+        return false;
+    }
+    return !str_starts_with($host, '-');
+}
+
+function maintenance_validate_db_socket(?string $socket): bool
+{
+    if ($socket === null || $socket === '') {
+        return true;
+    }
+    if (!str_starts_with($socket, DIRECTORY_SEPARATOR) || maintenance_has_control_chars($socket)) {
+        return false;
+    }
+    return is_string($socket) && $socket !== DIRECTORY_SEPARATOR;
+}
+
+function maintenance_validate_db_password(string $pass): bool
+{
+    return !maintenance_has_control_chars($pass) && strlen($pass) <= 512;
+}
+
+/**
+ * @param array{host:string,socket:?string,name:string,user:string,pass:string} $creds
+ */
+function maintenance_assert_safe_credentials(array $creds): void
+{
+    if (!maintenance_validate_db_host($creds['host'])) {
+        maintenance_fail('DB_HOST inválido.');
+    }
+    if (!maintenance_validate_db_name($creds['name'])) {
+        maintenance_fail('DB_NAME inválido.');
+    }
+    if (!maintenance_validate_db_user($creds['user'])) {
+        maintenance_fail('DB_USER inválido.');
+    }
+    if (!maintenance_validate_db_password($creds['pass'])) {
+        maintenance_fail('DB_PASS contiene caracteres de control no permitidos.');
+    }
+    if (!maintenance_validate_db_socket($creds['socket'] ?? null)) {
+        maintenance_fail('DB_SOCKET inválido.');
+    }
 }
 
 /**
@@ -173,25 +241,49 @@ function maintenance_db_credentials_from_env(): ?array
     if (is_string($envSocket) && $envSocket !== '') {
         $socket = $envSocket;
     }
-    return [
+    $creds = [
         'host' => $host,
         'socket' => $socket,
         'name' => $name,
         'user' => $user,
         'pass' => (string) $pass,
     ];
+    maintenance_assert_safe_credentials($creds);
+    return $creds;
 }
 
 function maintenance_prompt(string $label, bool $hidden = false): string
 {
     if (!defined('STDIN') || !is_resource(STDIN) || stream_isatty(STDIN) === false) {
-        maintenance_fail("No hay terminal interactiva para solicitar: {$label}");
+        maintenance_fail("No hay terminal interactiva para solicitar: {$label}. Usá variables de entorno.");
     }
     fwrite(STDERR, $label);
-    if ($hidden && function_exists('shell_exec') && PHP_OS_FAMILY !== 'Windows') {
-        $value = shell_exec('stty -echo; read -r REPLY; stty echo; printf \'%s\' "$REPLY"');
-        fwrite(STDERR, "\n");
-        return is_string($value) ? $value : '';
+    if ($hidden) {
+        $stty = trim((string) shell_exec('command -v stty'));
+        if ($stty === '' || PHP_OS_FAMILY === 'Windows') {
+            maintenance_fail('No se puede ocultar la contraseña de forma segura. Definí la variable de entorno correspondiente.');
+        }
+        $prev = shell_exec('stty -g 2>/dev/null');
+        $ok = false;
+        try {
+            $disable = shell_exec('stty -echo 2>/dev/null');
+            if ($disable === null && $prev === null) {
+                maintenance_fail('No se pudo desactivar el eco del terminal. Definí la variable de entorno correspondiente.');
+            }
+            $line = fgets(STDIN);
+            $ok = true;
+        } finally {
+            if (is_string($prev) && $prev !== '') {
+                shell_exec('stty ' . escapeshellarg(trim($prev)) . ' 2>/dev/null');
+            } else {
+                shell_exec('stty echo 2>/dev/null');
+            }
+            fwrite(STDERR, "\n");
+        }
+        if (!$ok || $line === false) {
+            maintenance_fail("No se pudo leer: {$label}");
+        }
+        return rtrim($line, "\r\n");
     }
     $line = fgets(STDIN);
     if ($line === false) {
@@ -222,7 +314,9 @@ function maintenance_obtain_db_credentials(bool $interactive = true): array
     if ($name === '' || $user === '') {
         maintenance_fail('DB_NAME y DB_USER son obligatorios.');
     }
-    return ['host' => $host, 'socket' => null, 'name' => $name, 'user' => $user, 'pass' => $pass];
+    $creds = ['host' => $host, 'socket' => null, 'name' => $name, 'user' => $user, 'pass' => $pass];
+    maintenance_assert_safe_credentials($creds);
+    return $creds;
 }
 
 function maintenance_validate_site_url(string $url): bool
@@ -243,10 +337,7 @@ function maintenance_validate_site_url(string $url): bool
     if ($scheme === 'https') {
         return true;
     }
-    if ($scheme === 'http' && ($host === 'localhost' || $host === '127.0.0.1')) {
-        return true;
-    }
-    return false;
+    return $scheme === 'http' && ($host === 'localhost' || $host === '127.0.0.1');
 }
 
 function maintenance_validate_whatsapp(string $value): bool
@@ -261,11 +352,12 @@ function maintenance_validate_username(string $value): bool
 
 function maintenance_validate_admin_password(string $value): bool
 {
-    return strlen($value) >= 12 && strlen($value) <= 200;
+    return strlen($value) >= 12 && strlen($value) <= 200 && !maintenance_has_control_chars($value);
 }
 
 function maintenance_pdo(array $creds): PDO
 {
+    maintenance_assert_safe_credentials($creds);
     $charset = 'utf8mb4';
     if (!empty($creds['socket'])) {
         $dsn = 'mysql:unix_socket=' . $creds['socket'] . ';dbname=' . $creds['name'] . ';charset=' . $charset;
@@ -292,28 +384,55 @@ function maintenance_database_is_empty(PDO $pdo): bool
     return $count === 0;
 }
 
+function maintenance_chmod_0600(string $path): void
+{
+    if (!@chmod($path, 0600)) {
+        @unlink($path);
+        maintenance_fail('No se pudieron aplicar permisos 0600.');
+    }
+    $perms = fileperms($path);
+    if ($perms === false || (($perms & 0777) !== 0600)) {
+        @unlink($path);
+        maintenance_fail('Los permisos resultantes no son 0600.');
+    }
+}
+
+function maintenance_assert_mode_0600(string $path, bool $deleteIfBad = false): void
+{
+    $perms = @fileperms($path);
+    if ($perms === false || (($perms & 0777) !== 0600)) {
+        if ($deleteIfBad) {
+            @unlink($path);
+        }
+        maintenance_fail('El archivo no tiene permisos 0600.');
+    }
+}
+
 /**
  * Write a temporary MySQL defaults file (0600) and return its path.
+ *
+ * @param array{host:string,socket:?string,name:string,user:string,pass:string} $creds
  */
 function maintenance_write_defaults_extra_file(array $creds): string
 {
+    maintenance_assert_safe_credentials($creds);
     $dir = sys_get_temp_dir();
     $path = tempnam($dir, 'cyberleo-my-');
     if ($path === false) {
         maintenance_fail('No se pudo crear archivo temporal de credenciales.');
     }
     $hostLine = !empty($creds['socket'])
-        ? 'socket=' . str_replace(["\n", "\r"], '', (string) $creds['socket'])
-        : 'host=' . str_replace(["\n", "\r"], '', (string) $creds['host']);
+        ? 'socket=' . $creds['socket']
+        : 'host=' . $creds['host'];
     $content = "[client]\n"
         . $hostLine . "\n"
-        . 'user=' . str_replace(["\n", "\r"], '', (string) $creds['user']) . "\n"
-        . 'password="' . addcslashes((string) $creds['pass'], "\\\"") . "\"\n";
+        . 'user=' . $creds['user'] . "\n"
+        . 'password="' . addcslashes($creds['pass'], "\\\"") . "\"\n";
     if (file_put_contents($path, $content) === false) {
         @unlink($path);
         maintenance_fail('No se pudo escribir el archivo temporal de credenciales.');
     }
-    @chmod($path, 0600);
+    maintenance_chmod_0600($path);
     return $path;
 }
 
@@ -344,29 +463,64 @@ function maintenance_proc_open(array $command, ?string $stdin = null, ?string $c
     return ['code' => $code, 'stdout' => $stdout, 'stderr' => $stderr];
 }
 
-function maintenance_import_schema(array $creds, string $schemaPath): void
+function maintenance_mysql_bin(string $name): string
 {
-    $bin = trim((string) shell_exec('command -v mysql')) ?: 'mysql';
+    $path = trim((string) shell_exec('command -v ' . $name));
+    if ($path === '' || !is_executable($path)) {
+        maintenance_fail("Falta el binario ejecutable {$name}.");
+    }
+    return $path;
+}
+
+function maintenance_import_sql_file(array $creds, string $sqlPath): void
+{
+    if (!is_file($sqlPath) || is_link($sqlPath) || filesize($sqlPath) === false || filesize($sqlPath) < 1) {
+        maintenance_fail('Archivo SQL inválido o vacío.');
+    }
+    $bin = maintenance_mysql_bin('mysql');
     $defaults = maintenance_write_defaults_extra_file($creds);
+    $stderrFile = tempnam(sys_get_temp_dir(), 'cyberleo-mysql-err-');
+    $stdoutFile = tempnam(sys_get_temp_dir(), 'cyberleo-mysql-out-');
+    if ($stderrFile === false || $stdoutFile === false) {
+        @unlink($defaults);
+        maintenance_fail('No se pudieron crear temporales de mysql.');
+    }
     try {
-        $sql = file_get_contents($schemaPath);
-        if ($sql === false || $sql === '') {
-            maintenance_fail('No se pudo leer schema.sql.');
-        }
         $cmd = [$bin, '--defaults-extra-file=' . $defaults, '--default-character-set=utf8mb4', $creds['name']];
-        $result = maintenance_proc_open($cmd, $sql);
-        if ($result['code'] !== 0) {
-            maintenance_fail('Falló la importación del esquema. Recreá la base vacía e intentá de nuevo.');
+        $descriptors = [
+            0 => ['file', $sqlPath, 'r'],
+            1 => ['file', $stdoutFile, 'w'],
+            2 => ['file', $stderrFile, 'w'],
+        ];
+        $process = proc_open($cmd, $descriptors, $pipes);
+        if (!is_resource($process)) {
+            maintenance_fail('No se pudo iniciar mysql.');
+        }
+        $code = proc_close($process);
+        if ($code !== 0) {
+            maintenance_fail('Falló la importación SQL. Recreá la base vacía e intentá de nuevo.');
         }
     } finally {
         @unlink($defaults);
+        @unlink($stderrFile);
+        @unlink($stdoutFile);
     }
+}
+
+function maintenance_import_schema(array $creds, string $schemaPath): void
+{
+    maintenance_import_sql_file($creds, $schemaPath);
 }
 
 function maintenance_export_database(array $creds, string $outputSqlPath): void
 {
-    $bin = trim((string) shell_exec('command -v mysqldump')) ?: 'mysqldump';
+    $bin = maintenance_mysql_bin('mysqldump');
     $defaults = maintenance_write_defaults_extra_file($creds);
+    $stderrFile = tempnam(sys_get_temp_dir(), 'cyberleo-dump-err-');
+    if ($stderrFile === false) {
+        @unlink($defaults);
+        maintenance_fail('No se pudo crear temporal de stderr.');
+    }
     try {
         $cmd = [
             $bin,
@@ -378,35 +532,25 @@ function maintenance_export_database(array $creds, string $outputSqlPath): void
             '--no-tablespaces',
             $creds['name'],
         ];
-        $result = maintenance_proc_open($cmd);
-        if ($result['code'] !== 0 || $result['stdout'] === '') {
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['file', $outputSqlPath, 'w'],
+            2 => ['file', $stderrFile, 'w'],
+        ];
+        $process = proc_open($cmd, $descriptors, $pipes);
+        if (!is_resource($process)) {
+            maintenance_fail('No se pudo iniciar mysqldump.');
+        }
+        fclose($pipes[0]);
+        $code = proc_close($process);
+        if ($code !== 0 || !is_file($outputSqlPath) || is_link($outputSqlPath) || filesize($outputSqlPath) < 1) {
+            @unlink($outputSqlPath);
             maintenance_fail('Falló mysqldump. El respaldo no se completó.');
         }
-        if (file_put_contents($outputSqlPath, $result['stdout']) === false) {
-            maintenance_fail('No se pudo escribir database.sql del respaldo.');
-        }
-        @chmod($outputSqlPath, 0600);
+        maintenance_chmod_0600($outputSqlPath);
     } finally {
         @unlink($defaults);
-    }
-}
-
-function maintenance_import_sql_file(array $creds, string $sqlPath): void
-{
-    $bin = trim((string) shell_exec('command -v mysql')) ?: 'mysql';
-    $defaults = maintenance_write_defaults_extra_file($creds);
-    try {
-        $sql = file_get_contents($sqlPath);
-        if ($sql === false) {
-            maintenance_fail('No se pudo leer database.sql del backup.');
-        }
-        $cmd = [$bin, '--defaults-extra-file=' . $defaults, '--default-character-set=utf8mb4', $creds['name']];
-        $result = maintenance_proc_open($cmd, $sql);
-        if ($result['code'] !== 0) {
-            maintenance_fail('Falló la importación de database.sql.');
-        }
-    } finally {
-        @unlink($defaults);
+        @unlink($stderrFile);
     }
 }
 
@@ -427,36 +571,23 @@ function maintenance_write_config_local(string $publicRoot, array $defines): voi
         $lines[] = 'define(' . var_export($name, true) . ', ' . var_export($value, true) . ");\n";
     }
     $dir = dirname($target);
-    $tmp = tempnam($dir, '.config.local.');
-    if ($tmp === false) {
-        maintenance_fail('No se pudo crear temporal para config.local.php.');
-    }
-    // tempnam may create in /tmp; ensure same directory for atomic rename.
-    if (dirname($tmp) !== $dir) {
-        @unlink($tmp);
-        $tmp = $dir . '/.config.local.' . bin2hex(random_bytes(8)) . '.tmp';
-    }
+    $tmp = $dir . '/.config.local.' . bin2hex(random_bytes(8)) . '.tmp';
     if (file_put_contents($tmp, implode('', $lines)) === false) {
         @unlink($tmp);
         maintenance_fail('No se pudo escribir config.local.php temporal.');
     }
-    @chmod($tmp, 0600);
+    maintenance_chmod_0600($tmp);
     if (!rename($tmp, $target)) {
         @unlink($tmp);
         maintenance_fail('No se pudo publicar config.local.php de forma atómica.');
     }
-    @chmod($target, 0600);
+    maintenance_assert_mode_0600($target, true);
 }
 
 function maintenance_output_contains_secret(string $haystack, array $creds, string $appSecret = ''): bool
 {
-    $needles = array_filter([
-        $creds['pass'] ?? '',
-        $appSecret,
-        $creds['user'] ?? '',
-    ], static fn ($v) => is_string($v) && $v !== '');
-    foreach ($needles as $needle) {
-        if ($needle !== '' && str_contains($haystack, $needle)) {
+    foreach ([$creds['pass'] ?? '', $appSecret] as $needle) {
+        if (is_string($needle) && $needle !== '' && str_contains($haystack, $needle)) {
             return true;
         }
     }
@@ -464,50 +595,46 @@ function maintenance_output_contains_secret(string $haystack, array $creds, stri
 }
 
 /**
- * Allowed upload extensions for backup/restore.
- *
- * @return list<string>
- */
-function maintenance_allowed_upload_extensions(): array
-{
-    return ['jpg', 'jpeg', 'png', 'webp', 'htaccess'];
-}
-
-/**
  * Collect regular upload files under products/ or settings/.
+ * Rejects any subdirectory: each file dirname must equal assets/images/{scope}.
  *
  * @return list<string> relative paths from public root
  */
 function maintenance_collect_upload_files(string $publicRoot, string $scope): array
 {
+    if (!in_array($scope, ['products', 'settings'], true)) {
+        maintenance_fail('Scope de upload inválido.');
+    }
     $base = $publicRoot . '/assets/images/' . $scope;
-    if (!is_dir($base) || is_link($base) || maintenance_path_has_symlink($base)) {
+    $expectedDir = 'assets/images/' . $scope;
+    if (!is_dir($base) || is_link($base) || maintenance_path_has_symlink($base) || realpath($base) !== $base) {
         maintenance_fail("Uploads {$scope} inválidos o con symlinks.");
     }
+    $entries = @scandir($base);
+    if ($entries === false) {
+        maintenance_fail("No se pudo leer uploads {$scope}.");
+    }
     $files = [];
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($base, FilesystemIterator::SKIP_DOTS)
-    );
-    foreach ($iterator as $file) {
-        $path = $file->getPathname();
-        if (is_link($path) || maintenance_path_has_symlink($path)) {
-            maintenance_fail("Se rechazó un symlink en uploads ({$scope}).");
-        }
-        if ($file->isDir()) {
-            // Only flat files expected; nested dirs are unexpected except the root itself.
-            $relDir = substr($path, strlen($publicRoot) + 1);
-            if ($relDir !== 'assets/images/' . $scope) {
-                maintenance_fail("Subdirectorio inesperado en uploads: {$relDir}");
-            }
+    foreach ($entries as $name) {
+        if ($name === '.' || $name === '..') {
             continue;
         }
-        if (!$file->isFile()) {
+        $path = $base . '/' . $name;
+        if (is_link($path)) {
+            maintenance_fail("Se rechazó un symlink en uploads ({$scope}).");
+        }
+        if (is_dir($path)) {
+            maintenance_fail("Subdirectorio no permitido en uploads: {$expectedDir}/{$name}");
+        }
+        if (!is_file($path)) {
             maintenance_fail('Entrada no regular en uploads.');
         }
-        $rel = substr($path, strlen($publicRoot) + 1);
-        $name = $file->getFilename();
+        $rel = $expectedDir . '/' . $name;
+        if (dirname($rel) !== $expectedDir) {
+            maintenance_fail("Ruta de upload inesperada: {$rel}");
+        }
         if ($name === '.htaccess') {
-            $files[] = str_replace('\\', '/', $rel);
+            $files[] = $rel;
             continue;
         }
         $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
@@ -517,7 +644,7 @@ function maintenance_collect_upload_files(string $publicRoot, string $scope): ar
         if (str_contains($rel, '..') || str_starts_with($rel, '/')) {
             maintenance_fail("Ruta de upload insegura: {$rel}");
         }
-        $files[] = str_replace('\\', '/', $rel);
+        $files[] = $rel;
     }
     sort($files);
     return $files;
@@ -527,7 +654,7 @@ function maintenance_uploads_are_empty_except_htaccess(string $publicRoot): bool
 {
     foreach (['products', 'settings'] as $scope) {
         foreach (maintenance_collect_upload_files($publicRoot, $scope) as $rel) {
-            if (!str_ends_with($rel, '/.htaccess') && basename($rel) !== '.htaccess') {
+            if (basename($rel) !== '.htaccess') {
                 return false;
             }
         }
@@ -544,7 +671,6 @@ function maintenance_creds_from_public_root(string $publicRoot): array
     if (!is_file($config)) {
         maintenance_fail('includes/config.php ausente en public-root.');
     }
-    // Load in an isolated scope without HTML side effects from db.php.
     require_once $config;
     $host = defined('DB_HOST') ? (string) DB_HOST : '';
     $name = defined('DB_NAME') ? (string) DB_NAME : '';
@@ -566,7 +692,9 @@ function maintenance_creds_from_public_root(string $publicRoot): array
         }
         $host = $hostOnly;
     }
-    return ['host' => $host, 'socket' => $socket, 'name' => $name, 'user' => $user, 'pass' => $pass];
+    $creds = ['host' => $host, 'socket' => $socket, 'name' => $name, 'user' => $user, 'pass' => $pass];
+    maintenance_assert_safe_credentials($creds);
+    return $creds;
 }
 
 function maintenance_require_cli(): void
@@ -585,12 +713,8 @@ function maintenance_require_zip_and_proc(): void
     if (!function_exists('proc_open')) {
         maintenance_fail('proc_open no está disponible; es obligatorio para mantenimiento seguro.');
     }
-    foreach (['mysql', 'mysqldump'] as $bin) {
-        $path = trim((string) shell_exec('command -v ' . $bin));
-        if ($path === '') {
-            maintenance_fail("Falta el binario {$bin} en PATH.");
-        }
-    }
+    maintenance_mysql_bin('mysql');
+    maintenance_mysql_bin('mysqldump');
 }
 
 function maintenance_app_commit(): ?string
@@ -601,4 +725,185 @@ function maintenance_app_commit(): ?string
     }
     $out = trim((string) shell_exec('git -C ' . escapeshellarg($private) . ' rev-parse HEAD 2>/dev/null'));
     return $out !== '' ? $out : null;
+}
+
+/**
+ * Full backup ZIP verification (same rules as restore --verify).
+ *
+ * @return array{manifest:array<string,mixed>,tmpdir:string}
+ */
+function maintenance_verify_backup_zip(string $zipPath): array
+{
+    $zipPath = trim($zipPath);
+    if ($zipPath === '' || !str_starts_with($zipPath, DIRECTORY_SEPARATOR)) {
+        maintenance_fail('La ruta del ZIP debe ser absoluta.');
+    }
+    if (maintenance_path_has_symlink($zipPath) || is_link($zipPath)) {
+        maintenance_fail('El ZIP no puede ser ni atravesar symlinks.');
+    }
+    $realZip = realpath($zipPath);
+    if ($realZip === false || !is_file($realZip) || $realZip !== $zipPath) {
+        maintenance_fail('ZIP inexistente o no canónico.');
+    }
+
+    $tmpdir = sys_get_temp_dir() . '/cyberleo-bakverify-' . bin2hex(random_bytes(8));
+    if (!mkdir($tmpdir, 0700, true) && !is_dir($tmpdir)) {
+        maintenance_fail('No se pudo crear temporal de verificación.');
+    }
+    $cleanup = static function () use ($tmpdir): void {
+        if (!is_dir($tmpdir)) {
+            return;
+        }
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($tmpdir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($it as $file) {
+            $p = $file->getPathname();
+            $file->isDir() ? @rmdir($p) : @unlink($p);
+        }
+        @rmdir($tmpdir);
+    };
+    register_shutdown_function($cleanup);
+
+    $zip = new ZipArchive();
+    if ($zip->open($realZip) !== true) {
+        maintenance_fail('No se pudo abrir el ZIP.');
+    }
+
+    $names = [];
+    $seen = [];
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $stat = $zip->statIndex($i);
+        if ($stat === false) {
+            $zip->close();
+            maintenance_fail('Entrada ZIP ilegible.');
+        }
+        $name = str_replace('\\', '/', (string) $stat['name']);
+        if ($name === '' || str_ends_with($name, '/')) {
+            continue;
+        }
+        $normalized = $name;
+        if ($normalized !== $name || str_contains($name, '//') || str_contains($name, './')) {
+            // Reject non-normalized forms explicitly.
+        }
+        if (str_starts_with($name, '/') || str_contains($name, '..') || str_contains($name, "\0")
+            || str_contains($name, './') || str_contains($name, '//')) {
+            $zip->close();
+            maintenance_fail('ZIP Slip o ruta no normalizada detectada.');
+        }
+        if (isset($seen[$name])) {
+            $zip->close();
+            maintenance_fail('Nombre duplicado dentro del ZIP.');
+        }
+        $seen[$name] = true;
+        if (!empty($stat['external_attributes'])) {
+            $type = ($stat['external_attributes'] >> 16) & 0170000;
+            if ($type === 0120000) {
+                $zip->close();
+                maintenance_fail('El backup contiene un symlink.');
+            }
+        }
+        $names[] = $name;
+    }
+    sort($names);
+
+    if (!in_array('manifest.json', $names, true) || !in_array('database.sql', $names, true)) {
+        $zip->close();
+        maintenance_fail('Backup incompleto: faltan manifest.json o database.sql.');
+    }
+    foreach ($names as $name) {
+        if (str_contains(strtolower($name), 'config.local')) {
+            $zip->close();
+            maintenance_fail('El backup no debe incluir config.local.php.');
+        }
+        if ($zip->extractTo($tmpdir, [$name]) !== true) {
+            $zip->close();
+            maintenance_fail('No se pudo extraer una entrada del backup.');
+        }
+        $extracted = $tmpdir . '/' . $name;
+        if (!is_file($extracted) || is_link($extracted)) {
+            $zip->close();
+            maintenance_fail('Entrada extraída inválida.');
+        }
+    }
+    $zip->close();
+
+    $manifestRaw = file_get_contents($tmpdir . '/manifest.json');
+    if ($manifestRaw === false) {
+        maintenance_fail('No se pudo leer manifest.json.');
+    }
+    try {
+        $manifest = json_decode($manifestRaw, true, 512, JSON_THROW_ON_ERROR);
+    } catch (Throwable $e) {
+        maintenance_fail('manifest.json inválido.');
+    }
+    if (!is_array($manifest)
+        || ($manifest['format'] ?? '') !== CYBERLEO_BACKUP_FORMAT
+        || (int) ($manifest['version'] ?? 0) !== CYBERLEO_BACKUP_VERSION
+        || empty($manifest['files'])
+        || !is_array($manifest['files'])
+        || empty($manifest['config_local_php_excluded'])
+    ) {
+        maintenance_fail('Manifiesto incompatible o incompleto.');
+    }
+
+    $declared = array_keys($manifest['files']);
+    sort($declared);
+    $onDisk = [];
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tmpdir, FilesystemIterator::SKIP_DOTS));
+    foreach ($it as $file) {
+        if (!$file->isFile()) {
+            continue;
+        }
+        $rel = str_replace('\\', '/', substr($file->getPathname(), strlen($tmpdir) + 1));
+        if ($rel === 'manifest.json') {
+            continue;
+        }
+        $onDisk[] = $rel;
+    }
+    sort($onDisk);
+    if ($onDisk !== $declared) {
+        maintenance_fail('El contenido del ZIP no coincide exactamente con el manifiesto.');
+    }
+
+    foreach ($manifest['files'] as $rel => $meta) {
+        if (!is_string($rel) || str_contains($rel, '..') || str_starts_with($rel, '/')
+            || str_contains($rel, './') || str_contains($rel, '//')) {
+            maintenance_fail('Ruta de manifiesto insegura.');
+        }
+        if (!is_array($meta) || !isset($meta['size'], $meta['sha256'])
+            || !is_numeric($meta['size']) || !is_string($meta['sha256'])
+            || !preg_match('/^[a-f0-9]{64}$/', $meta['sha256'])) {
+            maintenance_fail('Metadatos de manifiesto inválidos.');
+        }
+        if ($rel !== 'database.sql') {
+            if (str_starts_with($rel, 'assets/images/products/') || str_starts_with($rel, 'assets/images/settings/')) {
+                $scope = str_starts_with($rel, 'assets/images/products/') ? 'products' : 'settings';
+                if (dirname($rel) !== 'assets/images/' . $scope) {
+                    maintenance_fail("Upload anidado no permitido: {$rel}");
+                }
+                $base = basename($rel);
+                if ($base !== '.htaccess') {
+                    $ext = strtolower(pathinfo($base, PATHINFO_EXTENSION));
+                    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+                        maintenance_fail("Extensión no permitida en backup: {$rel}");
+                    }
+                }
+            } else {
+                maintenance_fail("Archivo no permitido en backup: {$rel}");
+            }
+        }
+        $full = $tmpdir . '/' . $rel;
+        $size = filesize($full);
+        $hash = hash_file('sha256', $full);
+        if ($size === false || $hash === false
+            || (int) $meta['size'] !== (int) $size
+            || !hash_equals($meta['sha256'], $hash)
+        ) {
+            maintenance_fail("Hash o tamaño alterado: {$rel}");
+        }
+    }
+
+    return ['manifest' => $manifest, 'tmpdir' => $tmpdir];
 }

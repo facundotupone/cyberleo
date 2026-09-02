@@ -33,9 +33,6 @@ $outputDir = maintenance_require_absolute_dir($outputDirArg, '--output-dir', tru
 if ($outputDir === $publicRoot || str_starts_with($outputDir, $publicRoot . DIRECTORY_SEPARATOR)) {
     maintenance_fail('--output-dir debe quedar fuera de public_html.');
 }
-if (str_starts_with($publicRoot, $outputDir . DIRECTORY_SEPARATOR)) {
-    // output inside parent of public is ok; only reject when output is under public.
-}
 
 $creds = maintenance_creds_from_public_root($publicRoot);
 $work = sys_get_temp_dir() . '/cyberleo-backup-' . bin2hex(random_bytes(8));
@@ -82,17 +79,19 @@ try {
         }
     }
     sort($files);
+    if (count($files) !== count(array_unique($files))) {
+        maintenance_fail('Listado de backup con duplicados.');
+    }
 
     $fileMeta = [];
     foreach ($files as $rel) {
         $full = $work . '/' . $rel;
-        $fileMeta[$rel] = [
-            'size' => filesize($full),
-            'sha256' => hash_file('sha256', $full),
-        ];
-        if ($fileMeta[$rel]['size'] === false || $fileMeta[$rel]['sha256'] === false) {
+        $size = filesize($full);
+        $hash = hash_file('sha256', $full);
+        if ($size === false || $hash === false) {
             maintenance_fail('No se pudo hashear un archivo del backup.');
         }
+        $fileMeta[$rel] = ['size' => $size, 'sha256' => $hash];
     }
 
     $manifest = [
@@ -103,7 +102,6 @@ try {
         'database' => [
             'name' => $creds['name'],
             'host' => $creds['host'],
-            // intentionally no user/password
         ],
         'config_local_php_excluded' => true,
         'files' => $fileMeta,
@@ -140,32 +138,21 @@ try {
         }
         @unlink($tmpZip);
     }
-    @chmod($zipPath, 0600);
+    maintenance_chmod_0600($zipPath);
+    maintenance_assert_mode_0600($zipPath, true);
 
-    // Ensure secrets not in zip by quick scan of names only.
-    $verify = new ZipArchive();
-    if ($verify->open($zipPath) !== true) {
-        @unlink($zipPath);
-        maintenance_fail('No se pudo verificar el ZIP publicado.');
-    }
-    for ($i = 0; $i < $verify->numFiles; $i++) {
-        $name = $verify->getNameIndex($i);
-        if ($name === false) {
-            continue;
-        }
-        if (str_contains(strtolower($name), 'config.local')) {
-            $verify->close();
-            @unlink($zipPath);
-            maintenance_fail('El backup no debe incluir config.local.php.');
-        }
-    }
-    $verify->close();
+    // Full self-verify before success.
+    maintenance_verify_backup_zip($zipPath);
 
     fwrite(STDOUT, "Backup creado.\n");
     fwrite(STDOUT, 'Archivo: ' . $basename . "\n");
     fwrite(STDOUT, 'Archivos en manifiesto: ' . count($files) . "\n");
     fwrite(STDOUT, "config.local.php: excluido\n");
+    fwrite(STDOUT, "Autoverificación: OK\n");
 } catch (Throwable $e) {
+    if (isset($zipPath) && is_file($zipPath)) {
+        @unlink($zipPath);
+    }
     maintenance_fail('Backup falló (detalle omitido).');
 }
 

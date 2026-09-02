@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 /**
  * Controles de salud seguros para CLI y panel admin (sin secretos ni rutas absolutas).
+ * Nunca lanza excepciones hacia el llamador.
  */
 
 if (!defined('CYBERLEO_OFFICIAL_LOGO_SHA256')) {
@@ -14,13 +15,30 @@ if (!defined('CYBERLEO_OFFICIAL_LOGO_SHA256')) {
  */
 function system_health_run_checks(?PDO $pdo = null, ?string $publicRoot = null): array
 {
+    try {
+        return system_health_run_checks_inner($pdo, $publicRoot);
+    } catch (Throwable $e) {
+        return [[
+            'id' => 'health_runner',
+            'label' => 'Controles de salud',
+            'status' => 'FAIL',
+            'detail' => 'Control no disponible.',
+        ]];
+    }
+}
+
+/**
+ * @return list<array{id:string,label:string,status:string,detail:string}>
+ */
+function system_health_run_checks_inner(?PDO $pdo = null, ?string $publicRoot = null): array
+{
     $checks = [];
     $add = static function (string $id, string $label, string $status, string $detail = '') use (&$checks): void {
         $checks[] = [
             'id' => $id,
             'label' => $label,
             'status' => $status,
-            'detail' => $detail,
+            'detail' => system_health_sanitize_detail($detail),
         ];
     };
 
@@ -38,6 +56,24 @@ function system_health_run_checks(?PDO $pdo = null, ?string $publicRoot = null):
 
     $procOk = function_exists('proc_open');
     $add('proc_open', 'proc_open (mantenimiento)', $procOk ? 'PASS' : 'WARN', $procOk ? 'Disponible' : 'Requerido para dump/import CLI');
+
+    $mysqlBin = system_health_find_bin('mysql');
+    if ($mysqlBin === null) {
+        $add('mysql_cli', 'Cliente mysql (mantenimiento)', 'WARN', 'mysql no está disponible en PATH');
+    } elseif (!@is_executable($mysqlBin)) {
+        $add('mysql_cli', 'Cliente mysql (mantenimiento)', 'WARN', 'mysql encontrado pero no ejecutable');
+    } else {
+        $add('mysql_cli', 'Cliente mysql (mantenimiento)', 'PASS', 'Disponible y ejecutable');
+    }
+
+    $dumpBin = system_health_find_bin('mysqldump');
+    if ($dumpBin === null) {
+        $add('mysqldump_cli', 'Cliente mysqldump (mantenimiento)', 'WARN', 'mysqldump no está disponible en PATH');
+    } elseif (!@is_executable($dumpBin)) {
+        $add('mysqldump_cli', 'Cliente mysqldump (mantenimiento)', 'WARN', 'mysqldump encontrado pero no ejecutable');
+    } else {
+        $add('mysqldump_cli', 'Cliente mysqldump (mantenimiento)', 'PASS', 'Disponible y ejecutable');
+    }
 
     $configComplete = defined('DB_HOST') && DB_HOST !== ''
         && defined('DB_NAME') && DB_NAME !== ''
@@ -87,32 +123,36 @@ function system_health_run_checks(?PDO $pdo = null, ?string $publicRoot = null):
         'orders', 'order_items', 'store_settings', 'order_rate_limits', 'auth_rate_limits',
     ];
     if ($dbOk && $pdo instanceof PDO) {
-        foreach ($requiredTables as $table) {
-            $exists = (int) $pdo->query(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = " . $pdo->quote($table)
-            )->fetchColumn();
-            $add('table_' . $table, 'Tabla ' . $table, $exists === 1 ? 'PASS' : 'FAIL', $exists === 1 ? 'Presente' : 'Ausente');
-        }
-        $colChecks = [
-            ['orders', 'idempotency_key', 'char(64)'],
-            ['orders', 'expires_at', 'datetime'],
-            ['products', 'stock', null],
-            ['products', 'is_active', null],
-            ['users', 'password', null],
-        ];
-        foreach ($colChecks as [$table, $column, $type]) {
-            $sql = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = "
-                . $pdo->quote($table) . " AND column_name = " . $pdo->quote($column);
-            if ($type !== null) {
-                $sql .= ' AND column_type = ' . $pdo->quote($type);
+        try {
+            foreach ($requiredTables as $table) {
+                $exists = (int) $pdo->query(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = " . $pdo->quote($table)
+                )->fetchColumn();
+                $add('table_' . $table, 'Tabla ' . $table, $exists === 1 ? 'PASS' : 'FAIL', $exists === 1 ? 'Presente' : 'Ausente');
             }
-            $ok = (int) $pdo->query($sql)->fetchColumn() === 1;
-            $add('col_' . $table . '_' . $column, "Columna {$table}.{$column}", $ok ? 'PASS' : 'FAIL', $ok ? 'OK' : 'Falta o tipo inesperado');
+            $colChecks = [
+                ['orders', 'idempotency_key', 'char(64)'],
+                ['orders', 'expires_at', 'datetime'],
+                ['products', 'stock', null],
+                ['products', 'is_active', null],
+                ['users', 'password', null],
+            ];
+            foreach ($colChecks as [$table, $column, $type]) {
+                $sql = "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = "
+                    . $pdo->quote($table) . " AND column_name = " . $pdo->quote($column);
+                if ($type !== null) {
+                    $sql .= ' AND column_type = ' . $pdo->quote($type);
+                }
+                $ok = (int) $pdo->query($sql)->fetchColumn() === 1;
+                $add('col_' . $table . '_' . $column, "Columna {$table}.{$column}", $ok ? 'PASS' : 'FAIL', $ok ? 'OK' : 'Falta o tipo inesperado');
+            }
+            $idx = (int) $pdo->query(
+                "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'orders' AND index_name = 'uq_orders_idempotency_key' AND non_unique = 0"
+            )->fetchColumn();
+            $add('idx_idempotency', 'Índice único idempotency', $idx === 1 ? 'PASS' : 'FAIL', $idx === 1 ? 'Presente' : 'Ausente');
+        } catch (Throwable $e) {
+            $add('schema_error', 'Esquema', 'FAIL', 'No se pudo verificar el esquema.');
         }
-        $idx = (int) $pdo->query(
-            "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'orders' AND index_name = 'uq_orders_idempotency_key' AND non_unique = 0"
-        )->fetchColumn();
-        $add('idx_idempotency', 'Índice único idempotency', $idx === 1 ? 'PASS' : 'FAIL', $idx === 1 ? 'Presente' : 'Ausente');
     } else {
         $add('schema_skipped', 'Esquema', 'FAIL', 'No se pudo verificar el esquema sin conexión');
     }
@@ -121,23 +161,38 @@ function system_health_run_checks(?PDO $pdo = null, ?string $publicRoot = null):
     foreach (['products', 'settings'] as $scope) {
         $dir = $root . '/assets/images/' . $scope;
         $exists = is_dir($dir) && !is_link($dir);
-        $writable = $exists && is_writable($dir);
+        $readable = $exists && @is_readable($dir);
+        $writable = $exists && @is_writable($dir);
         $ht = $exists && is_file($dir . '/.htaccess') && !is_link($dir . '/.htaccess');
         $add('upload_' . $scope . '_dir', "Uploads {$scope}", $exists ? 'PASS' : 'FAIL', $exists ? 'Directorio presente' : 'Ausente');
+        $add('upload_' . $scope . '_read', "Lectura {$scope}", $readable ? 'PASS' : 'FAIL', $readable ? 'Legible' : 'Ilegible o ausente');
         $add('upload_' . $scope . '_write', "Escritura {$scope}", $writable ? 'PASS' : 'FAIL', $writable ? 'Escribible' : 'No escribible');
         $add('upload_' . $scope . '_htaccess', ".htaccess {$scope}", $ht ? 'PASS' : 'WARN', $ht ? 'Presente' : 'Ausente');
 
         $symlinkFound = false;
-        if ($exists) {
-            $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
-            foreach ($it as $file) {
-                if (is_link($file->getPathname())) {
-                    $symlinkFound = true;
-                    break;
+        $scanOk = true;
+        if ($exists && $readable) {
+            try {
+                $it = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)
+                );
+                foreach ($it as $file) {
+                    if (is_link($file->getPathname())) {
+                        $symlinkFound = true;
+                        break;
+                    }
                 }
+            } catch (Throwable $e) {
+                $scanOk = false;
             }
+        } elseif ($exists && !$readable) {
+            $scanOk = false;
         }
-        $add('upload_' . $scope . '_symlinks', "Sin symlinks {$scope}", $symlinkFound ? 'FAIL' : 'PASS', $symlinkFound ? 'Se detectaron symlinks' : 'OK');
+        if (!$scanOk) {
+            $add('upload_' . $scope . '_symlinks', "Sin symlinks {$scope}", 'WARN', 'No se pudo inspeccionar el directorio');
+        } else {
+            $add('upload_' . $scope . '_symlinks', "Sin symlinks {$scope}", $symlinkFound ? 'FAIL' : 'PASS', $symlinkFound ? 'Se detectaron symlinks' : 'OK');
+        }
     }
 
     $htaccess = is_file($root . '/.htaccess') && !is_link($root . '/.htaccess');
@@ -170,6 +225,31 @@ function system_health_run_checks(?PDO $pdo = null, ?string $publicRoot = null):
     );
 
     return $checks;
+}
+
+function system_health_sanitize_detail(string $detail): string
+{
+    $detail = preg_replace('#/(?:home|var|tmp|workspace|Users)/[^\s]+#', '[path]', $detail) ?? $detail;
+    $detail = str_ireplace(['PDOException', 'stack trace', 'SQLSTATE'], ['[db]', '[trace]', '[sql]'], $detail);
+    return $detail;
+}
+
+function system_health_find_bin(string $name): ?string
+{
+    $path = getenv('PATH');
+    if (!is_string($path) || $path === '') {
+        return null;
+    }
+    foreach (explode(PATH_SEPARATOR, $path) as $dir) {
+        if ($dir === '') {
+            continue;
+        }
+        $candidate = rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $name;
+        if (is_file($candidate)) {
+            return $candidate;
+        }
+    }
+    return null;
 }
 
 /**
