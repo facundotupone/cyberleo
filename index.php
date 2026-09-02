@@ -69,8 +69,10 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     <?php
     require_once 'includes/theme.php';
     require_once 'includes/home_content.php';
+    require_once 'includes/catalog_display.php';
     $themeSettings = resolve_theme_settings($storeSettings);
     $homeContent = resolve_home_content_settings($storeSettings);
+    $catalogDisplay = resolve_catalog_display_settings($storeSettings);
     $heroClasses = ['hero-section'];
     $heroClasses[] = 'hero-height-' . $themeSettings['hero_height'];
     $heroClasses[] = 'hero-align-' . $themeSettings['hero_alignment'];
@@ -135,110 +137,8 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         <span class="cart-count">0</span>
     </a>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?= htmlspecialchars('assets/js/catalog-cards.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // --- CONTADOR DEL CARRITO ---
-            function updateCartCount() {
-                const cart = JSON.parse(localStorage.getItem('cart')) || [];
-                const count = cart.reduce((total, item) => total + item.quantity, 0);
-                document.querySelectorAll('.cart-count').forEach(el => {
-                    el.textContent = count;
-                });
-            }
-
-            // --- Sincroniza el stock visual al cargar la página ---
-            function syncStockVisual() {
-                const cart = JSON.parse(localStorage.getItem('cart')) || [];
-                document.querySelectorAll('.add-to-cart').forEach(function(btn) {
-                    var productId = btn.getAttribute('data-product-id');
-                    var stockOriginal = parseInt(btn.getAttribute('data-product-stock-original'), 10);
-
-                    // Sumar todas las cantidades del mismo producto.
-                    let totalQuantity = 0;
-                    cart.forEach(item => {
-                        if (item.productId == productId) {
-                            totalQuantity += parseInt(item.quantity) || 0;
-                        }
-                    });
-
-                    let stockVisual = stockOriginal - totalQuantity;
-                    btn.setAttribute('data-product-stock', stockVisual);
-
-                    // Actualizar el texto de stock
-                    const stockDisplay = btn.closest('.card-body').querySelector('.stock-display');
-                    if (stockDisplay) {
-                        stockDisplay.textContent = `(Stock: ${stockVisual})`;
-                    }
-
-                    // Actualizar el botón
-                    if (stockVisual <= 0) {
-                        btn.disabled = true;
-                        btn.innerHTML = '<i class="bi bi-cart-plus"></i> Sin stock';
-                    } else {
-                        btn.disabled = false;
-                        btn.innerHTML = '<i class="bi bi-cart-plus"></i> Agregar al carrito';
-                    }
-                });
-            }
-
-            // Ejecutar al cargar la página
-            syncStockVisual();
-            updateCartCount();
-
-            // SISTEMA ÚNICO DE CARRITO - REEMPLAZAR el sistema de cart.js con el sistema de category.php
-            document.querySelectorAll('.add-to-cart').forEach(function(btn) {
-                btn.addEventListener('click', function(e) {
-                    var productId = btn.getAttribute('data-product-id');
-                    var productName = btn.getAttribute('data-product-name');
-                    var productPrice = parseFloat(btn.getAttribute('data-product-price'));
-                    var stockOriginal = parseInt(btn.getAttribute('data-product-stock-original'), 10);
-
-                    let cart = JSON.parse(localStorage.getItem('cart')) || [];
-                    let index = cart.findIndex(item => item.productId == productId);
-                    let currentQty = index !== -1 ? cart[index].quantity : 0;
-
-                    // Calcular total de ese producto en el carrito
-                    let totalQuantity = 0;
-                    cart.forEach(item => {
-                        if (item.productId == productId) {
-                            totalQuantity += parseInt(item.quantity) || 0;
-                        }
-                    });
-
-                    // Verificar stock disponible
-                    if (totalQuantity >= stockOriginal) {
-                        alert(`No hay suficiente stock. Disponible: ${stockOriginal - totalQuantity}`);
-                        return;
-                    }
-
-                    // Agregar al carrito
-                    if (index !== -1) {
-                        cart[index].quantity += 1;
-                    } else {
-                        cart.push({
-                            productId: productId,
-                            productName: productName,
-                            productPrice: productPrice,
-                            quantity: 1,
-                        });
-                    }
-                    localStorage.setItem('cart', JSON.stringify(cart));
-                    updateCartCount();
-
-                    // Mostrar mensaje de éxito
-                    const notification = document.createElement('div');
-                    notification.className = 'alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3';
-                    notification.style.zIndex = '9999';
-                    notification.innerHTML = 'Producto agregado al carrito';
-                    document.body.appendChild(notification);
-                    setTimeout(() => notification.remove(), 2000);
-
-                    // --- Actualiza el stock visual de todos los botones de ese producto ---
-                    syncStockVisual();
-                });
-            });
-        });
-
         // Buscador de productos (solo si show_search renderizó ambos nodos)
         (function initProductSearch() {
             const searchInput = document.getElementById('searchProducts');
@@ -281,7 +181,11 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                                 });
                                 resultsContainer.style.display = 'block';
                             } else {
-                                resultsContainer.innerHTML = '<div class="p-2">No se encontraron productos</div>';
+                                resultsContainer.replaceChildren();
+                                const empty = document.createElement('div');
+                                empty.className = 'p-2';
+                                empty.textContent = 'No se encontraron productos';
+                                resultsContainer.appendChild(empty);
                                 resultsContainer.style.display = 'block';
                             }
                         });
@@ -294,28 +198,6 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 }
             });
         })();
-
-        function toggleDescription(button) {
-            const container = button.closest('.description-container');
-            const shortDesc = container.querySelector('.short-description');
-            const fullDesc = container.querySelector('.full-description');
-            const ellipsis = container.querySelector('.ellipsis');
-            const isShowingFull = button.getAttribute('data-showing-full') === 'true';
-
-            if (isShowingFull) {
-                shortDesc.style.display = '';
-                ellipsis.style.display = '';
-                fullDesc.style.display = 'none';
-                button.textContent = 'Ver más';
-                button.setAttribute('data-showing-full', 'false');
-            } else {
-                shortDesc.style.display = 'none';
-                ellipsis.style.display = 'none';
-                fullDesc.style.display = '';
-                button.textContent = 'Ver menos';
-                button.setAttribute('data-showing-full', 'true');
-            }
-        }
     </script>
 </body>
 </html>

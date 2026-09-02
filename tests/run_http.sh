@@ -226,6 +226,31 @@ settings_form() {
         -F 'footer_show_whatsapp=1' \
         -F 'business_hours=' \
         -F 'business_location=' \
+        -F 'featured_section_title=Productos Destacados' \
+        -F 'featured_empty_text=No hay productos destacados disponibles.' \
+        -F 'catalog_empty_text=No hay productos disponibles en esta categoría.' \
+        -F 'featured_columns=3' \
+        -F 'catalog_columns=3' \
+        -F 'product_card_style=elevated' \
+        -F 'product_image_fit=contain' \
+        -F 'product_image_height=normal' \
+        -F 'product_card_alignment=left' \
+        -F 'product_description_mode=expandable' \
+        -F 'product_description_length=200' \
+        -F 'product_show_category_badge=1' \
+        -F 'product_show_stock=1' \
+        -F 'product_show_sale_badge=1' \
+        -F 'product_show_old_price=1' \
+        -F 'product_sale_badge_text=LIQUIDACIÓN' \
+        -F 'product_show_share_buttons=1' \
+        -F 'product_share_whatsapp=1' \
+        -F 'product_share_facebook=1' \
+        -F 'product_share_copy=1' \
+        -F 'product_add_button_text=Agregar al carrito' \
+        -F 'product_out_of_stock_text=Sin stock' \
+        -F 'catalog_show_breadcrumbs=1' \
+        -F 'catalog_show_product_count=1' \
+        -F 'catalog_show_subcategory_filter=1' \
         "$@"
 }
 cli_env=(
@@ -1622,6 +1647,477 @@ assert_body_excludes H-HOME2-INTERNAL '/workspace/secret.sql'
 assert_body_excludes H-HOME2-INTERNAL 'SQLSTATE'
 sql 'DROP TRIGGER IF EXISTS settings_home_fail'
 pass H-HOME2-INTERNAL
+
+printf 'Pruebas HTTP Etapa 3 (catálogo y tarjetas)...\n'
+sql "UPDATE products SET description=CONCAT(COALESCE(description,''), ' ', REPEAT('detalle extendido ', 40)), price_sale=CASE WHEN id=1 THEN ROUND(price*0.8,2) ELSE price_sale END, destacados=IF(id<=2,id,destacados) WHERE id<=2"
+request GET index.php
+assert_status H-CATALOG3-DEFAULT 200
+assert_body_contains H-CATALOG3-DEFAULT 'product-cols-3'
+assert_body_contains H-CATALOG3-DEFAULT 'Productos Destacados'
+assert_body_contains H-CATALOG3-DEFAULT 'product-card-elevated'
+assert_body_contains H-CATALOG3-DEFAULT 'product-fit-contain'
+assert_body_contains H-CATALOG3-DEFAULT 'product-height-normal'
+assert_body_contains H-CATALOG3-DEFAULT 'ver-mas'
+assert_body_contains H-CATALOG3-DEFAULT 'stock-display'
+assert_body_contains H-CATALOG3-DEFAULT 'product-share'
+assert_body_contains H-CATALOG3-DEFAULT 'Agregar al carrito'
+assert_body_contains H-CATALOG3-DEFAULT 'assets/js/catalog-cards.js'
+pass H-CATALOG3-DEFAULT
+
+sql "UPDATE products SET description=CONCAT(description, ' ', REPEAT('detalle extendido ', 40)), price_sale=CASE WHEN id=1 THEN price*0.8 ELSE price_sale END, destacados=IF(id<=4,id,destacados) WHERE id<=4"
+sql "UPDATE products SET image=NULL WHERE id=3"
+sql "DELETE FROM product_images WHERE product_id=3"
+SAFE_IMG="assets/images/products/$(php -r 'echo str_repeat("a",32);').jpg"
+printf 'fixture' >"$ROOT/$SAFE_IMG"
+CREATED_IMAGES+=("$SAFE_IMG")
+sql "UPDATE products SET image='$SAFE_IMG' WHERE id=1"
+sql "DELETE FROM product_images WHERE product_id=1"
+sql "INSERT INTO product_images(product_id,image_path,is_main) VALUES(1,'$SAFE_IMG',1),(1,'$SAFE_IMG',0)"
+BAD_IMG_SQL="javascript:alert(1)"
+sql "UPDATE products SET image='$BAD_IMG_SQL' WHERE id=2"
+
+settings_form 'HTTP Test Store' \
+    -F 'featured_section_title=Destacados Alt' \
+    -F 'featured_empty_text=Vacío destacados alt' \
+    -F 'catalog_empty_text=Vacío catálogo alt' \
+    -F 'featured_columns=4' \
+    -F 'catalog_columns=4' \
+    -F 'product_card_style=minimal' \
+    -F 'product_image_fit=cover' \
+    -F 'product_image_height=large' \
+    -F 'product_card_alignment=center' \
+    -F 'product_description_mode=expandable' \
+    -F 'product_description_length=100' \
+    -F 'product_show_category_badge=1' \
+    -F 'product_show_stock=1' \
+    -F 'product_show_sale_badge=1' \
+    -F 'product_show_old_price=1' \
+    -F 'product_sale_badge_text=OFERTÓN' \
+    -F 'product_show_share_buttons=1' \
+    -F 'product_share_whatsapp=1' \
+    -F 'product_share_facebook=1' \
+    -F 'product_share_copy=1' \
+    -F 'product_add_button_text=Sumar al carrito' \
+    -F 'product_out_of_stock_text=Agotado' \
+    -F 'catalog_show_breadcrumbs=1' \
+    -F 'catalog_show_product_count=1' \
+    -F 'catalog_show_subcategory_filter=1'
+assert_status H-CATALOG3-SAVE 302
+assert_sql H-CATALOG3-SAVE 'Destacados Alt' "SELECT setting_value FROM store_settings WHERE setting_key='featured_section_title'"
+assert_sql H-CATALOG3-SAVE '4' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
+assert_sql H-CATALOG3-SAVE '4' "SELECT setting_value FROM store_settings WHERE setting_key='catalog_columns'"
+assert_sql H-CATALOG3-SAVE 'minimal' "SELECT setting_value FROM store_settings WHERE setting_key='product_card_style'"
+assert_sql H-CATALOG3-SAVE 'cover' "SELECT setting_value FROM store_settings WHERE setting_key='product_image_fit'"
+assert_sql H-CATALOG3-SAVE 'OFERTÓN' "SELECT setting_value FROM store_settings WHERE setting_key='product_sale_badge_text'"
+assert_sql H-CATALOG3-SAVE 'Sumar al carrito' "SELECT setting_value FROM store_settings WHERE setting_key='product_add_button_text'"
+pass H-CATALOG3-SAVE
+
+request GET index.php
+assert_status H-CATALOG3-HOME 200
+assert_body_contains H-CATALOG3-HOME 'Destacados Alt'
+assert_body_contains H-CATALOG3-HOME 'product-cols-4'
+assert_body_contains H-CATALOG3-HOME 'product-card-minimal'
+assert_body_contains H-CATALOG3-HOME 'product-fit-cover'
+assert_body_contains H-CATALOG3-HOME 'product-height-large'
+assert_body_contains H-CATALOG3-HOME 'product-card-align-center'
+assert_body_contains H-CATALOG3-HOME 'OFERTÓN'
+assert_body_contains H-CATALOG3-HOME 'Sumar al carrito'
+assert_body_contains H-CATALOG3-HOME 'Copiar enlace'
+assert_body_excludes H-CATALOG3-HOME 'bi-instagram'
+pass H-CATALOG3-HOME
+
+request GET 'category.php?id=1'
+assert_status H-CATALOG3-CATEGORY 200
+assert_body_contains H-CATALOG3-CATEGORY 'product-cols-4'
+assert_body_contains H-CATALOG3-CATEGORY 'product-card-minimal'
+assert_body_contains H-CATALOG3-CATEGORY 'aria-label="breadcrumb"'
+assert_body_contains H-CATALOG3-CATEGORY 'producto'
+assert_body_contains H-CATALOG3-CATEGORY 'Filtrar por subcategoría'
+assert_body_contains H-CATALOG3-CATEGORY 'Sumar al carrito'
+pass H-CATALOG3-CATEGORY
+
+PREV_TITLE="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='featured_section_title'")"
+settings_form 'HTTP Test Store' \
+    -F 'featured_columns=9'
+assert_status H-CATALOG3-BAD-OPTION 200
+assert_body_contains H-CATALOG3-BAD-OPTION 'Opción inválida'
+assert_sql H-CATALOG3-BAD-OPTION '4' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
+assert_sql H-CATALOG3-BAD-OPTION "$PREV_TITLE" "SELECT setting_value FROM store_settings WHERE setting_key='featured_section_title'"
+pass H-CATALOG3-BAD-OPTION
+
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=save' \
+    -F 'store_name=HTTP Test Store' \
+    -F 'whatsapp_number=5491100000000' \
+    -F 'instagram_url=' \
+    -F 'hero_title=HTTP hero' \
+    -F 'hero_subtitle=HTTP subtitle' \
+    -F 'reservation_minutes=120' \
+    -F 'admin_email=admin-http@example.test' \
+    -F 'mail_from=store-http@example.test' \
+    -F 'payment_methods=Efectivo' \
+    -F 'brand_primary_color=#0057b8' \
+    -F 'brand_secondary_color=#00aeef' \
+    -F 'brand_navy_color=#071a33' \
+    -F 'brand_background_color=#f3f8fc' \
+    -F 'brand_text_color=#111827' \
+    -F 'brand_font=system' \
+    -F 'nav_style=white' \
+    -F 'button_radius=medium' \
+    -F 'card_radius=medium' \
+    -F 'hero_button_text=Explorar catálogo' \
+    -F 'hero_button_url=#productos-destacados' \
+    -F 'hero_height=normal' \
+    -F 'hero_alignment=center' \
+    -F 'hero_overlay=medium' \
+    -F 'show_search=1' \
+    -F 'show_categories=1' \
+    -F 'show_featured_products=1' \
+    -F 'announcement_style=primary' \
+    -F 'announcement_text=' \
+    -F 'announcement_url=' \
+    -F 'promo_title=' \
+    -F 'promo_text=' \
+    -F 'promo_button_text=Ver más' \
+    -F 'promo_button_url=#' \
+    -F 'home_order_featured=1' \
+    -F 'home_order_promo=2' \
+    -F 'home_order_categories=3' \
+    -F 'home_order_benefits=4' \
+    -F 'benefits_enabled=1' \
+    -F 'benefit_1_icon=bi-truck' \
+    -F 'benefit_1_title=Envíos y entregas' \
+    -F 'benefit_1_text=Coordinamos la entrega o retiro de tu compra.' \
+    -F 'benefit_2_icon=bi-shield-check' \
+    -F 'benefit_2_title=Compra segura' \
+    -F 'benefit_2_text=Stock actualizado y pedido confirmado por WhatsApp.' \
+    -F 'benefit_3_icon=bi-headset' \
+    -F 'benefit_3_title=Atención personalizada' \
+    -F 'benefit_3_text=Te asesoramos para elegir la mejor opción.' \
+    -F 'footer_description=Tecnología, periféricos y soluciones para tu equipo.' \
+    -F 'footer_instagram_text=Seguinos en Instagram' \
+    -F 'footer_whatsapp_text=Contactar por WhatsApp' \
+    -F 'footer_show_logo=1' \
+    -F 'footer_show_instagram=1' \
+    -F 'footer_show_whatsapp=1' \
+    -F 'business_hours=' \
+    -F 'business_location=' \
+    -F 'featured_section_title=Destacados Alt' \
+    -F 'featured_empty_text=Vacío destacados alt' \
+    -F 'catalog_empty_text=Vacío catálogo alt' \
+    -F 'featured_columns=4' \
+    -F 'catalog_columns=4' \
+    -F 'product_card_style=minimal' \
+    -F 'product_image_fit=cover' \
+    -F 'product_image_height=large' \
+    -F 'product_card_alignment=center' \
+    -F 'product_description_mode=hidden' \
+    -F 'product_description_length=100' \
+    -F 'product_sale_badge_text=OFERTÓN' \
+    -F 'product_add_button_text=Sumar al carrito' \
+    -F 'product_out_of_stock_text=Agotado'
+assert_status H-CATALOG3-HIDDEN-SAVE 302
+assert_sql H-CATALOG3-HIDDEN-SAVE '0' "SELECT setting_value FROM store_settings WHERE setting_key='product_show_stock'"
+assert_sql H-CATALOG3-HIDDEN-SAVE '0' "SELECT setting_value FROM store_settings WHERE setting_key='product_show_share_buttons'"
+assert_sql H-CATALOG3-HIDDEN-SAVE '0' "SELECT setting_value FROM store_settings WHERE setting_key='catalog_show_breadcrumbs'"
+assert_sql H-CATALOG3-HIDDEN-SAVE 'hidden' "SELECT setting_value FROM store_settings WHERE setting_key='product_description_mode'"
+pass H-CATALOG3-HIDDEN-SAVE
+
+request GET 'category.php?id=1'
+assert_status H-CATALOG3-HIDDEN 200
+assert_body_excludes H-CATALOG3-HIDDEN 'description-container'
+assert_body_excludes H-CATALOG3-HIDDEN 'product-share'
+assert_body_excludes H-CATALOG3-HIDDEN 'product-sale-badge'
+assert_body_excludes H-CATALOG3-HIDDEN 'aria-label="breadcrumb"'
+assert_body_excludes H-CATALOG3-HIDDEN 'Filtrar por subcategoría'
+assert_body_excludes H-CATALOG3-HIDDEN '(Stock:'
+pass H-CATALOG3-HIDDEN
+
+settings_form 'HTTP XSS Catalog' \
+    -F 'featured_section_title=<script>globalThis.catalogXssExecuted=1</script>XSS Title' \
+    -F 'featured_empty_text=<img src=x onerror=globalThis.catalogXssExecuted=2>Vacío' \
+    -F 'catalog_empty_text=<svg onload=globalThis.catalogXssExecuted=3>Cat' \
+    -F 'product_sale_badge_text=<script>bad</script>BADGE' \
+    -F 'product_add_button_text=<img src=x onerror=1>Botón' \
+    -F 'product_out_of_stock_text=<b>OOS</b>' \
+    -F 'featured_columns=3' \
+    -F 'catalog_columns=3' \
+    -F 'product_card_style=elevated' \
+    -F 'product_image_fit=contain' \
+    -F 'product_image_height=normal' \
+    -F 'product_card_alignment=left' \
+    -F 'product_description_mode=expandable' \
+    -F 'product_description_length=200' \
+    -F 'product_show_category_badge=1' \
+    -F 'product_show_stock=1' \
+    -F 'product_show_sale_badge=1' \
+    -F 'product_show_old_price=1' \
+    -F 'product_show_share_buttons=1' \
+    -F 'product_share_whatsapp=1' \
+    -F 'product_share_facebook=1' \
+    -F 'product_share_copy=1' \
+    -F 'catalog_show_breadcrumbs=1' \
+    -F 'catalog_show_product_count=1' \
+    -F 'catalog_show_subcategory_filter=1'
+assert_status H-CATALOG3-XSS-SAVE 302
+sql "UPDATE products SET name='<script>globalThis.catalogXssExecuted=9</script>Prod', description='Desc <img src=x onerror=globalThis.catalogXssExecuted=8>', category_id=1 WHERE id=1"
+sql "UPDATE categories SET name='<b>CatXSS</b>' WHERE id=1"
+request GET index.php
+assert_status H-CATALOG3-XSS 200
+assert_body_excludes H-CATALOG3-XSS '<script>globalThis.catalogXssExecuted=1</script>'
+assert_body_excludes H-CATALOG3-XSS 'onerror=globalThis.catalogXssExecuted'
+assert_body_excludes H-CATALOG3-XSS '<script>globalThis.catalogXssExecuted=9</script>'
+assert_body_contains H-CATALOG3-XSS 'XSS Title'
+assert_body_contains H-CATALOG3-XSS '&lt;script&gt;'
+pass H-CATALOG3-XSS
+
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F 'csrf_token=invalid-csrf' \
+    -F 'settings_action=restore_catalog_display'
+assert_status H-CATALOG3-RESTORE-CSRF 403
+assert_sql H-CATALOG3-RESTORE-CSRF '3' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
+pass H-CATALOG3-RESTORE-CSRF
+
+sql "UPDATE store_settings SET setting_value='#abcdef' WHERE setting_key='brand_primary_color'"
+sql "INSERT INTO store_settings(setting_key,setting_value) VALUES('brand_primary_color','#abcdef') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)"
+sql "INSERT INTO store_settings(setting_key,setting_value) VALUES('footer_description','Footer Keep Stage2') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)"
+sql "INSERT INTO store_settings(setting_key,setting_value) VALUES('whatsapp_number','5491100000000') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)"
+STOCK_BEFORE="$(sql 'SELECT stock FROM products WHERE id=1')"
+
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_catalog_display'
+assert_status H-CATALOG3-RESTORE 302
+assert_header_contains H-CATALOG3-RESTORE 'Location: admin_settings.php?catalog_restored=1'
+assert_sql H-CATALOG3-RESTORE '3' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
+assert_sql H-CATALOG3-RESTORE 'elevated' "SELECT setting_value FROM store_settings WHERE setting_key='product_card_style'"
+assert_sql H-CATALOG3-RESTORE 'Productos Destacados' "SELECT setting_value FROM store_settings WHERE setting_key='featured_section_title'"
+assert_sql H-CATALOG3-RESTORE '#abcdef' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"
+assert_sql H-CATALOG3-RESTORE 'Footer Keep Stage2' "SELECT setting_value FROM store_settings WHERE setting_key='footer_description'"
+assert_sql H-CATALOG3-RESTORE '5491100000000' "SELECT setting_value FROM store_settings WHERE setting_key='whatsapp_number'"
+assert_sql H-CATALOG3-RESTORE "$STOCK_BEFORE" 'SELECT stock FROM products WHERE id=1'
+pass H-CATALOG3-RESTORE
+
+# Restore alternate config for browser/cart/images checks
+settings_form 'HTTP Test Store' \
+    -F 'featured_section_title=Destacados Alt' \
+    -F 'featured_columns=4' \
+    -F 'catalog_columns=4' \
+    -F 'product_card_style=bordered' \
+    -F 'product_image_fit=cover' \
+    -F 'product_image_height=compact' \
+    -F 'product_card_alignment=center' \
+    -F 'product_description_mode=expandable' \
+    -F 'product_description_length=100' \
+    -F 'product_show_category_badge=1' \
+    -F 'product_show_stock=1' \
+    -F 'product_show_sale_badge=1' \
+    -F 'product_show_old_price=1' \
+    -F 'product_sale_badge_text=OFERTÓN' \
+    -F 'product_show_share_buttons=1' \
+    -F 'product_share_whatsapp=1' \
+    -F 'product_share_facebook=1' \
+    -F 'product_share_copy=1' \
+    -F 'product_add_button_text=Sumar al carrito' \
+    -F 'product_out_of_stock_text=Agotado' \
+    -F 'catalog_show_breadcrumbs=1' \
+    -F 'catalog_show_product_count=1' \
+    -F 'catalog_show_subcategory_filter=1'
+assert_status H-CATALOG3-ALT-READY 302
+pass H-CATALOG3-ALT-READY
+
+request GET index.php
+assert_status H-CATALOG3-IMAGES 200
+assert_body_contains H-CATALOG3-IMAGES 'product-fit-cover'
+assert_body_contains H-CATALOG3-IMAGES 'Sin imagen'
+assert_body_excludes H-CATALOG3-IMAGES 'javascript:alert(1)'
+assert_body_contains H-CATALOG3-IMAGES "$SAFE_IMG"
+pass H-CATALOG3-IMAGES
+
+run_catalog3_chrome() {
+    local mode=$1
+    local id=$2
+    if [[ -z "$CHROME_BIN" ]] || ! command -v node >/dev/null 2>&1; then
+        fail "$id" 'google-chrome o node no están disponibles'
+    fi
+    local port
+    port="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    local profile="$HTTP_TMP/chrome-catalog-$mode-profile"
+    mkdir -p "$profile"
+    local cmd=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$port" "--remote-allow-origins=*"
+        "--user-data-dir=$profile"
+        about:blank)
+    setsid "${cmd[@]}" >"$HTTP_TMP/chrome-catalog-$mode.out" 2>"$HTTP_TMP/chrome-catalog-$mode.log" & local cpid=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$port/json/list" >/dev/null && break; sleep .05; done
+    if timeout 55 node "$ROOT/tests/helpers/chrome_catalog_display.mjs" \
+        "$port" "$HTTP_BASE_URL" "$mode" >"$HTTP_TMP/chrome-catalog-$mode-test.out" 2>>"$HTTP_TMP/chrome-catalog-$mode.log"; then
+        sed -n '1,40p' "$HTTP_TMP/chrome-catalog-$mode-test.out"
+        rg -F --quiet '"browserErrors": 0' "$HTTP_TMP/chrome-catalog-$mode-test.out" ||
+            fail "$id" 'browserErrors distinto de 0'
+        pass "$id"
+    else
+        sed -n '1,200p' "$HTTP_TMP/chrome-catalog-$mode-test.out" >&2
+        sed -n '1,80p' "$HTTP_TMP/chrome-catalog-$mode.log" >&2
+        fail "$id" "Chromium catalog mode=$mode falló"
+    fi
+    kill -- "-$cpid" 2>/dev/null || kill "$cpid" 2>/dev/null || true
+    wait "$cpid" 2>/dev/null || true
+}
+
+CHROME_BIN="$(command -v google-chrome-stable || command -v google-chrome || true)"
+
+# Defaults for B-CATALOG3-DEFAULT
+settings_form 'HTTP Test Store'
+assert_status H-CATALOG3-DEFAULT-RESET 302
+pass H-CATALOG3-DEFAULT-RESET
+sql "UPDATE products SET name='Producto Seguro', description=CONCAT('Descripción segura ', REPEAT('detalle ', 50)), destacados=IF(id<=4,id,0) WHERE id<=4"
+sql "UPDATE categories SET name='Notebooks' WHERE id=1"
+run_catalog3_chrome default B-CATALOG3-DEFAULT
+
+settings_form 'HTTP Test Store' \
+    -F 'featured_section_title=Destacados Alt' \
+    -F 'featured_columns=4' \
+    -F 'catalog_columns=4' \
+    -F 'product_card_style=minimal' \
+    -F 'product_image_fit=cover' \
+    -F 'product_image_height=large' \
+    -F 'product_card_alignment=center' \
+    -F 'product_description_mode=expandable' \
+    -F 'product_description_length=100' \
+    -F 'product_sale_badge_text=OFERTÓN' \
+    -F 'product_add_button_text=Sumar al carrito'
+assert_status H-CATALOG3-ALT-HOME-SAVE 302
+run_catalog3_chrome alt-home B-CATALOG3-ALT-HOME
+run_catalog3_chrome alt-category B-CATALOG3-ALT-CATEGORY
+run_catalog3_chrome cols-4 B-CATALOG3-4-COLUMNS
+run_catalog3_chrome mobile-390 B-CATALOG3-MOBILE-390
+run_catalog3_chrome description-expand B-CATALOG3-DESCRIPTION-EXPAND
+run_catalog3_chrome cart B-CATALOG3-CART
+run_catalog3_chrome copy B-CATALOG3-COPY
+run_catalog3_chrome image-error B-CATALOG3-IMAGE-ERROR
+
+settings_form 'HTTP Test Store' \
+    -F 'featured_columns=2' \
+    -F 'catalog_columns=2'
+run_catalog3_chrome cols-2 B-CATALOG3-2-COLUMNS
+settings_form 'HTTP Test Store' \
+    -F 'featured_columns=3' \
+    -F 'catalog_columns=3'
+run_catalog3_chrome cols-3 B-CATALOG3-3-COLUMNS
+
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=save' \
+    -F 'store_name=HTTP Test Store' \
+    -F 'whatsapp_number=5491100000000' \
+    -F 'instagram_url=' \
+    -F 'hero_title=HTTP hero' \
+    -F 'hero_subtitle=HTTP subtitle' \
+    -F 'reservation_minutes=120' \
+    -F 'admin_email=admin-http@example.test' \
+    -F 'mail_from=store-http@example.test' \
+    -F 'payment_methods=Efectivo' \
+    -F 'brand_primary_color=#0057b8' \
+    -F 'brand_secondary_color=#00aeef' \
+    -F 'brand_navy_color=#071a33' \
+    -F 'brand_background_color=#f3f8fc' \
+    -F 'brand_text_color=#111827' \
+    -F 'brand_font=system' \
+    -F 'nav_style=white' \
+    -F 'button_radius=medium' \
+    -F 'card_radius=medium' \
+    -F 'hero_button_text=Explorar catálogo' \
+    -F 'hero_button_url=#productos-destacados' \
+    -F 'hero_height=normal' \
+    -F 'hero_alignment=center' \
+    -F 'hero_overlay=medium' \
+    -F 'show_search=1' \
+    -F 'show_categories=1' \
+    -F 'show_featured_products=1' \
+    -F 'announcement_style=primary' \
+    -F 'announcement_text=' \
+    -F 'announcement_url=' \
+    -F 'promo_title=' \
+    -F 'promo_text=' \
+    -F 'promo_button_text=Ver más' \
+    -F 'promo_button_url=#' \
+    -F 'home_order_featured=1' \
+    -F 'home_order_promo=2' \
+    -F 'home_order_categories=3' \
+    -F 'home_order_benefits=4' \
+    -F 'benefits_enabled=1' \
+    -F 'benefit_1_icon=bi-truck' \
+    -F 'benefit_1_title=Envíos y entregas' \
+    -F 'benefit_1_text=Coordinamos la entrega o retiro de tu compra.' \
+    -F 'benefit_2_icon=bi-shield-check' \
+    -F 'benefit_2_title=Compra segura' \
+    -F 'benefit_2_text=Stock actualizado y pedido confirmado por WhatsApp.' \
+    -F 'benefit_3_icon=bi-headset' \
+    -F 'benefit_3_title=Atención personalizada' \
+    -F 'benefit_3_text=Te asesoramos para elegir la mejor opción.' \
+    -F 'footer_description=Tecnología, periféricos y soluciones para tu equipo.' \
+    -F 'footer_instagram_text=Seguinos en Instagram' \
+    -F 'footer_whatsapp_text=Contactar por WhatsApp' \
+    -F 'footer_show_logo=1' \
+    -F 'footer_show_instagram=1' \
+    -F 'footer_show_whatsapp=1' \
+    -F 'business_hours=' \
+    -F 'business_location=' \
+    -F 'featured_section_title=Productos Destacados' \
+    -F 'featured_empty_text=No hay productos destacados disponibles.' \
+    -F 'catalog_empty_text=No hay productos disponibles en esta categoría.' \
+    -F 'featured_columns=3' \
+    -F 'catalog_columns=3' \
+    -F 'product_card_style=elevated' \
+    -F 'product_image_fit=contain' \
+    -F 'product_image_height=normal' \
+    -F 'product_card_alignment=left' \
+    -F 'product_description_mode=hidden' \
+    -F 'product_description_length=200' \
+    -F 'product_sale_badge_text=LIQUIDACIÓN' \
+    -F 'product_add_button_text=Agregar al carrito' \
+    -F 'product_out_of_stock_text=Sin stock'
+run_catalog3_chrome hidden B-CATALOG3-HIDDEN
+
+settings_form 'HTTP XSS Catalog' \
+    -F 'featured_section_title=<script>globalThis.catalogXssExecuted=1</script>XSS Title' \
+    -F 'featured_empty_text=<img src=x onerror=globalThis.catalogXssExecuted=2>Vacío' \
+    -F 'catalog_empty_text=<svg onload=globalThis.catalogXssExecuted=3>Cat' \
+    -F 'product_sale_badge_text=<script>bad</script>BADGE' \
+    -F 'product_add_button_text=<img src=x onerror=1>Botón' \
+    -F 'featured_columns=3' \
+    -F 'catalog_columns=3' \
+    -F 'product_description_mode=expandable' \
+    -F 'product_show_stock=1' \
+    -F 'product_show_sale_badge=1' \
+    -F 'product_show_share_buttons=1'
+sql "UPDATE products SET name='<script>globalThis.catalogXssExecuted=9</script>Prod', description='Desc <img src=x onerror=globalThis.catalogXssExecuted=8>' WHERE id=1"
+run_catalog3_chrome xss B-CATALOG3-XSS
+
+# H-CATALOG3-CART HTTP smoke: schema already validated in Chromium; confirm markup datasets
+settings_form 'HTTP Test Store' \
+    -F 'product_add_button_text=Sumar al carrito' \
+    -F 'product_out_of_stock_text=Agotado' \
+    -F 'product_show_stock=1' \
+    -F 'featured_columns=3'
+request GET index.php
+assert_status H-CATALOG3-CART 200
+assert_body_contains H-CATALOG3-CART 'data-add-text="Sumar al carrito"'
+assert_body_contains H-CATALOG3-CART 'data-oos-text="Agotado"'
+assert_body_contains H-CATALOG3-CART 'data-product-id='
+assert_body_contains H-CATALOG3-CART 'data-product-price='
+pass H-CATALOG3-CART
 
 printf 'Prueba XSS por HTTP...\n'
 sql 'UPDATE products SET stock=2 WHERE id=2'

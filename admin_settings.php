@@ -7,10 +7,12 @@ require_once 'includes/security.php';
 require_once 'includes/images.php';
 require_once 'includes/theme.php';
 require_once 'includes/home_content.php';
+require_once 'includes/catalog_display.php';
 
 $defaults = get_store_settings();
 $theme = resolve_theme_settings($defaults);
 $home = resolve_home_content_settings($defaults);
+$catalog = resolve_catalog_display_settings($defaults);
 $message = '';
 $messageType = 'info';
 $contrastWarnings = theme_contrast_warnings($theme);
@@ -51,6 +53,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($action === 'restore_catalog_display') {
+            $pdo->beginTransaction();
+            try {
+                restore_catalog_display_defaults($pdo);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            header('Location: admin_settings.php?catalog_restored=1');
+            exit;
+        }
+
         $name = trim($_POST['store_name'] ?? '');
         $whatsapp = preg_replace('/\D/', '', $_POST['whatsapp_number'] ?? '');
         if ($name === '' || mb_strlen($name) > 80 || strlen($whatsapp) < 8 || strlen($whatsapp) > 16) {
@@ -71,13 +86,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new PublicSettingsException(implode(' ', $homeCollect['errors']));
         }
 
+        $catalogCollect = collect_catalog_display_settings_from_post($_POST);
+        if ($catalogCollect['errors']) {
+            throw new PublicSettingsException(implode(' ', $catalogCollect['errors']));
+        }
+
         $heroTitle = sanitize_theme_plain_text((string) ($_POST['hero_title'] ?? ''), 140);
         $heroSubtitle = sanitize_theme_plain_text((string) ($_POST['hero_subtitle'] ?? ''), 240);
         if ($heroTitle === '' || $heroSubtitle === '') {
             throw new PublicSettingsException('Completá el título y el subtítulo de la portada.');
         }
 
-        $values = array_merge($themeCollect['values'], $homeCollect['values'], [
+        $values = array_merge($themeCollect['values'], $homeCollect['values'], $catalogCollect['values'], [
             'store_name' => $name,
             'whatsapp_number' => $whatsapp,
             'instagram_url' => $instagram,
@@ -115,6 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $defaults = array_merge($defaults, $_POST);
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
         $home = resolve_home_content_settings(array_merge($defaults, collect_home_content_settings_from_post($_POST)['values'] ?? []));
+        $catalog = resolve_catalog_display_settings(array_merge($defaults, collect_catalog_display_settings_from_post($_POST)['values'] ?? []));
         $contrastWarnings = theme_contrast_warnings($theme);
     } catch (InvalidArgumentException $e) {
         $message = $e->getMessage();
@@ -122,6 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $defaults = array_merge($defaults, $_POST);
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
         $home = resolve_home_content_settings(array_merge($defaults, collect_home_content_settings_from_post($_POST)['values'] ?? []));
+        $catalog = resolve_catalog_display_settings(array_merge($defaults, collect_catalog_display_settings_from_post($_POST)['values'] ?? []));
         $contrastWarnings = theme_contrast_warnings($theme);
     } catch (Throwable $e) {
         error_log('admin_settings: ' . $e->getMessage());
@@ -130,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $defaults = array_merge($defaults, $_POST);
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
         $home = resolve_home_content_settings(array_merge($defaults, collect_home_content_settings_from_post($_POST)['values'] ?? []));
+        $catalog = resolve_catalog_display_settings(array_merge($defaults, collect_catalog_display_settings_from_post($_POST)['values'] ?? []));
         $contrastWarnings = theme_contrast_warnings($theme);
     }
 }
@@ -143,6 +166,7 @@ if (isset($_GET['restored'])) {
     $defaults = get_store_settings();
     $theme = resolve_theme_settings($defaults);
     $home = resolve_home_content_settings($defaults);
+    $catalog = resolve_catalog_display_settings($defaults);
     $contrastWarnings = theme_contrast_warnings($theme);
 }
 if (isset($_GET['home_restored'])) {
@@ -151,6 +175,16 @@ if (isset($_GET['home_restored'])) {
     $defaults = get_store_settings();
     $theme = resolve_theme_settings($defaults);
     $home = resolve_home_content_settings($defaults);
+    $catalog = resolve_catalog_display_settings($defaults);
+    $contrastWarnings = theme_contrast_warnings($theme);
+}
+if (isset($_GET['catalog_restored'])) {
+    $message = 'Catálogo y tarjetas restaurados. Se conservaron identidad visual, contenido de portada y datos comerciales.';
+    $messageType = 'success';
+    $defaults = get_store_settings();
+    $theme = resolve_theme_settings($defaults);
+    $home = resolve_home_content_settings($defaults);
+    $catalog = resolve_catalog_display_settings($defaults);
     $contrastWarnings = theme_contrast_warnings($theme);
 }
 
@@ -173,6 +207,11 @@ $alignOptions = ['left' => 'Izquierda', 'center' => 'Centro'];
 $overlayOptions = ['soft' => 'Suave', 'medium' => 'Medio', 'strong' => 'Fuerte'];
 $navOptions = ['white' => 'Blanca', 'navy' => 'Navy'];
 $announcementStyles = ['primary' => 'Principal', 'secondary' => 'Secundario', 'navy' => 'Navy'];
+$cardStyleOptions = ['bordered' => 'Con borde', 'elevated' => 'Elevada', 'minimal' => 'Mínima'];
+$imageFitOptions = ['contain' => 'Contain (completa)', 'cover' => 'Cover (recorta)'];
+$descModeOptions = ['hidden' => 'Oculta', 'compact' => 'Compacta', 'expandable' => 'Expandible'];
+$descLenOptions = ['100' => '100', '160' => '160', '200' => '200', '300' => '300'];
+$columnOptions = ['2' => '2', '3' => '3', '4' => '4'];
 $iconLabels = [
     'bi-truck' => 'Envío',
     'bi-shield-check' => 'Seguridad',
@@ -583,6 +622,157 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
                     <small class="text-muted">WhatsApp e Instagram usan los datos comerciales de arriba. Si Instagram está vacío, no se muestra el enlace.</small>
                 </div>
             </div>
+
+            <hr>
+            <h2 class="h4 mb-3" id="catalog-display-heading">Catálogo y tarjetas de productos</h2>
+            <p class="text-muted small">Opciones cerradas para destacados, catálogo y presentación de tarjetas. Sin HTML, CSS ni JavaScript personalizados.</p>
+            <div class="row g-3 mb-4">
+                <div class="col-12"><h3 class="h6 mb-0">Textos y columnas</h3></div>
+                <div class="col-md-6">
+                    <label class="form-label" for="featured_section_title">Título de destacados</label>
+                    <input class="form-control" id="featured_section_title" name="featured_section_title" maxlength="80" value="<?= htmlspecialchars($catalog['featured_section_title']) ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="featured_columns">Columnas destacados</label>
+                    <select class="form-select" id="featured_columns" name="featured_columns">
+                        <?php foreach ($columnOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $catalog['featured_columns'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="catalog_columns">Columnas catálogo</label>
+                    <select class="form-select" id="catalog_columns" name="catalog_columns">
+                        <?php foreach ($columnOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $catalog['catalog_columns'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="featured_empty_text">Mensaje vacío de destacados</label>
+                    <input class="form-control" id="featured_empty_text" name="featured_empty_text" maxlength="160" value="<?= htmlspecialchars($catalog['featured_empty_text']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="catalog_empty_text">Mensaje vacío de catálogo</label>
+                    <input class="form-control" id="catalog_empty_text" name="catalog_empty_text" maxlength="160" value="<?= htmlspecialchars($catalog['catalog_empty_text']) ?>">
+                </div>
+
+                <div class="col-12"><h3 class="h6 mb-0 mt-2">Estilo de tarjeta e imagen</h3></div>
+                <div class="col-md-3 col-6">
+                    <label class="form-label" for="product_card_style">Estilo</label>
+                    <select class="form-select" id="product_card_style" name="product_card_style">
+                        <?php foreach ($cardStyleOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $catalog['product_card_style'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3 col-6">
+                    <label class="form-label" for="product_image_fit">Ajuste de imagen</label>
+                    <select class="form-select" id="product_image_fit" name="product_image_fit">
+                        <?php foreach ($imageFitOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $catalog['product_image_fit'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3 col-6">
+                    <label class="form-label" for="product_image_height">Altura de imagen</label>
+                    <select class="form-select" id="product_image_height" name="product_image_height">
+                        <?php foreach ($heightOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $catalog['product_image_height'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3 col-6">
+                    <label class="form-label" for="product_card_alignment">Alineación</label>
+                    <select class="form-select" id="product_card_alignment" name="product_card_alignment">
+                        <?php foreach ($alignOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $catalog['product_card_alignment'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4 col-6">
+                    <label class="form-label" for="product_description_mode">Descripción</label>
+                    <select class="form-select" id="product_description_mode" name="product_description_mode">
+                        <?php foreach ($descModeOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $catalog['product_description_mode'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4 col-6">
+                    <label class="form-label" for="product_description_length">Longitud</label>
+                    <select class="form-select" id="product_description_length" name="product_description_length">
+                        <?php foreach ($descLenOptions as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $catalog['product_description_length'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="product_sale_badge_text">Texto badge de oferta</label>
+                    <input class="form-control" id="product_sale_badge_text" name="product_sale_badge_text" maxlength="30" value="<?= htmlspecialchars($catalog['product_sale_badge_text']) ?>">
+                </div>
+
+                <div class="col-12"><h3 class="h6 mb-0 mt-2">Elementos visibles</h3></div>
+                <div class="col-12">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="product_show_category_badge" name="product_show_category_badge" value="1"<?= $catalog['product_show_category_badge'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="product_show_category_badge">Badge de categoría (destacados)</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="product_show_stock" name="product_show_stock" value="1"<?= $catalog['product_show_stock'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="product_show_stock">Mostrar stock</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="product_show_sale_badge" name="product_show_sale_badge" value="1"<?= $catalog['product_show_sale_badge'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="product_show_sale_badge">Badge de oferta</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="product_show_old_price" name="product_show_old_price" value="1"<?= $catalog['product_show_old_price'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="product_show_old_price">Precio anterior</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="product_show_share_buttons" name="product_show_share_buttons" value="1"<?= $catalog['product_show_share_buttons'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="product_show_share_buttons">Mostrar compartir</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="product_share_whatsapp" name="product_share_whatsapp" value="1"<?= $catalog['product_share_whatsapp'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="product_share_whatsapp">WhatsApp</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="product_share_facebook" name="product_share_facebook" value="1"<?= $catalog['product_share_facebook'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="product_share_facebook">Facebook</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="product_share_copy" name="product_share_copy" value="1"<?= $catalog['product_share_copy'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="product_share_copy">Copiar enlace</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="catalog_show_breadcrumbs" name="catalog_show_breadcrumbs" value="1"<?= $catalog['catalog_show_breadcrumbs'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="catalog_show_breadcrumbs">Breadcrumbs</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="catalog_show_product_count" name="catalog_show_product_count" value="1"<?= $catalog['catalog_show_product_count'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="catalog_show_product_count">Contador de productos</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="catalog_show_subcategory_filter" name="catalog_show_subcategory_filter" value="1"<?= $catalog['catalog_show_subcategory_filter'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="catalog_show_subcategory_filter">Filtro de subcategorías</label>
+                    </div>
+                </div>
+
+                <div class="col-12"><h3 class="h6 mb-0 mt-2">Textos del botón</h3></div>
+                <div class="col-md-6">
+                    <label class="form-label" for="product_add_button_text">Con stock</label>
+                    <input class="form-control" id="product_add_button_text" name="product_add_button_text" maxlength="40" value="<?= htmlspecialchars($catalog['product_add_button_text']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="product_out_of_stock_text">Sin stock</label>
+                    <input class="form-control" id="product_out_of_stock_text" name="product_out_of_stock_text" maxlength="30" value="<?= htmlspecialchars($catalog['product_out_of_stock_text']) ?>">
+                </div>
+            </div>
         </div>
         <div class="card-footer bg-white d-flex flex-wrap gap-2 justify-content-between">
             <button type="submit" class="btn btn-primary"><i class="bi bi-save" aria-hidden="true"></i> Guardar cambios</button>
@@ -600,6 +790,11 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
             <?= csrf_input() ?>
             <input type="hidden" name="settings_action" value="restore_home_content">
             <button type="submit" class="btn btn-outline-warning"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Restaurar contenido predeterminado</button>
+        </form>
+        <form method="post" id="restore-catalog-display-form">
+            <?= csrf_input() ?>
+            <input type="hidden" name="settings_action" value="restore_catalog_display">
+            <button type="submit" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Restaurar catálogo predeterminado</button>
         </form>
     </div>
 
@@ -657,6 +852,48 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
                     <div id="preview-footer-location-wrap"><span id="preview-footer-location"></span></div>
                 </div>
             </div>
+            <h3 class="h6 mt-4">Catálogo y tarjetas</h3>
+            <p class="small text-muted mb-2" id="catalog-preview-info">Vista previa de tarjeta</p>
+            <div class="catalog-preview-wrap mb-3">
+                <div id="catalog-preview-card" class="card product-card catalog-preview-card product-card-elevated product-card-align-left product-fit-contain product-height-normal">
+                    <div class="product-media">
+                        <div id="catalog-preview-sale-badge" class="product-sale-badge">LIQUIDACIÓN</div>
+                        <div class="catalog-preview-image-sim" aria-hidden="true"></div>
+                    </div>
+                    <div class="card-body">
+                        <div id="catalog-preview-category" class="mb-2">
+                            <span class="badge bg-warning text-dark">Ver más de Notebooks</span>
+                        </div>
+                        <h3 class="card-title h5" id="catalog-preview-title">Producto de ejemplo</h3>
+                        <div id="catalog-preview-desc-wrap" class="description-container">
+                            <p class="card-text">
+                                <span id="catalog-preview-desc-short" class="short-description"></span>
+                                <span id="catalog-preview-desc-ellipsis" class="ellipsis">...</span>
+                                <button type="button" id="catalog-preview-desc-more" class="btn btn-link p-0 ver-mas">Ver más</button>
+                            </p>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-auto pt-2 gap-2 flex-wrap">
+                            <div class="d-flex align-items-center flex-wrap product-price-block gap-2">
+                                <span id="catalog-preview-old-price" class="price-old">$150.000,00</span>
+                                <span class="price-sale">$129.999,00</span>
+                                <small id="catalog-preview-stock" class="text-muted stock-display">(Stock: 5)</small>
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm" id="catalog-preview-button">
+                                <i class="bi bi-cart-plus" aria-hidden="true"></i>
+                                <span class="add-to-cart-label" id="catalog-preview-button-label">Agregar al carrito</span>
+                            </button>
+                        </div>
+                        <div id="catalog-preview-share" class="mt-3 product-share">
+                            <div class="d-flex justify-content-center gap-2">
+                                <span id="catalog-preview-share-wa" class="btn btn-success btn-sm rounded-circle product-share-btn" aria-hidden="true"><i class="bi bi-whatsapp"></i></span>
+                                <span id="catalog-preview-share-fb" class="btn btn-primary btn-sm rounded-circle product-share-btn" aria-hidden="true"><i class="bi bi-facebook"></i></span>
+                                <span id="catalog-preview-share-copy" class="btn btn-secondary btn-sm rounded-circle product-share-btn" aria-hidden="true"><i class="bi bi-link-45deg"></i></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="small text-muted mb-0">Columnas destacados: <strong id="catalog-preview-featured-cols">3</strong> · Catálogo: <strong id="catalog-preview-catalog-cols">3</strong> · Fit: <span id="catalog-preview-fit">contain</span> · Altura: <span id="catalog-preview-height">normal</span></p>
             <p class="small text-muted mt-2 mb-0">La vista previa no guarda cambios. Usá “Guardar cambios” para persistir.</p>
         </div>
     </section>
@@ -666,5 +903,6 @@ window.THEME_PREVIEW_BOOT = <?= json_encode($previewPayload, JSON_HEX_TAG | JSON
 </script>
 <script src="<?= htmlspecialchars('assets/js/theme-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
 <script src="<?= htmlspecialchars('assets/js/home-content-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
+<script src="<?= htmlspecialchars('assets/js/catalog-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
 </body>
 </html>
