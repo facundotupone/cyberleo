@@ -2500,13 +2500,27 @@ settings_form 'HTTP Test Store' \
     -F 'cart_show_images=1' \
     -F 'cart_show_payment_methods=1'
 assert_status H-CHECKOUT4-METHODS-ONLY-SAVE 302
+assert_sql H-CHECKOUT4-METHODS-ONLY-SAVE '0' "SELECT setting_value FROM store_settings WHERE setting_key='cart_show_delivery_info'"
+assert_sql H-CHECKOUT4-METHODS-ONLY-SAVE '1' "SELECT setting_value FROM store_settings WHERE setting_key='cart_show_delivery_methods'"
+pass H-CHECKOUT4-METHODS-ONLY-SAVE
 request GET cart.php
 assert_status H-CHECKOUT4-METHODS-ONLY 200
 assert_body_contains H-CHECKOUT4-METHODS-ONLY 'cart-delivery-block'
+assert_body_contains H-CHECKOUT4-METHODS-ONLY 'cart-delivery-methods-list'
+assert_body_contains H-CHECKOUT4-METHODS-ONLY 'cart-delivery-methods-title'
 assert_body_contains H-CHECKOUT4-METHODS-ONLY 'Retiro solo'
 assert_body_contains H-CHECKOUT4-METHODS-ONLY 'Envío solo'
-assert_body_excludes H-CHECKOUT4-METHODS-ONLY 'NO DEBE VERSE INFO'
-assert_body_excludes H-CHECKOUT4-METHODS-ONLY 'Texto informativo oculto'
+# Título/texto informativo solo se renderizan con cart_show_delivery_info=1 (no confundir con JSON boot).
+assert_body_excludes H-CHECKOUT4-METHODS-ONLY 'cart-delivery-text'
+assert_body_excludes H-CHECKOUT4-METHODS-ONLY 'bi-info-circle me-2'
+php -r '
+$html = file_get_contents($argv[1]);
+$html = preg_replace("#<script\\b[^>]*>.*?</script>#is", "", $html) ?? $html;
+if (str_contains($html, "NO DEBE VERSE INFO") || str_contains($html, "Texto informativo oculto")) {
+    fwrite(STDERR, "info title/text leaked outside boot JSON\n");
+    exit(1);
+}
+' "$HTTP_BODY" || fail H-CHECKOUT4-METHODS-ONLY 'título/texto informativo visibles en HTML'
 pass H-CHECKOUT4-METHODS-ONLY
 
 settings_form 'HTTP Test Store' \
