@@ -70,12 +70,12 @@ $categories = get_categories();
     <!-- MISMO ESTILO QUE admin_products.php -->
     <style>
         body {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background: linear-gradient(135deg, #f3f8fc 0%, #dceaf8 100%);
             min-height: 100vh;
         }
 
         .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
@@ -87,7 +87,7 @@ $categories = get_categories();
 
         .nav-link.active {
             color: #fff !important;
-            border-bottom: 3px solid #ffd700;
+            border-bottom: 3px solid #00aeef;
             padding-bottom: 0.5rem;
         }
 
@@ -112,7 +112,7 @@ $categories = get_categories();
             border-radius: 15px 15px 0 0 !important;
             font-weight: 600;
             letter-spacing: 0.5px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%) !important;
             color: #fff;
         }
 
@@ -142,8 +142,8 @@ $categories = get_categories();
         }
 
         .form-control:focus, .form-select:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.15);
+            border-color: #0057b8;
+            box-shadow: 0 0 0 0.2rem rgba(0, 87, 184, 0.15);
         }
 
         .btn {
@@ -155,13 +155,13 @@ $categories = get_categories();
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
+            box-shadow: 0 4px 15px rgba(0, 87, 184, 0.3);
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 6px 20px rgba(0, 87, 184, 0.4);
         }
 
         .btn-danger {
@@ -193,8 +193,8 @@ $categories = get_categories();
         }
 
         .list-group-item:hover {
-            border-color: #667eea;
-            background: rgba(102, 126, 234, 0.05);
+            border-color: #0057b8;
+            background: rgba(0, 87, 184, 0.05);
             transform: translateX(5px);
         }
 

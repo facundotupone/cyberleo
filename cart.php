@@ -96,12 +96,12 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
 <body>
 <?php require_once 'components/nav.php'; ?>
 
-<div class="container my-4">
+<div class="container my-3">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex align-items-center mb-4">
-                <i class="bi bi-cart3 fs-2 text-primary me-3"></i>
-                <h1 class="mb-0">Carrito de Compras</h1>
+            <div class="d-flex align-items-center mb-3">
+                <i class="bi bi-cart3 fs-3 text-primary me-2" aria-hidden="true"></i>
+                <h1 class="cart-page-title">Carrito de Compras</h1>
             </div>
         </div>
     </div>
@@ -109,8 +109,8 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
     <div class="row">
         <div class="col-lg-8">
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-light border-0">
-                    <h5 class="mb-0">Productos en tu carrito</h5>
+                <div class="card-header bg-white border-0">
+                    <h5 class="mb-0 text-navy">Productos en tu carrito</h5>
                 </div>
                 <div class="card-body p-0">
                     <div id="cart-items">
@@ -121,8 +121,8 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
         </div>
 
         <div class="col-lg-4">
-            <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-primary text-white">
+            <div class="card shadow-sm border-0 mb-4 cart-summary-card">
+                <div class="card-header">
                     <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>Resumen del pedido</h5>
                 </div>
                 <div class="card-body">
@@ -131,7 +131,7 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
                         <h4 id="cart-total" class="mb-0 text-primary">$0.00</h4>
                     </div>
 
-                    <div class="bg-light p-3 rounded mb-3">
+                    <div class="bg-light p-3 rounded mb-3 border">
                         <h6 class="mb-2"><i class="bi bi-info-circle me-2"></i>Información de envío</h6>
                         <p class="small mb-0">Envíanos tu consulta y te responderemos a la brevedad para coordinar envío o retiro.</p>
                     </div>
@@ -143,10 +143,10 @@ foreach ($stmtImages->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     </div>
 
                     <div class="d-grid gap-2">
-                        <a href="#" id="whatsapp-order" class="btn btn-success btn-lg" target="_blank">
+                        <a href="#" id="whatsapp-order" class="btn btn-success btn-whatsapp btn-lg" target="_blank">
                             <i class="bi bi-whatsapp me-2"></i>Enviar Pedido por WhatsApp
                         </a>
-                        <a href="index.php" class="btn btn-outline-primary">
+                        <a href="index.php" class="btn btn-primary">
                             <i class="bi bi-arrow-left me-2"></i>Seguir Comprando
                         </a>
                     </div>
@@ -264,9 +264,9 @@ function loadCartItems() {
 
     if (cartItems.length === 0) {
         const emptyCart = document.createElement('div');
-        emptyCart.className = 'text-center py-5';
+        emptyCart.className = 'cart-empty-state';
         const icon = document.createElement('i');
-        icon.className = 'bi bi-cart-x fs-1 text-muted mb-3';
+        icon.className = 'bi bi-cart-x fs-1 mb-3 d-block';
         const title = document.createElement('h5');
         title.className = 'text-muted';
         title.textContent = 'Tu carrito está vacío';

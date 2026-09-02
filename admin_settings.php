@@ -57,7 +57,7 @@ $message = isset($_GET['saved']) ? 'Configuración guardada correctamente.' : $m
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 </head><body class="bg-light">
-<nav class="navbar navbar-dark bg-dark"><div class="container"><a class="navbar-brand" href="admin_products.php">Administración</a><div><a class="btn btn-outline-light btn-sm" href="admin_products.php">Productos</a> <a class="btn btn-outline-light btn-sm" href="admin_orders.php">Pedidos</a></div></div></nav>
+<nav class="navbar navbar-dark" style="background:#071a33"><div class="container"><a class="navbar-brand" href="admin_products.php">Administración</a><div><a class="btn btn-outline-light btn-sm" href="admin_products.php">Productos</a> <a class="btn btn-outline-light btn-sm" href="admin_orders.php">Pedidos</a></div></div></nav>
 <main class="container py-4" style="max-width:850px">
 <h1 class="h2"><i class="bi bi-sliders"></i> Configuración de la tienda</h1><p class="text-muted">Los cambios se reflejan en el sitio público y en los mensajes de pedido.</p>
 <?php if ($message): ?><div class="alert alert-info"><?= htmlspecialchars($message) ?></div><?php endif; ?>

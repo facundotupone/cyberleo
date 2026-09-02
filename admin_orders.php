@@ -38,7 +38,7 @@ $orders = $pdo->query("SELECT o.*, GROUP_CONCAT(CONCAT(oi.product_name, ' × ', 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 </head>
 <body class="bg-light">
-<nav class="navbar navbar-dark bg-dark"><div class="container"><a class="navbar-brand" href="admin_products.php"><?= htmlspecialchars($storeSettings['store_name']) ?> · Administración</a><div><a class="btn btn-outline-light btn-sm" href="admin_products.php">Productos</a> <a class="btn btn-outline-light btn-sm" href="admin_categories.php">Categorías</a></div></div></nav>
+<nav class="navbar navbar-dark" style="background:#071a33"><div class="container"><a class="navbar-brand" href="admin_products.php"><?= htmlspecialchars($storeSettings['store_name']) ?> · Administración</a><div><a class="btn btn-outline-light btn-sm" href="admin_products.php">Productos</a> <a class="btn btn-outline-light btn-sm" href="admin_categories.php">Categorías</a></div></div></nav>
 <main class="container py-4">
     <h1 class="h2 mb-1"><i class="bi bi-receipt"></i> Pedidos</h1>
     <p class="text-muted">Cada solicitud reserva stock. Las reservas vencidas se liberan automáticamente.</p>

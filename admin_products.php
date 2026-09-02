@@ -245,12 +245,12 @@ foreach ($products as $product) {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
         body {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background: linear-gradient(135deg, #f3f8fc 0%, #dceaf8 100%);
             min-height: 100vh;
         }
 
         .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
@@ -262,7 +262,7 @@ foreach ($products as $product) {
 
         .nav-link.active {
             color: #fff !important;
-            border-bottom: 3px solid #ffd700;
+            border-bottom: 3px solid #00aeef;
             padding-bottom: 0.5rem;
         }
 
@@ -287,7 +287,7 @@ foreach ($products as $product) {
             border-radius: 15px 15px 0 0 !important;
             font-weight: 600;
             letter-spacing: 0.5px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%) !important;
         }
 
         .card-body {
@@ -316,8 +316,8 @@ foreach ($products as $product) {
         }
 
         .form-control:focus, .form-select:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.15);
+            border-color: #0057b8;
+            box-shadow: 0 0 0 0.2rem rgba(0, 87, 184, 0.15);
         }
 
         .form-floating > label {
@@ -334,13 +334,13 @@ foreach ($products as $product) {
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
+            box-shadow: 0 4px 15px rgba(0, 87, 184, 0.3);
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 6px 20px rgba(0, 87, 184, 0.4);
         }
 
         .btn-info {
@@ -380,8 +380,8 @@ foreach ($products as $product) {
 
         .btn-outline-secondary:hover {
             background: #f5f5f5;
-            border-color: #667eea;
-            color: #667eea;
+            border-color: #0057b8;
+            color: #0057b8;
         }
 
         .btn-success {
@@ -414,12 +414,12 @@ foreach ($products as $product) {
         }
 
         .btn-outline-primary {
-            border: 2px solid #667eea;
-            color: #667eea;
+            border: 2px solid #0057b8;
+            color: #0057b8;
         }
 
         .btn-outline-primary:hover {
-            background: #667eea;
+            background: #0057b8;
             color: white;
         }
 
@@ -431,7 +431,7 @@ foreach ($products as $product) {
         }
 
         .table-dark {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
             color: white;
         }
 
@@ -454,7 +454,7 @@ foreach ($products as $product) {
         }
 
         .table tbody tr:hover {
-            background: rgba(102, 126, 234, 0.05);
+            background: rgba(0, 87, 184, 0.05);
         }
 
         .badge {
@@ -497,8 +497,8 @@ foreach ($products as $product) {
         }
 
         .image-thumbnail:hover {
-            border-color: #667eea;
-            box-shadow: 0 4px 10px rgba(102, 126, 234, 0.2);
+            border-color: #0057b8;
+            box-shadow: 0 4px 10px rgba(0, 87, 184, 0.2);
             transform: scale(1.05);
         }
 
@@ -519,7 +519,7 @@ foreach ($products as $product) {
         }
 
         .image-container:hover {
-            background: rgba(102, 126, 234, 0.08);
+            background: rgba(0, 87, 184, 0.08);
             transform: translateY(-2px);
         }
 
@@ -567,14 +567,14 @@ foreach ($products as $product) {
         }
 
         .list-group-item:hover {
-            border-color: #667eea;
-            background: rgba(102, 126, 234, 0.05);
+            border-color: #0057b8;
+            background: rgba(0, 87, 184, 0.05);
             transform: translateX(5px);
         }
 
         .modal-header {
             border-radius: 15px 15px 0 0 !important;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%) !important;
             border: none;
         }
 
@@ -601,8 +601,8 @@ foreach ($products as $product) {
         }
 
         .form-check-input:checked {
-            background-color: #667eea;
-            border-color: #667eea;
+            background-color: #0057b8;
+            border-color: #0057b8;
         }
 
         .product-name {
@@ -660,7 +660,7 @@ foreach ($products as $product) {
 
     <div class="container-fluid my-4">
         <div class="d-flex align-items-center gap-3 mb-4">
-            <i class="bi bi-cube" style="font-size: 2.5rem; color: #667eea;"></i>
+            <i class="bi bi-cube" style="font-size: 2.5rem; color: #0057b8;"></i>
             <div>
                 <h1 class="mb-0">Administrar Productos</h1>
                 <small class="text-muted">Gestiona tu catálogo</small>

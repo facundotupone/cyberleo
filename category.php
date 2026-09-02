@@ -161,18 +161,18 @@ if ($product_id) {
         ?>
         <div class="col-md-4">
             <div class="card product-card h-100">
-                <?php if (!empty($images)): ?>
-                    <div class="position-relative">
-                        <?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
-                            <div class="position-absolute top-0 start-0 bg-danger text-white px-2 py-1 rounded-end shadow" style="z-index: 10; font-size: 0.75em; font-weight: bold;">
-                                LIQUIDACIÓN
-                            </div>
-                        <?php endif; ?>
+                <div class="product-media">
+                    <?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
+                        <div class="position-absolute top-0 start-0 bg-danger text-white px-2 py-1 rounded-end" style="z-index: 10; font-size: 0.75em; font-weight: bold;">
+                            LIQUIDACIÓN
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($images)): ?>
                         <?php if (count($images) > 1): ?>
-                            <div id="carousel-<?= $product['id'] ?>" class="carousel slide product-carousel" data-bs-ride="carousel">
-                                <div class="carousel-inner">
+                            <div id="carousel-<?= $product['id'] ?>" class="carousel slide product-carousel w-100 h-100" data-bs-ride="carousel">
+                                <div class="carousel-inner h-100">
                                     <?php foreach($images as $index => $image): ?>
-                                        <div class="carousel-item <?= $index === 0 ? 'active' : '' ?>">
+                                        <div class="carousel-item h-100 <?= $index === 0 ? 'active' : '' ?>">
                                             <img src="<?= htmlspecialchars($image) ?>" 
                                                  class="d-block w-100" 
                                                  alt="<?= htmlspecialchars($product['name']) ?>">
@@ -193,8 +193,13 @@ if ($product_id) {
                                  class="single-product-image" 
                                  alt="<?= htmlspecialchars($product['name']) ?>">
                         <?php endif; ?>
-                    </div>
-                <?php endif; ?>
+                    <?php else: ?>
+                        <div class="product-image-empty" aria-hidden="true">
+                            <i class="bi bi-cpu"></i>
+                            <span>Sin imagen</span>
+                        </div>
+                    <?php endif; ?>
+                </div>
                 <div class="card-body">
                     <h5 class="card-title"><?php echo htmlspecialchars($product['name']); ?></h5>
                     <div class="description-container">
@@ -212,12 +217,12 @@ if ($product_id) {
                             <?php endif; ?>
                         </p>
                     </div>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center mt-auto pt-2 gap-2 flex-wrap">
                         <div class="d-flex align-items-center flex-wrap">
                             <?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
                                 <div class="d-flex flex-column me-2">
-                                    <span class="price text-decoration-line-through text-muted small"><?php echo format_price($product['price']); ?></span>
-                                    <span class="price text-danger fw-bold"><?php echo format_price($product['price_sale']); ?></span>
+                                    <span class="price-old"><?php echo format_price($product['price']); ?></span>
+                                    <span class="price-sale"><?php echo format_price($product['price_sale']); ?></span>
                                 </div>
                             <?php else: ?>
                                 <span class="price me-2"><?php echo format_price($product['price']); ?></span>
@@ -245,7 +250,7 @@ if ($product_id) {
                                 $shareText = "¡Mirá este producto! " . htmlspecialchars($product['name']);
                             ?>
                             <a href="https://wa.me/?text=<?= urlencode($shareText . ' ' . $shareUrl) ?>"
-                            target="_blank" title="Compartir por WhatsApp" class="btn btn-success btn-sm rounded-circle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                            target="_blank" title="Compartir por WhatsApp" class="btn btn-success btn-whatsapp share-whatsapp btn-sm rounded-circle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
                                 <i class="bi bi-whatsapp"></i>
                             </a>
                             <a href="https://www.facebook.com/sharer/sharer.php?u=<?= urlencode($shareUrl) ?>"

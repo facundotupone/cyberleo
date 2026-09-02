@@ -67,26 +67,30 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 </head>
 <body>
     <?php require_once 'components/nav.php'; ?>
-    <main class="container mt-4">
-        <section class="hero-section" aria-label="<?= htmlspecialchars($storeSettings['store_name']) ?>">
+    <main class="container mt-3">
+        <section class="hero-section<?= !empty($storeSettings['hero_background']) ? ' hero-has-image' : '' ?>" aria-label="<?= htmlspecialchars($storeSettings['store_name']) ?>">
             <div class="hero-content text-center text-white">
                 <h1 class="text-white"><?= htmlspecialchars($storeSettings['hero_title']) ?></h1>
-                <h3 class="text-white"><?= htmlspecialchars($storeSettings['hero_subtitle']) ?></h3>
+                <p class="hero-subtitle mb-0"><?= htmlspecialchars($storeSettings['hero_subtitle']) ?></p>
+                <a href="#productos-destacados" class="btn btn-primary hero-cta mt-3">
+                    <i class="bi bi-grid-3x3-gap-fill" aria-hidden="true"></i> Explorar catálogo
+                </a>
             </div>
         </section>
-        <br>
-        <section class="row justify-content-center mb-4" aria-label="Buscador de productos">
-            <div class="col-md-6">
+        <section class="row justify-content-center search-section" aria-label="Buscador de productos">
+            <div class="col-md-7 col-lg-6 position-relative">
                 <div class="input-group">
-                    <input type="text" id="searchProducts" class="form-control" placeholder="Buscar productos...">
-                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="search" id="searchProducts" class="form-control" placeholder="Buscar productos..." aria-label="Buscar productos">
+                    <button type="button" class="btn btn-search" aria-label="Buscar">
+                        <i class="bi bi-search" aria-hidden="true"></i>
+                    </button>
                 </div>
                 <div id="searchResults" class="position-absolute bg-white shadow-sm rounded p-2" style="display: none; z-index: 1000; width: 100%;"></div>
             </div>
-        </div>
+        </section>
 
         <!-- Sección de Productos Destacados -->
-        <h2 class="text-center mb-4 mt-3">Productos Destacados</h2>
+        <h2 id="productos-destacados" class="text-center mb-3 mt-2 h4 fw-bold">Productos Destacados</h2>
         <section class="row g-4" aria-label="Productos destacados">
         <?php if (empty($featured_products)): ?>
         <div class="col-12">
@@ -104,18 +108,18 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         ?>
         <div class="col-md-4">
             <div class="card product-card h-100">
-                <?php if (!empty($images)): ?>
-                    <div class="position-relative">
-                        <?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
-                            <div class="position-absolute top-0 start-0 bg-danger text-white px-2 py-1 rounded-end shadow" style="z-index: 10; font-size: 0.75em; font-weight: bold;">
-                                LIQUIDACIÓN
-                            </div>
-                        <?php endif; ?>
+                <div class="product-media">
+                    <?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
+                        <div class="position-absolute top-0 start-0 bg-danger text-white px-2 py-1 rounded-end" style="z-index: 10; font-size: 0.75em; font-weight: bold;">
+                            LIQUIDACIÓN
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($images)): ?>
                         <?php if (count($images) > 1): ?>
-                            <div id="carousel-<?= $product['id'] ?>" class="carousel slide product-carousel" data-bs-ride="carousel">
-                                <div class="carousel-inner">
+                            <div id="carousel-<?= $product['id'] ?>" class="carousel slide product-carousel w-100 h-100" data-bs-ride="carousel">
+                                <div class="carousel-inner h-100">
                                     <?php foreach($images as $index => $image): ?>
-                                        <div class="carousel-item <?= $index === 0 ? 'active' : '' ?>">
+                                        <div class="carousel-item h-100 <?= $index === 0 ? 'active' : '' ?>">
                                             <img src="<?= htmlspecialchars($image) ?>" 
                                                  class="d-block w-100" 
                                                  alt="<?= htmlspecialchars($product['name']) ?>"
@@ -138,8 +142,13 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                                  alt="<?= htmlspecialchars($product['name']) ?>"
                                  loading="lazy">
                         <?php endif; ?>
-                    </div>
-                <?php endif; ?>
+                    <?php else: ?>
+                        <div class="product-image-empty" aria-hidden="true">
+                            <i class="bi bi-cpu"></i>
+                            <span>Sin imagen</span>
+                        </div>
+                    <?php endif; ?>
+                </div>
                 <div class="card-body">
                     <!-- Badge de categoría -->
                     <div class="mb-2">
@@ -166,12 +175,12 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                             <?php endif; ?>
                         </p>
                     </div>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center mt-auto pt-2 gap-2 flex-wrap">
                         <div class="d-flex align-items-center flex-wrap">
                             <?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
                                 <div class="d-flex flex-column me-2">
-                                    <span class="price text-decoration-line-through text-muted small"><?php echo format_price($product['price']); ?></span>
-                                    <span class="price text-danger fw-bold"><?php echo format_price($product['price_sale']); ?></span>
+                                    <span class="price-old"><?php echo format_price($product['price']); ?></span>
+                                    <span class="price-sale"><?php echo format_price($product['price_sale']); ?></span>
                                 </div>
                             <?php else: ?>
                                 <span class="price me-2"><?php echo format_price($product['price']); ?></span>
@@ -199,7 +208,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                                 $shareText = "¡Mirá este producto! " . htmlspecialchars($product['name']);
                             ?>
                             <a href="https://wa.me/?text=<?= urlencode($shareText . ' ' . $shareUrl) ?>"
-                            target="_blank" title="Compartir por WhatsApp" class="btn btn-success btn-sm rounded-circle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                            target="_blank" title="Compartir por WhatsApp" class="btn btn-success btn-whatsapp share-whatsapp btn-sm rounded-circle" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
                                 <i class="bi bi-whatsapp"></i>
                             </a>
                             <a href="https://www.facebook.com/sharer/sharer.php?u=<?= urlencode($shareUrl) ?>"
@@ -234,14 +243,14 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 <div class="card h-100 category-card">
                     <div class="card-body text-center">
                         <h3 class="card-title">
-                            <i class="bi <?php echo htmlspecialchars($category['icon']); ?>" style="color: #fd7e14;"> </i>
+                            <i class="bi <?php echo htmlspecialchars($category['icon']); ?> category-icon" aria-hidden="true"></i>
                             <?php echo htmlspecialchars($category['name']); ?>
                         </h3>
                         <div class="subcategories-container mb-3">
                             <?php if (!empty($subcategories)): ?>
                                 <?php foreach($subcategories as $subcategory): ?>
                                     <a href="category.php?id=<?php echo $category['id']; ?>&sub=<?php echo $subcategory['id']; ?>" 
-                                    class="badge text-bg-warning text-decoration-none m-1">
+                                    class="badge text-decoration-none m-1">
                                         <?php echo htmlspecialchars($subcategory['name']); ?>
                                     </a>
                                 <?php endforeach; ?>
