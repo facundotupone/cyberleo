@@ -255,7 +255,7 @@ try {
         && !str_contains($css, '<script')
         && str_contains($css, '--brand-blue: #0057b8')
         && str_contains($css, '--button-radius: 8px')
-        && preg_match('/^[:.#a-zA-Z0-9\s\-_",;{}\n()]+$/', $css) === 1,
+        && preg_match('/^[:.#a-zA-Z0-9\s\-_",;{}\n(),]+$/', $css) === 1,
         'T-27',
         'salida CSS sin caracteres peligrosos'
     );
@@ -285,6 +285,34 @@ try {
     treset($pdo);
     save_settings_with_images($pdo, ['store_name' => 'OK', 'evil_key' => '1'], [], [], $root, $move);
     tok(tget($pdo, 'evil_key') === null && tget($pdo, 'store_name') === 'OK', 'T-30', 'clave arbitraria no se inserta');
+
+    tok(theme_hex_to_rgb_channels('#0057b8') === '0, 87, 184', 'T-RGB-01', 'conversión #0057b8');
+    tok(theme_hex_to_rgb_channels('#00aeef') === '0, 174, 239', 'T-RGB-02', 'conversión #00aeef');
+    tok(theme_hex_to_rgb_channels('#071a33') === '7, 26, 51', 'T-RGB-03', 'conversión #071a33');
+    tok(theme_hex_to_rgb_channels('#0057b8;}body{x') === null, 'T-RGB-04', 'color inválido rechazado antes de RGB');
+    tok(theme_hex_to_rgb_channels('rgb(0,87,184)') === null, 'T-RGB-04b', 'RGB literal rechazado');
+
+    $cssDefault = theme_css_custom_properties(theme_default_settings());
+    tok(
+        str_contains($cssDefault, '--brand-blue-rgb: 0, 87, 184')
+        && str_contains($cssDefault, '--brand-cyan-rgb: 0, 174, 239')
+        && str_contains($cssDefault, '--brand-navy-rgb: 7, 26, 51'),
+        'T-RGB-05',
+        'variables RGB predeterminadas correctas'
+    );
+    $cssAlt = theme_css_custom_properties(array_merge(theme_default_settings(), [
+        'brand_primary_color' => '#7a1f1f',
+        'brand_secondary_color' => '#c45c26',
+        'brand_navy_color' => '#1b1030',
+    ]));
+    tok(
+        str_contains($cssAlt, '--brand-blue-rgb: 122, 31, 31')
+        && str_contains($cssAlt, '--brand-cyan-rgb: 196, 92, 38')
+        && str_contains($cssAlt, '--brand-navy-rgb: 27, 16, 48')
+        && !str_contains($cssAlt, '--brand-blue-rgb: 0, 87, 184'),
+        'T-RGB-06',
+        'variables RGB alternativas correctas'
+    );
 
     $warnings = theme_contrast_warnings(array_merge($defaults, [
         'brand_text_color' => '#eeeeee',

@@ -117,6 +117,20 @@ function normalize_theme_hex_color(string $value): ?string {
     return strtolower($value);
 }
 
+/**
+ * Convert an already-validated #RRGGBB color into "R, G, B" channels for CSS.
+ * Returns null if the value is not a safe hex color.
+ */
+function theme_hex_to_rgb_channels(string $hex): ?string {
+    $normalized = normalize_theme_hex_color($hex);
+    if ($normalized === null) return null;
+    $raw = substr($normalized, 1);
+    $r = hexdec(substr($raw, 0, 2));
+    $g = hexdec(substr($raw, 2, 2));
+    $b = hexdec(substr($raw, 4, 2));
+    return $r . ', ' . $g . ', ' . $b;
+}
+
 function is_safe_local_theme_url(string $value): bool {
     $value = trim($value);
     if ($value === '' || strlen($value) > 180) return false;
@@ -301,6 +315,9 @@ function theme_contrast_warnings(array $theme): array {
  * @param array<string,string> $theme
  */
 function theme_css_custom_properties(array $theme): string {
+    $blueRgb = theme_hex_to_rgb_channels($theme['brand_primary_color']) ?? '0, 87, 184';
+    $cyanRgb = theme_hex_to_rgb_channels($theme['brand_secondary_color']) ?? '0, 174, 239';
+    $navyRgb = theme_hex_to_rgb_channels($theme['brand_navy_color']) ?? '7, 26, 51';
     $lines = [
         '--brand-blue: ' . $theme['brand_primary_color'],
         '--brand-cyan: ' . $theme['brand_secondary_color'],
@@ -309,6 +326,9 @@ function theme_css_custom_properties(array $theme): string {
         '--brand-light: ' . $theme['brand_background_color'],
         '--brand-white: #ffffff',
         '--brand-muted: #64748b',
+        '--brand-blue-rgb: ' . $blueRgb,
+        '--brand-cyan-rgb: ' . $cyanRgb,
+        '--brand-navy-rgb: ' . $navyRgb,
         '--button-radius: ' . theme_radius_css($theme['button_radius'], 'button'),
         '--card-radius: ' . theme_radius_css($theme['card_radius'], 'card'),
         '--brand-font-family: ' . theme_font_stack($theme['brand_font']),

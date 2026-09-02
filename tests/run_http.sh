@@ -21,6 +21,7 @@ SERVER_LOG="$HTTP_TMP/php-server.log"
 SERVER_PID=""
 CHROME_PID=""
 NAV_CHROME_PID=""
+HERO_CHROME_PID=""
 UPLOAD_DIR="$ROOT/assets/images/products"
 mkdir -p "$UPLOAD_DIR"
 
@@ -47,6 +48,10 @@ cleanup() {
     if [[ -n "$NAV_CHROME_PID" ]]; then
         kill -- "-$NAV_CHROME_PID" 2>/dev/null || kill "$NAV_CHROME_PID" 2>/dev/null || true
         wait "$NAV_CHROME_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$HERO_CHROME_PID" ]]; then
+        kill -- "-$HERO_CHROME_PID" 2>/dev/null || kill "$HERO_CHROME_PID" 2>/dev/null || true
+        wait "$HERO_CHROME_PID" 2>/dev/null || true
     fi
     if [[ $status -ne 0 && -s "$SERVER_LOG" ]]; then
         printf '\nPHP server log (%s):\n' "$SERVER_LOG" >&2
@@ -1066,6 +1071,132 @@ rg -q 'admin_settings:|SQLSTATE|settings_internal_fail' "$SERVER_LOG" ||
     fail H-SETTINGS-INTERNAL 'el error interno no quedó registrado en el log del servidor'
 sql 'DROP TRIGGER IF EXISTS settings_internal_fail'
 pass H-SETTINGS-INTERNAL
+
+printf 'Pruebas Chromium del hero temático...\n'
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+HERO_ALT_TITLE='Hero alt audit title'
+HERO_ALT_SUBTITLE='Hero alt audit subtitle'
+settings_form 'HTTP Test Store' \
+    -F "hero_title=$HERO_ALT_TITLE" \
+    -F "hero_subtitle=$HERO_ALT_SUBTITLE" \
+    -F 'brand_primary_color=#7a1f1f' \
+    -F 'brand_secondary_color=#c45c26' \
+    -F 'brand_navy_color=#1b1030' \
+    -F 'brand_background_color=#f7f1ea' \
+    -F 'brand_text_color=#1f1320' \
+    -F 'nav_style=navy'
+assert_status H-HERO-THEME-SAVE 302
+assert_sql H-HERO-THEME-SAVE '122, 31, 31' "SELECT 'ok' FROM store_settings WHERE setting_key='brand_primary_color' AND setting_value='#7a1f1f'"
+# The assert_sql compares exact column value; use direct checks:
+assert_sql H-HERO-THEME-SAVE '#7a1f1f' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"
+assert_sql H-HERO-THEME-SAVE '#1b1030' "SELECT setting_value FROM store_settings WHERE setting_key='brand_navy_color'"
+assert_sql H-HERO-THEME-SAVE "$HERO_ALT_TITLE" "SELECT setting_value FROM store_settings WHERE setting_key='hero_title'"
+pass H-HERO-THEME-SAVE
+
+if [[ -n "$CHROME_BIN" ]] && command -v node >/dev/null 2>&1; then
+    HERO_CHROME_PORT="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    HERO_CHROME_COMMAND=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$HERO_CHROME_PORT" "--remote-allow-origins=*"
+        "--user-data-dir=$HTTP_TMP/chrome-hero-profile"
+        about:blank)
+    setsid "${HERO_CHROME_COMMAND[@]}" >"$HTTP_TMP/chrome-hero.out" 2>"$HTTP_TMP/chrome-hero.log" & HERO_CHROME_PID=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$HERO_CHROME_PORT/json/list" >/dev/null && break; sleep .05; done
+    if timeout 45 node "$ROOT/tests/helpers/chrome_hero_theme.mjs" \
+        "$HERO_CHROME_PORT" "$HTTP_BASE_URL" alt >"$HTTP_TMP/chrome-hero-alt.out" 2>>"$HTTP_TMP/chrome-hero.log"; then
+        sed -n '1,40p' "$HTTP_TMP/chrome-hero-alt.out"
+        pass H-HERO-THEME-ALT
+    else
+        sed -n '1,160p' "$HTTP_TMP/chrome-hero-alt.out" >&2
+        sed -n '1,80p' "$HTTP_TMP/chrome-hero.log" >&2
+        fail H-HERO-THEME-ALT 'Chromium no verificó el hero alternativo'
+    fi
+    kill -- "-$HERO_CHROME_PID" 2>/dev/null || kill "$HERO_CHROME_PID" 2>/dev/null || true
+    wait "$HERO_CHROME_PID" 2>/dev/null || true
+    HERO_CHROME_PID=""
+else
+    fail H-HERO-THEME-ALT 'google-chrome o node no están disponibles'
+fi
+
+settings_form 'HTTP Test Store' \
+    -F "hero_title=$HERO_ALT_TITLE" \
+    -F "hero_subtitle=$HERO_ALT_SUBTITLE" \
+    -F 'brand_primary_color=#7a1f1f' \
+    -F 'brand_secondary_color=#c45c26' \
+    -F 'brand_navy_color=#1b1030' \
+    -F 'hero_overlay=strong' \
+    -F "hero_background_file=@$HTTP_TMP/tiny.png;type=image/png"
+assert_status H-HERO-OVERLAY-SAVE 302
+BACKGROUND_HERO_THEME="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'")"
+[[ "$BACKGROUND_HERO_THEME" =~ ^assets/images/settings/[a-f0-9]{32}\.png$ && -f "$ROOT/$BACKGROUND_HERO_THEME" ]] ||
+    fail H-HERO-OVERLAY-SAVE "hero background inválido <$BACKGROUND_HERO_THEME>"
+CREATED_IMAGES+=("$BACKGROUND_HERO_THEME")
+pass H-HERO-OVERLAY-SAVE
+
+if [[ -n "$CHROME_BIN" ]] && command -v node >/dev/null 2>&1; then
+    HERO_CHROME_PORT="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    HERO_CHROME_COMMAND=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$HERO_CHROME_PORT" "--remote-allow-origins=*"
+        "--user-data-dir=$HTTP_TMP/chrome-hero-overlay-profile"
+        about:blank)
+    setsid "${HERO_CHROME_COMMAND[@]}" >"$HTTP_TMP/chrome-hero-overlay.out" 2>"$HTTP_TMP/chrome-hero-overlay.log" & HERO_CHROME_PID=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$HERO_CHROME_PORT/json/list" >/dev/null && break; sleep .05; done
+    if timeout 45 node "$ROOT/tests/helpers/chrome_hero_theme.mjs" \
+        "$HERO_CHROME_PORT" "$HTTP_BASE_URL" overlay >"$HTTP_TMP/chrome-hero-overlay-test.out" 2>>"$HTTP_TMP/chrome-hero-overlay.log"; then
+        sed -n '1,40p' "$HTTP_TMP/chrome-hero-overlay-test.out"
+        pass H-HERO-OVERLAY-ALT
+    else
+        sed -n '1,160p' "$HTTP_TMP/chrome-hero-overlay-test.out" >&2
+        fail H-HERO-OVERLAY-ALT 'Chromium no verificó overlay navy alternativo'
+    fi
+    kill -- "-$HERO_CHROME_PID" 2>/dev/null || kill "$HERO_CHROME_PID" 2>/dev/null || true
+    wait "$HERO_CHROME_PID" 2>/dev/null || true
+    HERO_CHROME_PID=""
+else
+    fail H-HERO-OVERLAY-ALT 'google-chrome o node no están disponibles'
+fi
+
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_cyberleo'
+assert_status H-HERO-THEME-RESTORE-POST 302
+assert_sql H-HERO-THEME-RESTORE-POST '#0057b8' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"
+assert_sql H-HERO-THEME-RESTORE-POST '' "SELECT setting_value FROM store_settings WHERE setting_key='hero_background'"
+assert_sql H-HERO-THEME-RESTORE-POST "$HERO_ALT_TITLE" "SELECT setting_value FROM store_settings WHERE setting_key='hero_title'"
+assert_sql H-HERO-THEME-RESTORE-POST "$HERO_ALT_SUBTITLE" "SELECT setting_value FROM store_settings WHERE setting_key='hero_subtitle'"
+pass H-HERO-THEME-RESTORE-POST
+
+if [[ -n "$CHROME_BIN" ]] && command -v node >/dev/null 2>&1; then
+    HERO_CHROME_PORT="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    HERO_CHROME_COMMAND=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$HERO_CHROME_PORT" "--remote-allow-origins=*"
+        "--user-data-dir=$HTTP_TMP/chrome-hero-restore-profile"
+        about:blank)
+    setsid "${HERO_CHROME_COMMAND[@]}" >"$HTTP_TMP/chrome-hero-restore.out" 2>"$HTTP_TMP/chrome-hero-restore.log" & HERO_CHROME_PID=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$HERO_CHROME_PORT/json/list" >/dev/null && break; sleep .05; done
+    if timeout 45 node "$ROOT/tests/helpers/chrome_hero_theme.mjs" \
+        "$HERO_CHROME_PORT" "$HTTP_BASE_URL" restore >"$HTTP_TMP/chrome-hero-restore-test.out" 2>>"$HTTP_TMP/chrome-hero-restore.log"; then
+        sed -n '1,40p' "$HTTP_TMP/chrome-hero-restore-test.out"
+        rg -F --quiet "$HERO_ALT_TITLE" "$HTTP_TMP/chrome-hero-restore-test.out" ||
+            fail H-HERO-THEME-RESTORE 'no conservó hero_title en la portada'
+        rg -F --quiet "$HERO_ALT_SUBTITLE" "$HTTP_TMP/chrome-hero-restore-test.out" ||
+            fail H-HERO-THEME-RESTORE 'no conservó hero_subtitle en la portada'
+        pass H-HERO-THEME-RESTORE
+    else
+        sed -n '1,160p' "$HTTP_TMP/chrome-hero-restore-test.out" >&2
+        fail H-HERO-THEME-RESTORE 'Chromium no verificó el hero restaurado'
+    fi
+    kill -- "-$HERO_CHROME_PID" 2>/dev/null || kill "$HERO_CHROME_PID" 2>/dev/null || true
+    wait "$HERO_CHROME_PID" 2>/dev/null || true
+    HERO_CHROME_PID=""
+else
+    fail H-HERO-THEME-RESTORE 'google-chrome o node no están disponibles'
+fi
 
 printf 'Prueba XSS por HTTP...\n'
 sql 'UPDATE products SET stock=2 WHERE id=2'

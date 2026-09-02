@@ -43,6 +43,23 @@
         return theme;
     }
 
+    function hexToRgbChannels(hex) {
+        var normalized = normalizeHex(hex);
+        if (!normalized) return null;
+        var raw = normalized.slice(1);
+        return [
+            parseInt(raw.slice(0, 2), 16),
+            parseInt(raw.slice(2, 4), 16),
+            parseInt(raw.slice(4, 6), 16)
+        ];
+    }
+
+    function rgbaFromHex(hex, alpha) {
+        var channels = hexToRgbChannels(hex);
+        if (!channels) return null;
+        return 'rgba(' + channels[0] + ', ' + channels[1] + ', ' + channels[2] + ', ' + alpha + ')';
+    }
+
     function applyPreview() {
         var theme = readFormTheme();
         var title = ($('hero_title') && $('hero_title').value) || (boot.hero_title || '');
@@ -70,7 +87,13 @@
             nav.style.color = theme.brand_navy_color;
         }
 
-        hero.style.background = 'linear-gradient(135deg, ' + theme.brand_navy_color + ', ' + theme.brand_primary_color + ')';
+        var navy = rgbaFromHex(theme.brand_navy_color, 0.96);
+        var primary = rgbaFromHex(theme.brand_primary_color, 0.88);
+        var secondary = rgbaFromHex(theme.brand_secondary_color, 0.35);
+        if (navy && primary && secondary) {
+            hero.style.backgroundImage = 'linear-gradient(135deg, ' + navy + ' 0%, ' + primary + ' 55%, ' + secondary + ' 100%)';
+            hero.style.backgroundColor = theme.brand_navy_color;
+        }
         hero.style.textAlign = theme.hero_alignment === 'left' ? 'left' : 'center';
 
         var titleEl = $('preview-hero-title');

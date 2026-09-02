@@ -18,6 +18,9 @@
     --button-radius: 8px;
     --card-radius: 12px;
     --brand-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --brand-blue-rgb: 0, 87, 184;
+    --brand-cyan-rgb: 0, 174, 239;
+    --brand-navy-rgb: 7, 26, 51;
     --shadow-sm: 0 2px 8px rgba(7, 26, 51, 0.06);
     --shadow-md: 0 6px 18px rgba(7, 26, 51, 0.1);
 }
@@ -223,7 +226,7 @@ button:focus-visible,
     margin-bottom: 1.25rem;
     background-color: var(--brand-navy);
     background-image:
-        linear-gradient(135deg, rgba(7, 26, 51, 0.96) 0%, rgba(0, 87, 184, 0.88) 55%, rgba(0, 174, 239, 0.35) 100%),
+        linear-gradient(135deg, rgba(var(--brand-navy-rgb), 0.96) 0%, rgba(var(--brand-blue-rgb), 0.88) 55%, rgba(var(--brand-cyan-rgb), 0.35) 100%),
         linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
     background-size: auto, 28px 28px, 28px 28px;
@@ -251,19 +254,19 @@ button:focus-visible,
 }
 
 .hero-section.hero-has-image::after {
-    background: rgba(7, 26, 51, 0.62);
+    background: rgba(var(--brand-navy-rgb), 0.62);
 }
 
 .hero-section.hero-has-image.hero-overlay-soft::after {
-    background: rgba(7, 26, 51, 0.4);
+    background: rgba(var(--brand-navy-rgb), 0.4);
 }
 
 .hero-section.hero-has-image.hero-overlay-medium::after {
-    background: rgba(7, 26, 51, 0.62);
+    background: rgba(var(--brand-navy-rgb), 0.62);
 }
 
 .hero-section.hero-has-image.hero-overlay-strong::after {
-    background: rgba(7, 26, 51, 0.78);
+    background: rgba(var(--brand-navy-rgb), 0.78);
 }
 
 .hero-section::before {
@@ -271,8 +274,8 @@ button:focus-visible,
     position: absolute;
     inset: 0;
     background:
-        radial-gradient(circle at 18% 30%, rgba(0, 174, 239, 0.18), transparent 42%),
-        radial-gradient(circle at 82% 70%, rgba(0, 87, 184, 0.25), transparent 45%);
+        radial-gradient(circle at 18% 30%, rgba(var(--brand-cyan-rgb), 0.18), transparent 42%),
+        radial-gradient(circle at 82% 70%, rgba(var(--brand-blue-rgb), 0.25), transparent 45%);
     pointer-events: none;
     z-index: 1;
 }
