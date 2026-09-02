@@ -157,6 +157,60 @@ try {
     cdok(!isset($collect['values']['evil_key']), 'CD-15', 'clave arbitraria rechazada');
     cdok(!isset($collect['values']['brand_primary_color']), 'CD-15b', 'clave Stage1 no entra por collect catalog');
 
+    $postBase = static function (array $overrides = []): array {
+        return array_merge([
+            'featured_section_title' => 'Título',
+            'featured_empty_text' => 'Vacío dest',
+            'catalog_empty_text' => 'Vacío cat',
+            'featured_columns' => '3',
+            'catalog_columns' => '3',
+            'product_card_style' => 'elevated',
+            'product_image_fit' => 'contain',
+            'product_image_height' => 'normal',
+            'product_card_alignment' => 'left',
+            'product_description_mode' => 'expandable',
+            'product_description_length' => '200',
+            'product_sale_badge_text' => 'LIQUIDACIÓN',
+            'product_add_button_text' => 'Agregar al carrito',
+            'product_out_of_stock_text' => 'Sin stock',
+            // HTML checkboxes present → "1"
+            'product_show_category_badge' => '1',
+            'product_show_stock' => '1',
+            'product_show_sale_badge' => '1',
+            'product_show_old_price' => '1',
+            'product_show_share_buttons' => '1',
+            'product_share_whatsapp' => '1',
+            'product_share_facebook' => '1',
+            'product_share_copy' => '1',
+            'catalog_show_breadcrumbs' => '1',
+            'catalog_show_product_count' => '1',
+            'catalog_show_subcategory_filter' => '1',
+        ], $overrides);
+    };
+
+    $postWithoutStock = $postBase();
+    unset($postWithoutStock['product_show_stock']);
+    $absentBool = collect_catalog_display_settings_from_post($postWithoutStock);
+    cdok(empty($absentBool['errors']) && ($absentBool['values']['product_show_stock'] ?? null) === '0', 'CD-POST-BOOL-01', 'booleano ausente → 0');
+
+    $zeroBool = collect_catalog_display_settings_from_post($postBase(['product_show_stock' => '0']));
+    cdok(empty($zeroBool['errors']) && $zeroBool['values']['product_show_stock'] === '0', 'CD-POST-BOOL-02', '"0" → "0"');
+
+    $oneBool = collect_catalog_display_settings_from_post($postBase(['product_show_stock' => '1']));
+    cdok(empty($oneBool['errors']) && $oneBool['values']['product_show_stock'] === '1', 'CD-POST-BOOL-03', '"1" → "1"');
+
+    $banana = collect_catalog_display_settings_from_post($postBase(['product_show_stock' => 'banana']));
+    cdok(!empty($banana['errors']), 'CD-POST-BOOL-04', 'valor arbitrario → error');
+    cdok(!isset($banana['values']['product_show_stock']), 'CD-POST-BOOL-04b', 'banana no entra en values');
+
+    foreach (['yes', 'on', 'true', 'false', 'TRUE', ''] as $bad) {
+        $r = collect_catalog_display_settings_from_post($postBase(['product_show_stock' => $bad]));
+        cdok(!empty($r['errors']) && !isset($r['values']['product_show_stock']), 'CD-POST-BOOL-05', "rechaza <$bad>");
+    }
+
+    $arr = collect_catalog_display_settings_from_post($postBase(['product_show_stock' => ['1']]));
+    cdok(!empty($arr['errors']) && !isset($arr['values']['product_show_stock']), 'CD-POST-BOOL-06', 'array → error');
+
     $corrupt = resolve_catalog_display_settings([
         'featured_columns' => '99',
         'product_card_style' => 'neon',

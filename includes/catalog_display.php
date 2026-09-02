@@ -163,7 +163,20 @@ function collect_catalog_display_settings_from_post(array $post): array {
     $defaults = catalog_display_default_settings();
 
     foreach (catalog_display_boolean_keys() as $key) {
-        $values[$key] = isset($post[$key]) ? '1' : '0';
+        if (!array_key_exists($key, $post)) {
+            $values[$key] = '0';
+            continue;
+        }
+        $raw = $post[$key];
+        // Strict Stage-3 POST contract: only the literal strings "0" / "1"
+        // (HTML checkboxes send value="1"; unchecked keys are absent).
+        if ($raw === '0') {
+            $values[$key] = '0';
+        } elseif ($raw === '1') {
+            $values[$key] = '1';
+        } else {
+            $errors[] = "Booleano inválido: {$key}.";
+        }
     }
 
     foreach (catalog_display_select_options() as $key => $opts) {

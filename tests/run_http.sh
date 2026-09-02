@@ -1667,9 +1667,10 @@ pass H-CATALOG3-DEFAULT
 sql "UPDATE products SET description=CONCAT(description, ' ', REPEAT('detalle extendido ', 40)), price_sale=CASE WHEN id=1 THEN price*0.8 ELSE price_sale END, destacados=IF(id<=4,id,destacados) WHERE id<=4"
 sql "UPDATE products SET image=NULL WHERE id=3"
 sql "DELETE FROM product_images WHERE product_id=3"
-SAFE_IMG="assets/images/products/$(php -r 'echo str_repeat("a",32);').jpg"
-printf 'fixture' >"$ROOT/$SAFE_IMG"
+SAFE_IMG="assets/images/products/$(php -r 'echo str_repeat("a",32);').png"
+base64 --decode "$ROOT/tests/fixtures/tiny.png.b64" >"$ROOT/$SAFE_IMG"
 CREATED_IMAGES+=("$SAFE_IMG")
+file "$ROOT/$SAFE_IMG" | rg -q 'PNG image' || fail H-CATALOG3-FIXTURE-IMG 'fixture PNG inválido'
 sql "UPDATE products SET image='$SAFE_IMG' WHERE id=1"
 sql "DELETE FROM product_images WHERE product_id=1"
 sql "INSERT INTO product_images(product_id,image_path,is_main) VALUES(1,'$SAFE_IMG',1),(1,'$SAFE_IMG',0)"
@@ -1737,6 +1738,8 @@ assert_body_contains H-CATALOG3-CATEGORY 'Sumar al carrito'
 pass H-CATALOG3-CATEGORY
 
 PREV_TITLE="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='featured_section_title'")"
+PREV_STOCK_SHOW="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='product_show_stock'")"
+PREV_FIT="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='product_image_fit'")"
 settings_form 'HTTP Test Store' \
     -F 'featured_columns=9'
 assert_status H-CATALOG3-BAD-OPTION 200
@@ -1744,6 +1747,43 @@ assert_body_contains H-CATALOG3-BAD-OPTION 'Opción inválida'
 assert_sql H-CATALOG3-BAD-OPTION '4' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
 assert_sql H-CATALOG3-BAD-OPTION "$PREV_TITLE" "SELECT setting_value FROM store_settings WHERE setting_key='featured_section_title'"
 pass H-CATALOG3-BAD-OPTION
+
+# Booleano inválido en el recorrido real del formulario (no debe guardar nada)
+settings_form 'HTTP Test Store' \
+    --form-string 'product_show_stock=banana' \
+    --form-string 'featured_section_title=NO DEBE GUARDARSE' \
+    -F 'featured_columns=4' \
+    -F 'catalog_columns=4' \
+    -F 'product_image_fit=cover'
+assert_status H-CATALOG3-BAD-BOOLEAN 200
+assert_body_contains H-CATALOG3-BAD-BOOLEAN 'Booleano inválido'
+assert_body_excludes H-CATALOG3-BAD-BOOLEAN 'SQLSTATE'
+assert_body_excludes H-CATALOG3-BAD-BOOLEAN '/workspace/'
+assert_body_excludes H-CATALOG3-BAD-BOOLEAN 'Stack trace'
+assert_sql H-CATALOG3-BAD-BOOLEAN "$PREV_STOCK_SHOW" "SELECT setting_value FROM store_settings WHERE setting_key='product_show_stock'"
+assert_sql H-CATALOG3-BAD-BOOLEAN "$PREV_TITLE" "SELECT setting_value FROM store_settings WHERE setting_key='featured_section_title'"
+assert_sql H-CATALOG3-BAD-BOOLEAN "$PREV_FIT" "SELECT setting_value FROM store_settings WHERE setting_key='product_image_fit'"
+assert_sql H-CATALOG3-BAD-BOOLEAN '4' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
+pass H-CATALOG3-BAD-BOOLEAN
+
+# Restaurar fixture de título/fit tras el intento inválido (sigue siendo la config alternativa previa)
+settings_form 'HTTP Test Store' \
+    -F 'featured_section_title=Destacados Alt' \
+    -F 'featured_empty_text=Vacío destacados alt' \
+    -F 'catalog_empty_text=Vacío catálogo alt' \
+    -F 'featured_columns=4' \
+    -F 'catalog_columns=4' \
+    -F 'product_card_style=minimal' \
+    -F 'product_image_fit=cover' \
+    -F 'product_image_height=large' \
+    -F 'product_card_alignment=center' \
+    -F 'product_description_mode=expandable' \
+    -F 'product_description_length=100' \
+    -F 'product_sale_badge_text=OFERTÓN' \
+    -F 'product_add_button_text=Sumar al carrito' \
+    -F 'product_out_of_stock_text=Agotado'
+assert_status H-CATALOG3-BAD-BOOLEAN-RESTORE 302
+pass H-CATALOG3-BAD-BOOLEAN-RESTORE
 
 request GET admin_settings.php
 CSRF_TOKEN="$(csrf_from_body)"
@@ -1998,7 +2038,11 @@ settings_form 'HTTP Test Store' \
     -F 'product_sale_badge_text=OFERTÓN' \
     -F 'product_add_button_text=Sumar al carrito'
 assert_status H-CATALOG3-ALT-HOME-SAVE 302
+# Ensure product 1 still has the real PNG fixture before cover/contain probes
+sql "UPDATE products SET image='$SAFE_IMG' WHERE id=1"
+[[ -f "$ROOT/$SAFE_IMG" ]] || fail B-CATALOG3-IMAGE-COVER 'fixture PNG ausente'
 run_catalog3_chrome alt-home B-CATALOG3-ALT-HOME
+run_catalog3_chrome image-cover B-CATALOG3-IMAGE-COVER
 run_catalog3_chrome alt-category B-CATALOG3-ALT-CATEGORY
 run_catalog3_chrome cols-4 B-CATALOG3-4-COLUMNS
 run_catalog3_chrome mobile-390 B-CATALOG3-MOBILE-390
@@ -2013,8 +2057,11 @@ settings_form 'HTTP Test Store' \
 run_catalog3_chrome cols-2 B-CATALOG3-2-COLUMNS
 settings_form 'HTTP Test Store' \
     -F 'featured_columns=3' \
-    -F 'catalog_columns=3'
+    -F 'catalog_columns=3' \
+    -F 'product_image_fit=contain' \
+    -F 'product_image_height=normal'
 run_catalog3_chrome cols-3 B-CATALOG3-3-COLUMNS
+run_catalog3_chrome image-contain B-CATALOG3-IMAGE-CONTAIN
 
 request GET admin_settings.php
 CSRF_TOKEN="$(csrf_from_body)"

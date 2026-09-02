@@ -22,6 +22,8 @@ const MODES = [
   'cart',
   'copy',
   'image-error',
+  'image-cover',
+  'image-contain',
   'xss',
 ];
 
@@ -129,7 +131,7 @@ const gridMetrics = async selector => evaluate(`(() => {
     firstRowCount: rowCounts.length ? Math.max(...rowCounts) : 0,
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     objectFit: img ? getComputedStyle(img).objectFit : null,
-    mediaHeight: media ? Math.round(getComputedStyle(media).height.replace('px','')) : null,
+    mediaHeight: media ? Math.round(parseFloat(getComputedStyle(media).height)) : null,
     align: firstCard ? (firstCard.classList.contains('product-card-align-center') ? 'center' : 'left') : null,
     style: firstCard ? (
       firstCard.classList.contains('product-card-minimal') ? 'minimal'
@@ -144,6 +146,30 @@ const gridMetrics = async selector => evaluate(`(() => {
     hasSaleBadge: !!document.querySelector('.product-sale-badge'),
     hasEmptyImage: [...document.querySelectorAll('.product-image-empty')].some(el => /Sin imagen/.test(el.textContent || '')),
   };
+})()`);
+
+const loadedImageProbe = async () => evaluate(`(() => {
+  const cards = [...document.querySelectorAll('.product-card')];
+  for (const card of cards) {
+    const img = card.querySelector('img.product-card-image, img.single-product-image');
+    if (!img) continue;
+    if (!(img.naturalWidth > 0 && img.naturalHeight > 0)) continue;
+    const empty = card.querySelector('.product-image-empty');
+    const media = card.querySelector('.product-media');
+    return {
+      found: true,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      objectFit: getComputedStyle(img).objectFit,
+      mediaHeight: media ? Math.round(parseFloat(getComputedStyle(media).height)) : null,
+      hasEmptyInCard: !!empty,
+      heightClass: card.classList.contains('product-height-compact') ? 'compact'
+        : card.classList.contains('product-height-large') ? 'large' : 'normal',
+      fitClass: card.classList.contains('product-fit-cover') ? 'cover'
+        : card.classList.contains('product-fit-contain') ? 'contain' : null,
+    };
+  }
+  return {found: false};
 })()`);
 
 try {
@@ -223,7 +249,6 @@ try {
     requireValue(m.className.includes('product-cols-3'), 'expected 3 columns class');
     requireValue(m.firstRowCount >= 2 && m.firstRowCount <= 3, `unexpected first row count ${m.firstRowCount}`);
     requireValue(!m.overflow, 'horizontal overflow');
-    requireValue(m.objectFit === 'contain' || m.hasEmptyImage, 'expected contain fit or empty');
     requireValue(m.hasDesc, 'description should be visible');
     requireValue(m.hasStock, 'stock should be visible');
     requireValue(m.hasShare, 'share should be visible');
@@ -235,7 +260,6 @@ try {
     const m = await gridMetrics('.product-grid');
     requireValue(m && m.className.includes('product-cols-4'), 'expected 4 columns on home');
     requireValue(m.style === 'minimal' || m.style === 'bordered', `unexpected style ${m.style}`);
-    requireValue(m.objectFit === 'cover' || m.hasEmptyImage, 'expected cover');
     requireValue(m.align === 'center', 'expected center align');
     requireValue(m.title && /Destacados Alt/.test(m.title), 'alt title missing');
     requireValue(!m.overflow, 'overflow on alt home');
@@ -365,6 +389,38 @@ try {
     requireValue(empty, 'placeholder not shown after image error');
   }
 
+  if (mode === 'image-cover') {
+    await waitFor('loaded product image', `(() => {
+      const img = document.querySelector('.product-card img.product-card-image, .product-card img.single-product-image');
+      return !!(img && img.complete && img.naturalWidth > 0);
+    })()`);
+    const probe = await loadedImageProbe();
+    requireValue(probe.found, 'expected a loaded product image');
+    requireValue(probe.naturalWidth > 0, `naturalWidth=${probe.naturalWidth}`);
+    requireValue(probe.naturalHeight > 0, `naturalHeight=${probe.naturalHeight}`);
+    requireValue(!probe.hasEmptyInCard, 'target card should not show empty placeholder');
+    requireValue(probe.objectFit === 'cover', `object-fit=${probe.objectFit}`);
+    requireValue(probe.fitClass === 'cover', `fit class=${probe.fitClass}`);
+    requireValue(probe.heightClass === 'large', `height class=${probe.heightClass}`);
+    requireValue(probe.mediaHeight >= 240, `large media height=${probe.mediaHeight}`);
+  }
+
+  if (mode === 'image-contain') {
+    await waitFor('loaded product image', `(() => {
+      const img = document.querySelector('.product-card img.product-card-image, .product-card img.single-product-image');
+      return !!(img && img.complete && img.naturalWidth > 0);
+    })()`);
+    const probe = await loadedImageProbe();
+    requireValue(probe.found, 'expected a loaded product image');
+    requireValue(probe.naturalWidth > 0, `naturalWidth=${probe.naturalWidth}`);
+    requireValue(probe.naturalHeight > 0, `naturalHeight=${probe.naturalHeight}`);
+    requireValue(!probe.hasEmptyInCard, 'target card should not show empty placeholder');
+    requireValue(probe.objectFit === 'contain', `object-fit=${probe.objectFit}`);
+    requireValue(probe.fitClass === 'contain', `fit class=${probe.fitClass}`);
+    requireValue(probe.heightClass === 'normal', `height class=${probe.heightClass}`);
+    requireValue(probe.mediaHeight >= 180 && probe.mediaHeight <= 260, `normal media height=${probe.mediaHeight}`);
+  }
+
   if (mode === 'xss') {
     const probe = await evaluate(`(() => ({
       executed: typeof globalThis.catalogXssExecuted,
@@ -381,7 +437,11 @@ try {
   }
 
   assertNoBrowserErrors();
-  console.log(JSON.stringify({ok: true, mode, browserErrors: 0}, null, 2));
+  const summary = {ok: true, mode, browserErrors: 0};
+  if (mode === 'image-cover' || mode === 'image-contain') {
+    summary.imageProbe = await loadedImageProbe();
+  }
+  console.log(JSON.stringify(summary, null, 2));
   ws.close();
   process.exit(0);
 } catch (error) {
