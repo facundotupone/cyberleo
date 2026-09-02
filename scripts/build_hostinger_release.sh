@@ -38,25 +38,37 @@ FILES=(
     admin_settings.php
     assets/css/backgrounds.css
     assets/css/style.css
+    assets/images/brand/cyberleo-logo.png
     assets/images/products/.htaccess
     assets/images/settings/.htaccess
+    assets/js/cart-checkout.js
+    assets/js/catalog-cards.js
+    assets/js/catalog-preview.js
+    assets/js/checkout-preview.js
+    assets/js/home-content-preview.js
+    assets/js/theme-preview.js
     cart.php
     category.php
     components/footer.php
     components/head.php
     components/nav.php
+    components/product_card.php
     create_order.php
     delete_image.php
     forgot_password.php
     get_subcategories.php
     includes/auth_check.php
+    includes/catalog_display.php
+    includes/checkout_display.php
     includes/config.php
     includes/db.php
     includes/functions.php
+    includes/home_content.php
     includes/images.php
     includes/mailer.php
     includes/orders.php
     includes/security.php
+    includes/theme.php
     index.php
     logout.php
     reset_password.php

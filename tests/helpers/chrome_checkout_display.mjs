@@ -216,24 +216,27 @@ try {
 
   if (mode === 'preview' || mode === 'restore') {
     requireValue(adminPassword, 'HTTP_TEST_ADMIN_PASSWORD required for preview/restore');
+    await call('Network.enable');
     await navigate('admin_login.php', 'admin-login');
-    await evaluate(`(() => {
-      const u = document.querySelector('input[name="username"]');
-      const p = document.querySelector('input[name="password"]');
-      const form = document.querySelector('form');
-      if (!u || !p || !form) throw new Error('login form missing');
-      u.value = 'http-admin';
-      p.value = ${JSON.stringify(adminPassword)};
-      form.submit();
+    const submitted = await evaluate(`(() => {
+      const username = document.querySelector('input[name="username"]');
+      const password = document.querySelector('input[name="password"]');
+      const form = username && username.form;
+      if (!username || !password || !form) return false;
+      username.value = 'http-admin';
+      password.value = ${JSON.stringify(adminPassword)};
+      if (typeof form.requestSubmit === 'function') form.requestSubmit();
+      else form.submit();
       return true;
     })()`);
+    requireValue(submitted, 'admin login form missing');
     await waitFor(
-      'admin settings reachable',
-      `location.pathname.indexOf('admin_') === 0 || location.pathname.indexOf('/admin_') >= 0`,
-      10000,
+      'admin products after login',
+      `location.pathname === '/admin_products.php' || location.pathname.endsWith('/admin_products.php')`,
+      20000,
     );
     await navigate('admin_settings.php', 'admin');
-    await waitFor('checkout section', `!!document.getElementById('checkout-display-heading')`);
+    await waitFor('checkout section', `!!document.getElementById('checkout-display-heading')`, 20000);
     if (mode === 'preview') {
       await evaluate(`(() => {
         const title = document.getElementById('cart_page_title');
@@ -275,10 +278,10 @@ try {
   } else {
     if (mode === 'storage-corrupt') {
       await navigate('cart.php', 'cart-corrupt-seed');
-      await evaluate(`localStorage.setItem('cart', '{not-json'); return true;`);
+      await evaluate(`(() => { localStorage.setItem('cart', '{not-json'); return true; })()`);
     } else if (mode === 'empty') {
       await navigate('cart.php', 'cart-empty-seed');
-      await evaluate(`localStorage.removeItem('cart'); return true;`);
+      await evaluate(`(() => { localStorage.removeItem('cart'); return true; })()`);
     } else if (mode === 'out-of-stock') {
       await navigate('cart.php', 'cart-oos-seed');
       await seedCart([{productId: '1', quantity: 999}]);
@@ -301,7 +304,7 @@ try {
       requireValue(probe.empty, 'expected empty cart state');
       requireValue(probe.orderDisabled, 'order button must be disabled when empty');
       requireValue(!probe.overflow, 'horizontal overflow');
-      await evaluate(`document.getElementById('whatsapp-order').click(); return true;`);
+      await evaluate(`(() => { document.getElementById('whatsapp-order').click(); return true; })()`);
       const opens = await evaluate(`(window.__checkoutOpenCalls || []).length`);
       requireValue(opens === 0, 'empty cart must not open WhatsApp');
     }

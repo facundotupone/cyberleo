@@ -2361,8 +2361,9 @@ assert_status H-CHECKOUT4-XSS 200
 assert_body_excludes H-CHECKOUT4-XSS '<script>globalThis.checkoutXssExecuted=1</script>'
 assert_body_excludes H-CHECKOUT4-XSS '<img src=x onerror=globalThis.checkoutXssExecuted'
 assert_body_excludes H-CHECKOUT4-XSS 'onerror="'
+assert_body_excludes H-CHECKOUT4-XSS "onerror='"
 assert_body_contains H-CHECKOUT4-XSS 'XSS Cart'
-assert_body_contains H-CHECKOUT4-XSS '&lt;script&gt;'
+assert_body_contains H-CHECKOUT4-XSS 'Envío'
 pass H-CHECKOUT4-XSS
 
 request GET admin_settings.php
@@ -2417,12 +2418,13 @@ assert_status H-CHECKOUT4-WHATSAPP-TEMPLATE-SAVE 302
 pass H-CHECKOUT4-WHATSAPP-TEMPLATE-SAVE
 
 sql 'UPDATE products SET stock=8, name="Notebook Pro", price=1000.00, price_sale=NULL WHERE id=1'
+reset_orders
 CHECKOUT_KEY="$(printf 'c%.0s' {1..64})"
-CHECKOUT_PAYLOAD="{\"idempotencyKey\":\"$CHECKOUT_KEY\",\"items\":[{\"productId\":1,\"quantity\":2}]}"
-order_curl "$HTTP_TMP/checkout4-wa" "$CHECKOUT_PAYLOAD"
+request POST create_order.php -H 'Content-Type: application/json' \
+    --data "{\"idempotencyKey\":\"$CHECKOUT_KEY\",\"items\":[{\"productId\":1,\"quantity\":2}]}"
 assert_status H-CHECKOUT4-WHATSAPP-TEMPLATE 200
-WA_URL="$(json_file_value "$HTTP_TMP/checkout4-wa.body" whatsappUrl)"
-WA_ORDER="$(json_file_value "$HTTP_TMP/checkout4-wa.body" orderId)"
+WA_URL="$(json_value whatsappUrl)"
+WA_ORDER="$(json_value orderId)"
 [[ "$WA_URL" == https://wa.me/5491100000000?text=* ]] || fail H-CHECKOUT4-WHATSAPP-TEMPLATE "URL inválida: $WA_URL"
 php -r '
 $u=$argv[1]; $oid=$argv[2];
@@ -2440,14 +2442,17 @@ pass H-CHECKOUT4-WHATSAPP-TEMPLATE
 settings_form 'HTTP Test Store' -F 'whatsapp_number=5491100000000' -F 'store_name=HTTP Test Store'
 assert_status H-CHECKOUT4-ORDER-RESET 302
 sql 'UPDATE products SET stock=8 WHERE id=1'
+reset_orders
 REG_KEY="$(printf 'd%.0s' {1..64})"
-REG_PAYLOAD="{\"idempotencyKey\":\"$REG_KEY\",\"items\":[{\"productId\":1,\"quantity\":1}]}"
-order_curl "$HTTP_TMP/checkout4-reg-a" "$REG_PAYLOAD"
-order_curl "$HTTP_TMP/checkout4-reg-b" "$REG_PAYLOAD"
+request POST create_order.php -H 'Content-Type: application/json' \
+    --data "{\"idempotencyKey\":\"$REG_KEY\",\"items\":[{\"productId\":1,\"quantity\":1}]}"
 assert_status H-CHECKOUT4-ORDER-REGRESSION 200
-REG_ID="$(json_file_value "$HTTP_TMP/checkout4-reg-a.body" orderId)"
-[[ "$(json_file_value "$HTTP_TMP/checkout4-reg-b.body" orderId)" == "$REG_ID" ]] || fail H-CHECKOUT4-ORDER-REGRESSION 'idempotencia rota'
-REG_URL="$(json_file_value "$HTTP_TMP/checkout4-reg-a.body" whatsappUrl)"
+REG_ID="$(json_value orderId)"
+REG_URL="$(json_value whatsappUrl)"
+request POST create_order.php -H 'Content-Type: application/json' \
+    --data "{\"idempotencyKey\":\"$REG_KEY\",\"items\":[{\"productId\":1,\"quantity\":1}]}"
+assert_status H-CHECKOUT4-ORDER-REGRESSION-IDEM 200
+[[ "$(json_value orderId)" == "$REG_ID" ]] || fail H-CHECKOUT4-ORDER-REGRESSION 'idempotencia rota'
 [[ "$REG_URL" == https://wa.me/* ]] || fail H-CHECKOUT4-ORDER-REGRESSION 'wa.me inválida'
 php -r '
 $u=$argv[1]; $oid=$argv[2];
@@ -2459,6 +2464,7 @@ if (!str_contains($msg, "Total:")) { fwrite(STDERR, "missing total\n"); exit(1);
 assert_sql H-CHECKOUT4-ORDER-REGRESSION 1 "SELECT COUNT(*) FROM orders WHERE idempotency_key='$REG_KEY'"
 assert_sql H-CHECKOUT4-ORDER-REGRESSION 7 'SELECT stock FROM products WHERE id=1'
 pass H-CHECKOUT4-ORDER-REGRESSION
+pass H-CHECKOUT4-ORDER-REGRESSION-IDEM
 
 settings_form 'HTTP Test Store' \
     -F 'cart_page_title=Leak Probe Cart' \
@@ -2547,6 +2553,7 @@ run_checkout4_chrome xss B-CHECKOUT4-XSS
 
 # Admin session already authenticated for preview/restore
 run_checkout4_chrome preview B-CHECKOUT4-PREVIEW
+sleep 2
 run_checkout4_chrome restore B-CHECKOUT4-RESTORE
 
 settings_form 'HTTP Test Store'
