@@ -25,6 +25,11 @@ const MODES = [
   'xss',
   'preview',
   'restore',
+  'preview-bad-url',
+  'delivery-methods-only',
+  'terms-url-only',
+  'idempotency-corrupt',
+  'idempotency-no-uuid',
 ];
 
 const context = message => `${message} [mode=${mode} stage=${stage} url=${currentUrl}]`;
@@ -188,6 +193,9 @@ try {
         browserErrors.push({type: `console.${type}`, message: parts.join(' ')});
       }
     }
+    if (message.method === 'Page.javascriptDialogOpening') {
+      call('Page.handleJavaScriptDialog', {accept: true}).catch(() => {});
+    }
   });
 
   await call('Runtime.enable');
@@ -214,7 +222,7 @@ try {
     await setViewport(1440, 900);
   }
 
-  if (mode === 'preview' || mode === 'restore') {
+  if (mode === 'preview' || mode === 'restore' || mode === 'preview-bad-url') {
     requireValue(adminPassword, 'HTTP_TEST_ADMIN_PASSWORD required for preview/restore');
     await call('Network.enable');
     await navigate('admin_login.php', 'admin-login');
@@ -266,6 +274,39 @@ try {
       const storageAfter = await evaluate(`localStorage.getItem('cart')`);
       requireValue(storageAfter === preview.storageBefore, 'preview must not mutate localStorage');
     }
+    if (mode === 'preview-bad-url') {
+      const probe = await evaluate(`(() => {
+        const enabled = document.getElementById('cart_terms_enabled');
+        const url = document.getElementById('cart_terms_url');
+        const text = document.getElementById('cart_terms_text');
+        if (!enabled || !url) throw new Error('terms fields missing');
+        enabled.checked = true;
+        enabled.dispatchEvent(new Event('change', {bubbles: true}));
+        text.value = '';
+        text.dispatchEvent(new Event('input', {bubbles: true}));
+
+        const setUrl = (value) => {
+          url.value = value;
+          url.dispatchEvent(new Event('input', {bubbles: true}));
+          url.dispatchEvent(new Event('change', {bubbles: true}));
+          const link = document.getElementById('checkout-preview-terms-link');
+          return {
+            href: link ? link.getAttribute('href') : null,
+            hidden: !!(link && link.hidden),
+            disabled: link ? link.getAttribute('aria-disabled') : null,
+          };
+        };
+        const js = setUrl('javascript:alert(1)');
+        const data = setUrl('data:text/html,x');
+        const proto = setUrl('//evil.example/x');
+        const ok = setUrl('terminos.php');
+        return {js, data, proto, ok};
+      })()`);
+      requireValue(probe.js.href === null && probe.js.hidden, 'javascript: must not set href');
+      requireValue(probe.data.href === null && probe.data.hidden, 'data: must not set href');
+      requireValue(probe.proto.href === null && probe.proto.hidden, '//host must not set href');
+      requireValue(probe.ok.href === 'terminos.php' && !probe.ok.hidden, `valid url href=${probe.ok.href}`);
+    }
     if (mode === 'restore') {
       const form = await evaluate(`!!document.getElementById('restore-checkout-display-form')`);
       requireValue(form, 'restore form missing');
@@ -274,6 +315,47 @@ try {
         return b ? b.textContent.trim() : '';
       })()`);
       requireValue(/Restaurar carrito y pedido/i.test(btn), `restore button text=${btn}`);
+    }
+  } else if (mode === 'delivery-methods-only' || mode === 'terms-url-only') {
+    await navigate('cart.php', 'cart-config');
+    await waitFor('cart boot', `!!document.getElementById('cart-checkout-boot')`);
+    await sleep(200);
+    if (mode === 'delivery-methods-only') {
+      const probe = await evaluate(`(() => {
+        const block = document.querySelector('.cart-delivery-block');
+        const title = block ? block.querySelector('h3') : null;
+        const text = block ? block.querySelector('.cart-delivery-text') : null;
+        const methods = [...document.querySelectorAll('.cart-delivery-methods-list li')].map(li => li.textContent.trim());
+        return {
+          hasBlock: !!block,
+          hasInfoTitle: !!title,
+          hasInfoText: !!text,
+          methods,
+          raw: block ? block.textContent : '',
+        };
+      })()`);
+      requireValue(probe.hasBlock, 'delivery block missing');
+      requireValue(!probe.hasInfoTitle, 'info title should be hidden');
+      requireValue(!probe.hasInfoText, 'info text should be hidden');
+      requireValue(probe.methods.includes('Retiro solo') && probe.methods.includes('Envío solo'), `methods=${probe.methods}`);
+      requireValue(!/NO DEBE VERSE INFO|Texto informativo oculto/.test(probe.raw), 'info copy leaked');
+    }
+    if (mode === 'terms-url-only') {
+      const probe = await evaluate(`(() => {
+        const block = document.querySelector('.cart-terms-block');
+        const link = document.querySelector('.cart-terms-link');
+        const text = document.querySelector('.cart-terms-text');
+        return {
+          hasBlock: !!block,
+          hasText: !!text,
+          href: link ? link.getAttribute('href') : null,
+          label: link ? link.textContent.trim() : '',
+        };
+      })()`);
+      requireValue(probe.hasBlock, 'terms block missing');
+      requireValue(!probe.hasText, 'empty terms span should not render');
+      requireValue(probe.href === 'terminos.php', `href=${probe.href}`);
+      requireValue(probe.label === 'Ver más', `label=${probe.label}`);
     }
   } else {
     if (mode === 'storage-corrupt') {
@@ -287,7 +369,8 @@ try {
       await seedCart([{productId: '1', quantity: 999}]);
     } else if (mode === 'populated' || mode === 'default' || mode === 'alt' || mode === 'compact'
       || mode === 'mobile-390' || mode === 'quantity' || mode === 'remove'
-      || mode === 'image-error' || mode === 'xss') {
+      || mode === 'image-error' || mode === 'xss'
+      || mode === 'idempotency-corrupt' || mode === 'idempotency-no-uuid') {
       await navigate('cart.php', 'cart-seed');
       await seedCart([
         {productId: '1', quantity: 1, productName: 'IGNORAR', productPrice: '0.01'},
@@ -307,6 +390,65 @@ try {
       await evaluate(`(() => { document.getElementById('whatsapp-order').click(); return true; })()`);
       const opens = await evaluate(`(window.__checkoutOpenCalls || []).length`);
       requireValue(opens === 0, 'empty cart must not open WhatsApp');
+    }
+
+    if (mode === 'idempotency-corrupt' || mode === 'idempotency-no-uuid') {
+      await evaluate(`(() => {
+        window.__checkoutBodies = [];
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = async function (url, opts) {
+          if (opts && opts.body) window.__checkoutBodies.push(String(opts.body));
+          return new Response(JSON.stringify({ success: false, message: 'Pedido de prueba no enviado.' }), {
+            status: 422,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        };
+        window.__checkoutOriginalFetch = originalFetch;
+        if (${JSON.stringify(mode === 'idempotency-no-uuid')}) {
+          try {
+            Object.defineProperty(globalThis.crypto, 'randomUUID', {
+              configurable: true,
+              value: undefined,
+            });
+          } catch (e) {
+            try { delete globalThis.crypto.randomUUID; } catch (_) {}
+          }
+        }
+        return true;
+      })()`);
+      if (mode === 'idempotency-corrupt') {
+        await evaluate(`(() => {
+          try { sessionStorage.setItem('checkout_idempotency_key', 'NOT-A-VALID-KEY'); } catch (e) {}
+          return true;
+        })()`);
+      } else {
+        await evaluate(`(() => {
+          try { sessionStorage.removeItem('checkout_idempotency_key'); } catch (e) {}
+          return true;
+        })()`);
+      }
+      await evaluate(`(() => {
+        const btn = document.getElementById('whatsapp-order');
+        btn.classList.remove('disabled');
+        btn.removeAttribute('aria-disabled');
+        btn.click();
+        return true;
+      })()`);
+      await sleep(500);
+      const bodyProbe = await evaluate(`(() => {
+        const raw = window.__checkoutBodies[0] || '';
+        let key = '';
+        try { key = JSON.parse(raw).idempotencyKey || ''; } catch (e) {}
+        return {
+          count: window.__checkoutBodies.length,
+          key,
+          valid: /^[a-f0-9]{64}$/.test(key),
+          stored: (() => { try { return sessionStorage.getItem('checkout_idempotency_key'); } catch (e) { return null; } })(),
+        };
+      })()`);
+      requireValue(bodyProbe.count === 1, `expected one fetch, got ${bodyProbe.count}`);
+      requireValue(bodyProbe.valid, `idempotency key invalid: ${bodyProbe.key}`);
+      requireValue(bodyProbe.key.length === 64, `key length ${bodyProbe.key.length}`);
     }
 
     if (mode === 'default' || mode === 'populated' || mode === 'alt' || mode === 'compact' || mode === 'mobile-390') {

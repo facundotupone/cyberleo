@@ -148,6 +148,7 @@ function normalize_checkout_boolean($value): ?string {
  * @return list<string>|null
  */
 function parse_checkout_delivery_methods(string $raw): ?array {
+    // Sanitize overall list without per-option truncation; reject oversize options.
     $raw = sanitize_checkout_plain_text($raw, 500);
     if ($raw === '') {
         return [];
@@ -158,7 +159,8 @@ function parse_checkout_delivery_methods(string $raw): ?array {
         if ($part === '') {
             continue;
         }
-        $part = sanitize_checkout_plain_text($part, 50);
+        // Sanitize controls/HTML but do not truncate to 50 before validating length.
+        $part = sanitize_checkout_plain_text($part, 500);
         if ($part === '') {
             continue;
         }
@@ -463,11 +465,11 @@ function checkout_sanitize_product_name_for_whatsapp(string $name): string {
  * @param array<string,string> $vars
  */
 function checkout_apply_template(string $template, array $vars): string {
-    $out = $template;
+    $map = [];
     foreach ($vars as $key => $value) {
-        $out = str_replace('{' . $key . '}', $value, $out);
+        $map['{' . $key . '}'] = (string) $value;
     }
-    return $out;
+    return strtr($template, $map);
 }
 
 /**

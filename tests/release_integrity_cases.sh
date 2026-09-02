@@ -42,3 +42,38 @@ check RLS-05 0 "$WORK/05/release"
 mkdir -p "$WORK/06/release"
 printf 'a{background:url("https://example.test/a.png")}b{background:url("data:image/png;base64,AA==")}c{background:url("#gradient")}' >"$WORK/06/release/style.css"
 check RLS-06 0 "$WORK/06/release"
+
+mkdir -p "$WORK/07/release/components"
+printf "<?php require 'components/announcement.php';\n" >"$WORK/07/release/index.php"
+printf "<?php\n" >"$WORK/07/release/components/announcement.php"
+check RLS-07 0 "$WORK/07/release"
+
+mkdir -p "$WORK/08/release"
+printf "<?php require 'components/announcement.php';\n" >"$WORK/08/release/index.php"
+check RLS-08 1 "$WORK/08/release"
+
+mkdir -p "$WORK/09/release/components"
+printf "<?php require __DIR__ . '/announcement.php';\n" >"$WORK/09/release/components/nav.php"
+# missing announcement.php next to nav.php
+check RLS-09 1 "$WORK/09/release"
+
+mkdir -p "$WORK/10/release/components"
+printf "<?php require __DIR__ . '/announcement.php';\n" >"$WORK/10/release/components/nav.php"
+printf "<?php\n" >"$WORK/10/release/components/announcement.php"
+check RLS-10 0 "$WORK/10/release"
+
+# Missing home components required by a staged index.php must fail.
+mkdir -p "$WORK/11/release/components"
+printf "<?php
+require 'components/home_featured.php';
+require 'components/promo_banner.php';
+require 'components/home_categories.php';
+require 'components/benefits.php';
+" >"$WORK/11/release/index.php"
+printf "<?php require __DIR__ . '/announcement.php';\n" >"$WORK/11/release/components/nav.php"
+for missing in home_featured promo_banner home_categories benefits announcement; do
+  : # intentionally absent
+done
+check RLS-11 1 "$WORK/11/release"
+
+printf 'Release integrity cases OK\n'

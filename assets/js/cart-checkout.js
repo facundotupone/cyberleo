@@ -430,13 +430,52 @@
             } catch (err) {
                 whatsappWindow = null;
             }
-            var idempotencyKey;
+
+            function isValidIdempotencyKey(key) {
+                return typeof key === 'string' && /^[a-f0-9]{64}$/.test(key);
+            }
+
+            function generateIdempotencyKey() {
+                if (!globalThis.crypto || typeof globalThis.crypto.getRandomValues !== 'function') {
+                    return null;
+                }
+                var bytes = new Uint8Array(32);
+                globalThis.crypto.getRandomValues(bytes);
+                var hex = '';
+                for (var i = 0; i < bytes.length; i += 1) {
+                    hex += bytes[i].toString(16).padStart(2, '0');
+                }
+                return hex;
+            }
+
+            var idempotencyKey = null;
             try {
-                idempotencyKey = sessionStorage.getItem('checkout_idempotency_key')
-                    || (crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, ''));
-                sessionStorage.setItem('checkout_idempotency_key', idempotencyKey);
+                var storedKey = sessionStorage.getItem('checkout_idempotency_key');
+                if (isValidIdempotencyKey(storedKey)) {
+                    idempotencyKey = storedKey;
+                } else if (storedKey !== null) {
+                    sessionStorage.removeItem('checkout_idempotency_key');
+                }
             } catch (err) {
-                idempotencyKey = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+                // sessionStorage blocked
+            }
+            if (!idempotencyKey) {
+                idempotencyKey = generateIdempotencyKey();
+                if (!idempotencyKey) {
+                    if (whatsappWindow) {
+                        try { whatsappWindow.close(); } catch (e) { /* ignore */ }
+                    }
+                    window.alert('No se pudo preparar el pedido de forma segura. Intentá nuevamente.');
+                    button.classList.remove('disabled');
+                    button.removeAttribute('aria-disabled');
+                    restoreOrderButtonLabel();
+                    return;
+                }
+                try {
+                    sessionStorage.setItem('checkout_idempotency_key', idempotencyKey);
+                } catch (err) {
+                    // Keep in-memory key for this attempt.
+                }
             }
             try {
                 var response = await fetch('create_order.php', {

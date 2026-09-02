@@ -165,6 +165,20 @@ try {
     cook(parse_checkout_delivery_methods('Retiro, Retiro') === null, 'CO-14', 'duplicados rechazados');
     cook(parse_checkout_delivery_methods('A,B,C,D,E,F,G,H,I') === null, 'CO-15', 'más de 8 rechazados');
     cook(parse_checkout_delivery_methods('<b>Retiro</b>, Envío') === ['Retiro', 'Envío'], 'CO-16', 'HTML en métodos');
+    $tooLongOption = str_repeat('x', 51);
+    cook(parse_checkout_delivery_methods($tooLongOption) === null, 'CO-15b', 'opción de 51 caracteres rechazada sin truncar');
+    $postLong = collect_checkout_display_settings_from_post(copost([
+        'cart_show_delivery_methods' => '1',
+        'cart_delivery_methods' => $tooLongOption,
+        'cart_show_images' => '1',
+        'cart_show_sale_badge' => '1',
+        'cart_show_old_price' => '1',
+        'cart_show_stock_status' => '1',
+        'cart_show_delivery_info' => '1',
+        'cart_show_payment_methods' => '1',
+    ]));
+    cook(!empty($postLong['errors']), 'CO-15c', 'POST con opción >50 → error');
+    cook(!isset($postLong['values']['cart_delivery_methods']) || $postLong['values']['cart_delivery_methods'] !== $tooLongOption, 'CO-15d', 'opción larga no se acepta como válida');
     $showEmpty = collect_checkout_display_settings_from_post(copost([
         'cart_show_delivery_methods' => '1',
         'cart_delivery_methods' => '',
@@ -183,6 +197,34 @@ try {
     cook(is_safe_checkout_terms_url('//evil.example/x') === false, 'CO-21', 'protocol-relative rechazado');
     cook(is_safe_checkout_terms_url('https://evil.example/x') === false, 'CO-22', 'https absoluto rechazado');
     cook(validate_checkout_display_setting('cart_terms_url', 'javascript:alert(1)') === null, 'CO-22b', 'terms URL inválida');
+
+    $urlOnly = collect_checkout_display_settings_from_post(copost([
+        'cart_terms_enabled' => '1',
+        'cart_terms_text' => '',
+        'cart_terms_url' => 'terminos.php',
+        'cart_show_images' => '1',
+        'cart_show_sale_badge' => '1',
+        'cart_show_old_price' => '1',
+        'cart_show_stock_status' => '1',
+        'cart_show_delivery_info' => '1',
+        'cart_show_payment_methods' => '1',
+    ]));
+    cook(empty($urlOnly['errors']), 'CO-22c', 'términos solo con URL válidos');
+    cook(($urlOnly['values']['cart_terms_url'] ?? '') === 'terminos.php', 'CO-22d', 'URL de términos persistible');
+    cook(($urlOnly['values']['cart_terms_text'] ?? null) === '', 'CO-22e', 'texto vacío permitido con URL');
+
+    $termsEmpty = collect_checkout_display_settings_from_post(copost([
+        'cart_terms_enabled' => '1',
+        'cart_terms_text' => '',
+        'cart_terms_url' => '',
+        'cart_show_images' => '1',
+        'cart_show_sale_badge' => '1',
+        'cart_show_old_price' => '1',
+        'cart_show_stock_status' => '1',
+        'cart_show_delivery_info' => '1',
+        'cart_show_payment_methods' => '1',
+    ]));
+    cook(!empty($termsEmpty['errors']), 'CO-22f', 'términos sin texto ni URL → error');
 
     cook(
         validate_checkout_display_setting(
@@ -228,6 +270,15 @@ try {
         'CO-36',
         'mensaje default equivalente'
     );
+
+    $literal = checkout_build_whatsapp_message(
+        [['product_name' => 'Cable {total} USB', 'unit_price' => 10, 'quantity' => 1]],
+        9,
+        array_merge($defaults, ['store_name' => 'Shop {total}', 'whatsapp_number' => '54911'])
+    );
+    cook(is_string($literal) && str_contains($literal, 'Shop {total}'), 'CO-36b', 'store_name con {total} no se re-sustituye');
+    cook(str_contains((string) $literal, 'Cable {total} USB x 1 = $10,00'), 'CO-36c', 'product_name con {total} se conserva');
+    cook(substr_count((string) $literal, 'Total: $10,00') === 1, 'CO-36d', 'solo un Total final');
 
     coreset($pdo);
     coset($pdo, 'brand_primary_color', '#abcdef');

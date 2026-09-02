@@ -2477,6 +2477,54 @@ assert_body_excludes H-CHECKOUT4-INTERNAL-ERROR '/workspace/'
 assert_body_excludes H-CHECKOUT4-INTERNAL-ERROR 'PDOException'
 pass H-CHECKOUT4-INTERNAL-ERROR
 
+PREV_DELIVERY="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='cart_delivery_methods'")"
+PREV_LAYOUT="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='cart_layout'")"
+settings_form 'HTTP Test Store' \
+    -F 'cart_page_title=No Long Method' \
+    -F 'cart_layout=compact' \
+    -F 'cart_show_delivery_methods=1' \
+    -F "cart_delivery_methods=$(php -r 'echo str_repeat("z",51);')"
+assert_status H-CHECKOUT4-BAD-METHOD-LEN 200
+assert_body_contains H-CHECKOUT4-BAD-METHOD-LEN 'Formas de entrega'
+assert_sql H-CHECKOUT4-BAD-METHOD-LEN "$PREV_DELIVERY" "SELECT setting_value FROM store_settings WHERE setting_key='cart_delivery_methods'"
+assert_sql H-CHECKOUT4-BAD-METHOD-LEN "$PREV_LAYOUT" "SELECT setting_value FROM store_settings WHERE setting_key='cart_layout'"
+assert_sql H-CHECKOUT4-BAD-METHOD-LEN 'Carrito de Compras' "SELECT setting_value FROM store_settings WHERE setting_key='cart_page_title'"
+pass H-CHECKOUT4-BAD-METHOD-LEN
+
+settings_form 'HTTP Test Store' \
+    -F 'cart_show_delivery_info=0' \
+    -F 'cart_show_delivery_methods=1' \
+    -F 'cart_delivery_methods=Retiro solo, Envío solo' \
+    -F 'cart_delivery_title=NO DEBE VERSE INFO' \
+    -F 'cart_delivery_text=Texto informativo oculto' \
+    -F 'cart_show_images=1' \
+    -F 'cart_show_payment_methods=1'
+assert_status H-CHECKOUT4-METHODS-ONLY-SAVE 302
+request GET cart.php
+assert_status H-CHECKOUT4-METHODS-ONLY 200
+assert_body_contains H-CHECKOUT4-METHODS-ONLY 'cart-delivery-block'
+assert_body_contains H-CHECKOUT4-METHODS-ONLY 'Retiro solo'
+assert_body_contains H-CHECKOUT4-METHODS-ONLY 'Envío solo'
+assert_body_excludes H-CHECKOUT4-METHODS-ONLY 'NO DEBE VERSE INFO'
+assert_body_excludes H-CHECKOUT4-METHODS-ONLY 'Texto informativo oculto'
+pass H-CHECKOUT4-METHODS-ONLY
+
+settings_form 'HTTP Test Store' \
+    -F 'cart_terms_enabled=1' \
+    -F 'cart_terms_text=' \
+    -F 'cart_terms_url=terminos.php' \
+    -F 'cart_show_delivery_info=1' \
+    -F 'cart_show_payment_methods=1'
+assert_status H-CHECKOUT4-TERMS-URL-ONLY-SAVE 302
+request GET cart.php
+assert_status H-CHECKOUT4-TERMS-URL-ONLY 200
+assert_body_contains H-CHECKOUT4-TERMS-URL-ONLY 'cart-terms-block'
+assert_body_contains H-CHECKOUT4-TERMS-URL-ONLY 'cart-terms-link'
+assert_body_contains H-CHECKOUT4-TERMS-URL-ONLY 'href="terminos.php"'
+assert_body_contains H-CHECKOUT4-TERMS-URL-ONLY 'Ver más'
+assert_body_excludes H-CHECKOUT4-TERMS-URL-ONLY 'cart-terms-text'
+pass H-CHECKOUT4-TERMS-URL-ONLY
+
 run_checkout4_chrome() {
     local mode=$1
     local id=$2
@@ -2555,6 +2603,26 @@ run_checkout4_chrome xss B-CHECKOUT4-XSS
 run_checkout4_chrome preview B-CHECKOUT4-PREVIEW
 sleep 2
 run_checkout4_chrome restore B-CHECKOUT4-RESTORE
+run_checkout4_chrome preview-bad-url B-CHECKOUT4-PREVIEW-BAD-URL
+
+settings_form 'HTTP Test Store' \
+    -F 'cart_show_delivery_info=0' \
+    -F 'cart_show_delivery_methods=1' \
+    -F 'cart_delivery_methods=Retiro solo, Envío solo' \
+    -F 'cart_delivery_title=NO DEBE VERSE INFO' \
+    -F 'cart_delivery_text=Texto informativo oculto'
+run_checkout4_chrome delivery-methods-only B-CHECKOUT4-METHODS-ONLY
+
+settings_form 'HTTP Test Store' \
+    -F 'cart_terms_enabled=1' \
+    -F 'cart_terms_text=' \
+    -F 'cart_terms_url=terminos.php'
+run_checkout4_chrome terms-url-only B-CHECKOUT4-TERMS-URL-ONLY
+
+settings_form 'HTTP Test Store'
+sql "UPDATE products SET name='Producto Seguro', stock=8 WHERE id=1"
+run_checkout4_chrome idempotency-corrupt B-CHECKOUT4-IDEMPOTENCY-CORRUPT
+run_checkout4_chrome idempotency-no-uuid B-CHECKOUT4-IDEMPOTENCY-NO-UUID
 
 settings_form 'HTTP Test Store'
 sql "UPDATE products SET name='HTTP order product', description='Order fixture', destacados=1, stock=8 WHERE id=1"

@@ -49,10 +49,15 @@ FILES=(
     assets/js/theme-preview.js
     cart.php
     category.php
+    components/announcement.php
+    components/benefits.php
     components/footer.php
     components/head.php
+    components/home_categories.php
+    components/home_featured.php
     components/nav.php
     components/product_card.php
+    components/promo_banner.php
     create_order.php
     delete_image.php
     forgot_password.php

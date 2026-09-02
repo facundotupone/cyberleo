@@ -97,13 +97,19 @@ if ((string) $checkout['cart_summary_sticky'] === '1') {
                         <h3 class="h4 mb-0 text-primary" id="cart-total">$0,00</h3>
                     </div>
 
-                    <?php if ((string) $checkout['cart_show_delivery_info'] === '1'): ?>
+                    <?php
+                    $showDeliveryInfo = ((string) $checkout['cart_show_delivery_info'] === '1');
+                    $showDeliveryMethods = ((string) $checkout['cart_show_delivery_methods'] === '1' && $deliveryMethods !== []);
+                    if ($showDeliveryInfo || $showDeliveryMethods):
+                    ?>
                         <div class="bg-light p-3 rounded mb-3 border cart-delivery-block">
-                            <h3 class="h6 mb-2"><i class="bi bi-info-circle me-2" aria-hidden="true"></i><?= htmlspecialchars((string) $checkout['cart_delivery_title'], ENT_QUOTES, 'UTF-8') ?></h3>
-                            <p class="small mb-0"><?= htmlspecialchars((string) $checkout['cart_delivery_text'], ENT_QUOTES, 'UTF-8') ?></p>
-                            <?php if ((string) $checkout['cart_show_delivery_methods'] === '1' && $deliveryMethods !== []): ?>
-                                <p class="small mb-1 mt-2"><strong><?= htmlspecialchars((string) $checkout['cart_delivery_methods_title'], ENT_QUOTES, 'UTF-8') ?></strong></p>
-                                <ul class="small mb-0 ps-3">
+                            <?php if ($showDeliveryInfo): ?>
+                                <h3 class="h6 mb-2"><i class="bi bi-info-circle me-2" aria-hidden="true"></i><?= htmlspecialchars((string) $checkout['cart_delivery_title'], ENT_QUOTES, 'UTF-8') ?></h3>
+                                <p class="small mb-0 cart-delivery-text"><?= htmlspecialchars((string) $checkout['cart_delivery_text'], ENT_QUOTES, 'UTF-8') ?></p>
+                            <?php endif; ?>
+                            <?php if ($showDeliveryMethods): ?>
+                                <p class="small mb-1<?= $showDeliveryInfo ? ' mt-2' : '' ?>"><strong class="cart-delivery-methods-title"><?= htmlspecialchars((string) $checkout['cart_delivery_methods_title'], ENT_QUOTES, 'UTF-8') ?></strong></p>
+                                <ul class="small mb-0 ps-3 cart-delivery-methods-list">
                                     <?php foreach ($deliveryMethods as $method): ?>
                                         <li><?= htmlspecialchars($method, ENT_QUOTES, 'UTF-8') ?></li>
                                     <?php endforeach; ?>
@@ -132,11 +138,18 @@ if ((string) $checkout['cart_summary_sticky'] === '1') {
                         </p>
                     <?php endif; ?>
 
-                    <?php if ((string) $checkout['cart_terms_enabled'] === '1' && trim((string) $checkout['cart_terms_text']) !== ''): ?>
+                    <?php
+                    $termsEnabled = ((string) $checkout['cart_terms_enabled'] === '1');
+                    $termsText = trim((string) $checkout['cart_terms_text']);
+                    $termsUrl = trim((string) $checkout['cart_terms_url']);
+                    if ($termsEnabled && ($termsText !== '' || $termsUrl !== '')):
+                    ?>
                         <div class="mb-3 small cart-terms-block">
-                            <span><?= htmlspecialchars((string) $checkout['cart_terms_text'], ENT_QUOTES, 'UTF-8') ?></span>
-                            <?php if (trim((string) $checkout['cart_terms_url']) !== ''): ?>
-                                <a href="<?= htmlspecialchars((string) $checkout['cart_terms_url'], ENT_QUOTES, 'UTF-8') ?>" rel="noopener noreferrer" target="_blank">Ver más</a>
+                            <?php if ($termsText !== ''): ?>
+                                <span class="cart-terms-text"><?= htmlspecialchars($termsText, ENT_QUOTES, 'UTF-8') ?></span>
+                            <?php endif; ?>
+                            <?php if ($termsUrl !== ''): ?>
+                                <a class="cart-terms-link" href="<?= htmlspecialchars($termsUrl, ENT_QUOTES, 'UTF-8') ?>" rel="noopener noreferrer" target="_blank">Ver más</a>
                             <?php endif; ?>
                         </div>
                     <?php endif; ?>
