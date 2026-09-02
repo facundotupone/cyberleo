@@ -881,7 +881,7 @@ request POST admin_settings.php \
     -F 'admin_email=admin-http@example.test' \
     -F 'mail_from=store-http@example.test' \
     -F 'payment_methods=Efectivo' \
-    -F 'brand_primary_color=#0057b8;}body{x:1' \
+    --form-string 'brand_primary_color=#0057b8;}body{x:1' \
     -F 'brand_secondary_color=#00aeef' \
     -F 'brand_navy_color=#071a33' \
     -F 'brand_background_color=#f3f8fc' \
