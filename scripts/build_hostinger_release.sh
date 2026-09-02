@@ -6,7 +6,6 @@ export TZ=UTC
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT/dist"
 ARCHIVE="$DIST_DIR/cyberleo-hostinger.zip"
-CHECKSUM="$ARCHIVE.sha256"
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-315532800}"
 
 for command in git php zip unzip sha256sum touch rg install stat; do
@@ -36,6 +35,7 @@ FILES=(
     admin_orders.php
     admin_products.php
     admin_settings.php
+    admin_system.php
     assets/css/backgrounds.css
     assets/css/style.css
     assets/images/brand/cyberleo-logo.png
@@ -73,6 +73,7 @@ FILES=(
     includes/mailer.php
     includes/orders.php
     includes/security.php
+    includes/system_health.php
     includes/theme.php
     index.php
     logout.php
@@ -127,7 +128,7 @@ for relative in "${archive_files[@]}"; do
     }
     case "$relative" in
         tests/*|migrations/*|docs/*|cron/*|scripts/*|schema.sql|README*|DESIGN_CHANGES.md|\
-        .env|.env.*|*/config.local.php|*.log|logs/*)
+        .env|.env.*|*/config.local.php|*.log|logs/*|backups/*|dist/*)
             printf 'Artefacto prohibido en el ZIP: %s\n' "$relative" >&2
             exit 1
             ;;
@@ -148,10 +149,7 @@ done < <(printf '%s\0' "${archive_files[@]}" |
         [[ "$relative" == *.php ]] && printf '%s\0' "$VERIFY_DIR/$relative"
     done)
 
-(
-    cd "$DIST_DIR"
-    sha256sum "$(basename "$ARCHIVE")" > "$(basename "$CHECKSUM")"
-)
+# No emitir sidecar .sha256; el SHA se informa en stdout.
 archive_hash="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
 printf 'OK: %s\n' "$ARCHIVE"
 printf 'Archivos: %d\n' "${#archive_files[@]}"

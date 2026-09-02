@@ -216,5 +216,24 @@ printf 'V-08 PASS - fixture correcto\n%s\n' "$INVENTORY_OUTPUT"
 TEST_DB_SOCKET="$SOCKET" TEST_DB_NAME="$TEST_DB" \
     "$ROOT/tests/run_http.sh"
 
+printf 'Pruebas Stage 5 (instalación / backup / restore)...\n'
+# Hostinger ZIP requerido por el fixture de public roots.
 RUN_TESTS=0 "$ROOT/scripts/build_hostinger_release.sh"
-printf 'OK: lint, migración, imágenes, HTTP e integridad del release verificados.\n'
+TEST_DB_SOCKET="$SOCKET" TEST_DB_NAME="$TEST_DB" \
+    php "$ROOT/tests/stage5_maintenance_test.php"
+
+printf 'Paquetes finales Stage 5...\n'
+RUN_TESTS=0 "$ROOT/scripts/build_hostinger_release.sh"
+"$ROOT/scripts/build_private_tools.sh"
+"$ROOT/scripts/build_aesthetic_update.sh"
+
+# Confirmar artefactos y ausencia de sidecars .sha256
+[[ -f "$ROOT/dist/cyberleo-hostinger.zip" ]]
+[[ -f "$ROOT/dist/cyberleo-private-tools.zip" ]]
+[[ -f "$ROOT/dist/cyberleo-actualizacion-estetica.zip" ]]
+[[ ! -f "$ROOT/dist/cyberleo-hostinger.zip.sha256" ]]
+[[ ! -f "$ROOT/dist/cyberleo-private-tools.zip.sha256" ]]
+[[ ! -f "$ROOT/dist/cyberleo-actualizacion-estetica.zip.sha256" ]]
+
+git -C "$ROOT" diff --exit-code 175f2c1 -- create_order.php schema.sql
+printf 'OK: lint, migración, imágenes, HTTP, Stage 5 e integridad de paquetes verificados.\n'

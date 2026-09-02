@@ -287,12 +287,22 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
         <div>
             <a class="btn btn-outline-light btn-sm" href="admin_products.php">Productos</a>
             <a class="btn btn-outline-light btn-sm" href="admin_orders.php">Pedidos</a>
+            <a class="btn btn-outline-light btn-sm" href="admin_system.php">Sistema</a>
         </div>
     </div>
 </nav>
 <main class="container py-4" style="max-width:980px">
     <h1 class="h2"><i class="bi bi-sliders" aria-hidden="true"></i> Configuración de la tienda</h1>
     <p class="text-muted">Los cambios se reflejan en el sitio público. La identidad visual y el contenido de portada son opcionales y conservan CyberLeo por defecto.</p>
+    <div class="alert alert-light border mb-3">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div>
+                <strong>Estado del sistema</strong>
+                <div class="small text-muted">Diagnóstico de solo lectura (extensiones, base, uploads). Backup e instalación son CLI privados.</div>
+            </div>
+            <a class="btn btn-outline-primary btn-sm" href="admin_system.php"><i class="bi bi-heartbeat" aria-hidden="true"></i> Ver sistema</a>
+        </div>
+    </div>
     <?php if ($message): ?>
         <div class="alert alert-<?= htmlspecialchars($messageType) ?>" role="status"><?= htmlspecialchars($message) ?></div>
     <?php endif; ?>

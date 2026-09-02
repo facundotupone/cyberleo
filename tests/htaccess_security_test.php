@@ -44,6 +44,12 @@ $blocked = [
     'tests/run.sh',
     'tests/fixtures/http_seed.sql',
     'migrations/001_add_orders_stock_settings.php',
+    'scripts/install_store.php',
+    'scripts/backup_store.php',
+    'docs/INSTALL_NEW_STORE.md',
+    'cron/expire_reservations.php',
+    'backups/cyberleo-backup.zip',
+    'dist/cyberleo-hostinger.zip',
     'schema.sql',
     'README.md',
     'includes/config.php',
@@ -52,6 +58,8 @@ $blocked = [
     '.git/config',
     'logs/error.log',
     'private/app.log',
+    'dump.sql',
+    'backup.bak',
 ];
 foreach ($blocked as $path) {
     if (!$isDenied($path)) {
@@ -63,6 +71,7 @@ $public = [
     'index.php',
     'admin',
     'admin_products.php',
+    'admin_system.php',
     'assets/css/style.css',
     'assets/images/products/item.webp',
 ];

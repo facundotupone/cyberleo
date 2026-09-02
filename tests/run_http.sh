@@ -96,7 +96,7 @@ export HTTP_TMP HTTP_COOKIE HTTP_BASE_URL
         DB_HOST="localhost;unix_socket=$TEST_DB_SOCKET" \
         DB_NAME="$TEST_DB_NAME" DB_USER=root DB_PASS='' \
         MAIL_TRANSPORT=log MAIL_LOG_PATH="$MAIL_LOG" \
-        php -S "127.0.0.1:$PORT"
+        php -S "127.0.0.1:$PORT" "$ROOT/tests/helpers/php_server_router.php"
 ) >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
@@ -2684,6 +2684,94 @@ if [[ -n "$CHROME_BIN" ]] && command -v node >/dev/null 2>&1; then
 else
     fail H-XSS-BROWSER 'google-chrome o node no están disponibles'
 fi
+
+printf 'Pruebas HTTP Etapa 5 (sistema / endurecimiento)...\n'
+HTTP_COOKIE="$HTTP_TMP/system5-anon.cookie"
+: >"$HTTP_COOKIE"
+request GET admin_system.php
+assert_status H-SYSTEM5-AUTH 302
+pass H-SYSTEM5-AUTH
+
+HTTP_COOKIE="$ADMIN_COOKIE"
+request GET admin_login.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_login.php \
+  --data-urlencode "csrf_token=$CSRF_TOKEN" \
+  --data-urlencode 'username=http-admin' \
+  --data-urlencode "password=$WINNING_PASSWORD"
+request GET admin_system.php
+assert_status H-SYSTEM5-PANEL 200
+assert_body_contains H-SYSTEM5-PANEL 'Estado del sistema'
+assert_body_contains H-SYSTEM5-PANEL 'PASS'
+assert_body_excludes H-SYSTEM5-PANEL 'APP_SECRET='
+assert_body_excludes H-SYSTEM5-PANEL 'DB_PASS='
+assert_body_excludes H-SYSTEM5-PANEL 'SQLSTATE'
+assert_body_excludes H-SYSTEM5-PANEL 'Stack trace'
+assert_body_excludes H-SYSTEM5-PANEL '/workspace/'
+assert_body_contains H-SYSTEM5-PANEL 'admin_system.php'
+pass H-SYSTEM5-PANEL
+
+request GET admin_settings.php
+assert_status H-SYSTEM5-SETTINGS-LINK 200
+assert_body_contains H-SYSTEM5-SETTINGS-LINK 'admin_system.php'
+assert_body_contains H-SYSTEM5-SETTINGS-LINK 'Ver sistema'
+pass H-SYSTEM5-SETTINGS-LINK
+
+for path in \
+  'scripts/install_store.php' \
+  'migrations/001_add_orders_stock_settings.php' \
+  'tests/run.sh' \
+  'docs/INSTALL_NEW_STORE.md' \
+  'cron/expire_reservations.php' \
+  'schema.sql' \
+  'README.md' \
+  'includes/config.local.php' \
+  '.env' \
+  'dump.sql' \
+  'backups/x.zip' \
+  'dist/cyberleo-hostinger.zip'
+do
+  request GET "$path"
+  [[ "$HTTP_STATUS" == 403 || "$HTTP_STATUS" == 404 ]] || fail H-SYSTEM5-PRIVATE "esperado 403/404 para $path, got $HTTP_STATUS"
+done
+pass H-SYSTEM5-PRIVATE
+
+request GET includes/
+[[ "$HTTP_STATUS" == 403 || "$HTTP_STATUS" == 404 ]] || fail H-SYSTEM5-LISTING "directory listing includes/ code=$HTTP_STATUS"
+assert_body_excludes H-SYSTEM5-LISTING 'Index of'
+pass H-SYSTEM5-LISTING
+
+run_system5_chrome() {
+  local mode=$1
+  local id=$2
+  if [[ -z "$CHROME_BIN" ]] || ! command -v node >/dev/null 2>&1; then
+    fail "$id" 'google-chrome o node no disponibles'
+  fi
+  local port
+  port="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+  local profile="$HTTP_TMP/chrome-system5-$mode-profile"
+  mkdir -p "$profile"
+  local cmd=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+    --disable-background-networking --disable-extensions --disable-component-update
+    --disable-dev-shm-usage "--remote-debugging-port=$port" "--remote-allow-origins=*"
+    "--user-data-dir=$profile" about:blank)
+  setsid "${cmd[@]}" >"$HTTP_TMP/chrome-system5-$mode.out" 2>"$HTTP_TMP/chrome-system5-$mode.log" & local cpid=$!
+  for _ in {1..100}; do curl -sf "http://127.0.0.1:$port/json/list" >/dev/null && break; sleep .05; done
+  if timeout 55 env HTTP_TEST_ADMIN_PASSWORD="$WINNING_PASSWORD" node "$ROOT/tests/helpers/chrome_admin_system.mjs" \
+    "$port" "$HTTP_BASE_URL" "$mode" >"$HTTP_TMP/chrome-system5-$mode-test.out" 2>>"$HTTP_TMP/chrome-system5-$mode.log"; then
+    sed -n '1,40p' "$HTTP_TMP/chrome-system5-$mode-test.out"
+    rg -F --quiet '"browserErrors": 0' "$HTTP_TMP/chrome-system5-$mode-test.out" || fail "$id" 'browserErrors != 0'
+    pass "$id"
+  else
+    sed -n '1,120p' "$HTTP_TMP/chrome-system5-$mode-test.out" >&2
+    fail "$id" "Chromium system mode=$mode falló"
+  fi
+  kill -- "-$cpid" 2>/dev/null || kill "$cpid" 2>/dev/null || true
+  wait "$cpid" 2>/dev/null || true
+}
+CHROME_BIN="$(command -v google-chrome-stable || command -v google-chrome || true)"
+run_system5_chrome desktop B-SYSTEM5-DESKTOP
+run_system5_chrome mobile B-SYSTEM5-MOBILE-390
 
 if rg --ignore-case --quiet 'PHP (Warning|Fatal error)|Stack trace:|\\[500\\]:' "$SERVER_LOG"; then
     fail SERVER_LOG 'se detectaron warnings, fatals, stack traces o respuestas 500'
