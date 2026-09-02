@@ -5,6 +5,7 @@ function get_store_settings() {
     global $pdo;
 
     require_once __DIR__ . '/theme.php';
+    require_once __DIR__ . '/home_content.php';
     $settings = array_merge([
         'store_name' => STORE_NAME,
         'whatsapp_number' => WHATSAPP_NUMBER,
@@ -17,10 +18,15 @@ function get_store_settings() {
         'admin_email' => '',
         'mail_from' => '',
         'payment_methods' => 'Efectivo, Transferencia, Mercado Pago',
-    ], theme_default_settings());
+    ], theme_default_settings(), home_content_default_settings());
     try {
         $rows = $pdo->query('SELECT setting_key, setting_value FROM store_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
-        $emptyOk = array_flip(array_merge(theme_empty_allowed_keys(), theme_boolean_keys()));
+        $emptyOk = array_flip(array_merge(
+            theme_empty_allowed_keys(),
+            theme_boolean_keys(),
+            home_content_empty_allowed_keys(),
+            home_content_boolean_keys()
+        ));
         foreach ($rows as $key => $value) {
             if (!array_key_exists($key, $settings)) continue;
             if ($value === '' && !isset($emptyOk[$key])) continue;

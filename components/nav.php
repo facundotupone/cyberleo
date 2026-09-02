@@ -2,13 +2,16 @@
 if (!isset($categories)) { $categories = get_categories(); }
 if (!isset($storeSettings)) { $storeSettings = get_store_settings(); }
 require_once __DIR__ . '/../includes/theme.php';
+require_once __DIR__ . '/../includes/home_content.php';
 if (!isset($themeSettings)) { $themeSettings = resolve_theme_settings($storeSettings); }
+if (!isset($homeContent)) { $homeContent = resolve_home_content_settings($storeSettings); }
 $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
 $brandLogoPath = is_safe_brand_logo_path($themeSettings['brand_logo'] ?? '')
     ? $themeSettings['brand_logo']
     : THEME_OFFICIAL_LOGO;
 $navClass = 'navbar navbar-expand-lg site-navbar sticky-top'
     . (($themeSettings['nav_style'] ?? 'white') === 'navy' ? ' site-navbar-navy' : '');
+require __DIR__ . '/announcement.php';
 ?>
 <nav class="<?= htmlspecialchars($navClass) ?>" aria-label="Navegación principal">
     <div class="container">

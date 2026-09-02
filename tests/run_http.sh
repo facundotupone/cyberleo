@@ -31,6 +31,7 @@ cleanup() {
     rmdir "$MAIL_LOG" 2>/dev/null || true
     sql 'DROP TRIGGER IF EXISTS http_image_fail' >/dev/null 2>&1 || true
     sql 'DROP TRIGGER IF EXISTS settings_internal_fail' >/dev/null 2>&1 || true
+    sql 'DROP TRIGGER IF EXISTS settings_home_fail' >/dev/null 2>&1 || true
     if declare -p CREATED_IMAGES >/dev/null 2>&1; then
         local image
         for image in "${CREATED_IMAGES[@]}"; do
@@ -196,6 +197,35 @@ settings_form() {
         -F 'show_search=1' \
         -F 'show_categories=1' \
         -F 'show_featured_products=1' \
+        -F 'announcement_style=primary' \
+        -F 'announcement_text=' \
+        -F 'announcement_url=' \
+        -F 'promo_title=' \
+        -F 'promo_text=' \
+        -F 'promo_button_text=Ver más' \
+        -F 'promo_button_url=#' \
+        -F 'home_order_featured=1' \
+        -F 'home_order_promo=2' \
+        -F 'home_order_categories=3' \
+        -F 'home_order_benefits=4' \
+        -F 'benefits_enabled=1' \
+        -F 'benefit_1_icon=bi-truck' \
+        -F 'benefit_1_title=Envíos y entregas' \
+        -F 'benefit_1_text=Coordinamos la entrega o retiro de tu compra.' \
+        -F 'benefit_2_icon=bi-shield-check' \
+        -F 'benefit_2_title=Compra segura' \
+        -F 'benefit_2_text=Stock actualizado y pedido confirmado por WhatsApp.' \
+        -F 'benefit_3_icon=bi-headset' \
+        -F 'benefit_3_title=Atención personalizada' \
+        -F 'benefit_3_text=Te asesoramos para elegir la mejor opción.' \
+        -F 'footer_description=Tecnología, periféricos y soluciones para tu equipo.' \
+        -F 'footer_instagram_text=Seguinos en Instagram' \
+        -F 'footer_whatsapp_text=Contactar por WhatsApp' \
+        -F 'footer_show_logo=1' \
+        -F 'footer_show_instagram=1' \
+        -F 'footer_show_whatsapp=1' \
+        -F 'business_hours=' \
+        -F 'business_location=' \
         "$@"
 }
 cli_env=(
@@ -839,9 +869,16 @@ request GET admin_settings.php
 assert_status H-THEME-PAGE 200
 assert_body_contains H-THEME-PAGE 'Identidad visual'
 assert_body_contains H-THEME-PAGE 'Portada'
+assert_body_contains H-THEME-PAGE 'Aviso superior'
+assert_body_contains H-THEME-PAGE 'Banner promocional'
+assert_body_contains H-THEME-PAGE 'Orden de portada'
+assert_body_contains H-THEME-PAGE 'Beneficios'
+assert_body_contains H-THEME-PAGE 'Footer y datos visibles'
 assert_body_contains H-THEME-PAGE 'Restaurar identidad CyberLeo'
+assert_body_contains H-THEME-PAGE 'Restaurar contenido predeterminado'
 assert_body_contains H-THEME-PAGE 'Vista previa'
 assert_body_contains H-THEME-PAGE 'assets/js/theme-preview.js'
+assert_body_contains H-THEME-PAGE 'assets/js/home-content-preview.js'
 CSRF_TOKEN="$(csrf_from_body)"
 
 request POST admin_settings.php \
@@ -1197,6 +1234,263 @@ if [[ -n "$CHROME_BIN" ]] && command -v node >/dev/null 2>&1; then
 else
     fail H-HERO-THEME-RESTORE 'google-chrome o node no están disponibles'
 fi
+
+printf 'Pruebas HTTP Etapa 2 (contenido de portada)...\n'
+request GET index.php
+assert_status H-HOME2-DEFAULT 200
+assert_body_contains H-HOME2-DEFAULT 'id="beneficios"'
+assert_body_contains H-HOME2-DEFAULT 'Envíos y entregas'
+assert_body_excludes H-HOME2-DEFAULT 'id="site-announcement"'
+assert_body_excludes H-HOME2-DEFAULT 'id="promo-banner"'
+pass H-HOME2-DEFAULT
+
+settings_form 'HTTP Test Store' \
+    -F 'announcement_enabled=1' \
+    -F 'announcement_text=Aviso Stage2 <b>HTML</b>' \
+    -F 'announcement_url=category.php?id=1' \
+    -F 'announcement_style=navy' \
+    -F 'promo_enabled=1' \
+    -F 'promo_title=Promo Stage2' \
+    -F 'promo_text=Texto promo Stage2' \
+    -F 'promo_button_text=Ver oferta' \
+    -F 'promo_button_url=#productos-destacados' \
+    -F 'home_order_featured=3' \
+    -F 'home_order_promo=4' \
+    -F 'home_order_categories=2' \
+    -F 'home_order_benefits=1' \
+    -F 'footer_description=Footer Stage2' \
+    -F 'footer_instagram_text=Instagram Stage2' \
+    -F 'footer_whatsapp_text=WhatsApp Stage2' \
+    -F 'footer_show_business_hours=1' \
+    -F 'business_hours=Lunes a Viernes 9 a 18' \
+    -F 'footer_show_location=1' \
+    -F 'business_location=Buenos Aires' \
+    -F 'instagram_url=https://instagram.com/cyberleo' \
+    -F "promo_image_file=@$HTTP_TMP/tiny.png;type=image/png"
+assert_status H-HOME2-SAVE 302
+assert_sql H-HOME2-SAVE '1' "SELECT setting_value FROM store_settings WHERE setting_key='announcement_enabled'"
+assert_sql H-HOME2-SAVE 'Aviso Stage2 HTML' "SELECT setting_value FROM store_settings WHERE setting_key='announcement_text'"
+assert_sql H-HOME2-SAVE 'benefits,categories,featured,promo' "SELECT setting_value FROM store_settings WHERE setting_key='home_section_order'"
+PROMO_IMAGE="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='promo_image'")"
+[[ "$PROMO_IMAGE" =~ ^assets/images/settings/[a-f0-9]{32}\.png$ && -f "$ROOT/$PROMO_IMAGE" ]] ||
+    fail H-HOME2-SAVE "promo_image inválida <$PROMO_IMAGE>"
+CREATED_IMAGES+=("$PROMO_IMAGE")
+pass H-HOME2-SAVE
+
+request GET index.php
+assert_status H-HOME2-FRONT 200
+assert_body_contains H-HOME2-FRONT 'id="site-announcement"'
+assert_body_contains H-HOME2-FRONT 'Aviso Stage2 HTML'
+assert_body_excludes H-HOME2-FRONT '<b>HTML</b>'
+assert_body_contains H-HOME2-FRONT 'id="promo-banner"'
+assert_body_contains H-HOME2-FRONT 'Promo Stage2'
+assert_body_contains H-HOME2-FRONT 'Footer Stage2'
+assert_body_contains H-HOME2-FRONT 'Lunes a Viernes 9 a 18'
+assert_body_contains H-HOME2-FRONT 'Buenos Aires'
+php -r '
+$body=file_get_contents($argv[1]);
+$b=strpos($body,"id=\"beneficios\"");
+$c=strpos($body,"id=\"categorias\"");
+$f=strpos($body,"id=\"productos-destacados\"");
+$p=strpos($body,"id=\"promo-banner\"");
+if($b===false||$c===false||$f===false||$p===false){fwrite(STDERR,"missing section\n"); exit(1);}
+if(!($b<$c && $c<$f && $f<$p)){fwrite(STDERR,"bad order b=$b c=$c f=$f p=$p\n"); exit(1);}
+' "$HTTP_BODY" || fail H-HOME2-ORDER 'orden alternativo incorrecto en HTML'
+pass H-HOME2-ORDER
+pass H-HOME2-FRONT
+
+settings_form 'HTTP Test Store' \
+    -F 'announcement_url=https://evil.example/phish'
+assert_status H-HOME2-BAD-URL 200
+assert_body_contains H-HOME2-BAD-URL 'aviso superior'
+assert_sql H-HOME2-BAD-URL 'category.php?id=1' "SELECT setting_value FROM store_settings WHERE setting_key='announcement_url'"
+pass H-HOME2-BAD-URL
+
+settings_form 'HTTP Test Store' \
+    -F 'home_order_featured=1' \
+    -F 'home_order_promo=1' \
+    -F 'home_order_categories=3' \
+    -F 'home_order_benefits=4'
+assert_status H-HOME2-BAD-ORDER 200
+assert_body_contains H-HOME2-BAD-ORDER 'orden de portada'
+assert_sql H-HOME2-BAD-ORDER 'benefits,categories,featured,promo' "SELECT setting_value FROM store_settings WHERE setting_key='home_section_order'"
+pass H-HOME2-BAD-ORDER
+
+settings_form 'HTTP Test Store' \
+    -F 'benefit_1_icon=bi-not-allowed' \
+    -F 'announcement_enabled=1' \
+    -F 'announcement_text=Aviso Stage2' \
+    -F 'announcement_url=category.php?id=1' \
+    -F 'promo_enabled=1' \
+    -F 'promo_title=Promo Stage2' \
+    -F 'promo_text=Texto promo Stage2' \
+    -F 'promo_button_text=Ver oferta' \
+    -F 'promo_button_url=#productos-destacados' \
+    -F 'home_order_featured=3' \
+    -F 'home_order_promo=4' \
+    -F 'home_order_categories=2' \
+    -F 'home_order_benefits=1'
+assert_status H-HOME2-BAD-ICON 200
+assert_body_contains H-HOME2-BAD-ICON 'Ícono'
+pass H-HOME2-BAD-ICON
+
+# Restaurar settings válidos Stage2 para Chromium
+settings_form 'HTTP Test Store' \
+    -F 'announcement_enabled=1' \
+    -F 'announcement_text=Aviso Stage2' \
+    -F 'announcement_url=category.php?id=1' \
+    -F 'announcement_style=navy' \
+    -F 'promo_enabled=1' \
+    -F 'promo_title=Promo Stage2' \
+    -F 'promo_text=Texto promo Stage2' \
+    -F 'promo_button_text=Ver oferta' \
+    -F 'promo_button_url=#productos-destacados' \
+    -F 'home_order_featured=3' \
+    -F 'home_order_promo=4' \
+    -F 'home_order_categories=2' \
+    -F 'home_order_benefits=1' \
+    -F 'footer_description=Footer Stage2' \
+    -F 'footer_instagram_text=Instagram Stage2' \
+    -F 'footer_whatsapp_text=WhatsApp Stage2' \
+    -F 'footer_show_business_hours=1' \
+    -F 'business_hours=Lunes a Viernes 9 a 18' \
+    -F 'footer_show_location=1' \
+    -F 'business_location=Buenos Aires' \
+    -F 'instagram_url=https://instagram.com/cyberleo'
+assert_status H-HOME2-SAVE2 302
+pass H-HOME2-SAVE2
+
+run_home2_chrome() {
+    local mode=$1
+    local id=$2
+    if [[ -z "$CHROME_BIN" ]] || ! command -v node >/dev/null 2>&1; then
+        fail "$id" 'google-chrome o node no están disponibles'
+        return
+    fi
+    local port
+    port="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    local cmd=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$port" "--remote-allow-origins=*"
+        "--user-data-dir=$HTTP_TMP/chrome-home2-$mode-profile"
+        about:blank)
+    local pid=""
+    setsid "${cmd[@]}" >"$HTTP_TMP/chrome-home2-$mode.out" 2>"$HTTP_TMP/chrome-home2-$mode.log" & pid=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$port/json/list" >/dev/null && break; sleep .05; done
+    if timeout 45 node "$ROOT/tests/helpers/chrome_home_content.mjs" \
+        "$port" "$HTTP_BASE_URL" "$mode" >"$HTTP_TMP/chrome-home2-$mode-test.out" 2>>"$HTTP_TMP/chrome-home2-$mode.log"; then
+        sed -n '1,40p' "$HTTP_TMP/chrome-home2-$mode-test.out"
+        pass "$id"
+    else
+        sed -n '1,160p' "$HTTP_TMP/chrome-home2-$mode-test.out" >&2
+        sed -n '1,80p' "$HTTP_TMP/chrome-home2-$mode.log" >&2
+        fail "$id" "Chromium Stage2 mode=$mode falló"
+    fi
+    kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+}
+
+run_home2_chrome alt-order H-HOME2-CHROME-ALT
+run_home2_chrome banner H-HOME2-CHROME-BANNER
+run_home2_chrome benefits H-HOME2-CHROME-BENEFITS
+run_home2_chrome footer H-HOME2-CHROME-FOOTER
+run_home2_chrome mobile H-HOME2-CHROME-MOBILE
+
+settings_form 'HTTP Test Store' \
+    -F 'show_featured_products=0' \
+    -F 'show_categories=0' \
+    -F 'announcement_enabled=1' \
+    -F 'announcement_text=Aviso Stage2' \
+    -F 'promo_enabled=1' \
+    -F 'promo_title=Promo Stage2' \
+    -F 'promo_text=x' \
+    -F 'promo_button_text=Ver oferta' \
+    -F 'promo_button_url=#' \
+    -F 'home_order_featured=3' \
+    -F 'home_order_promo=4' \
+    -F 'home_order_categories=2' \
+    -F 'home_order_benefits=1' \
+    -F 'benefits_enabled=1'
+assert_status H-HOME2-HIDDEN-SAVE 302
+pass H-HOME2-HIDDEN-SAVE
+run_home2_chrome hidden H-HOME2-CHROME-HIDDEN
+
+# Instagram vacío no muestra enlace roto
+settings_form 'HTTP Test Store' \
+    -F 'instagram_url=' \
+    -F 'footer_show_instagram=1' \
+    -F 'footer_description=Footer Stage2' \
+    -F 'footer_instagram_text=Instagram Stage2' \
+    -F 'footer_whatsapp_text=WhatsApp Stage2' \
+    -F 'home_order_featured=1' \
+    -F 'home_order_promo=2' \
+    -F 'home_order_categories=3' \
+    -F 'home_order_benefits=4'
+assert_status H-HOME2-IG-EMPTY-SAVE 302
+request GET index.php
+assert_status H-HOME2-IG-EMPTY 200
+assert_body_excludes H-HOME2-IG-EMPTY 'Instagram Stage2'
+assert_body_excludes H-HOME2-IG-EMPTY 'href=""'
+pass H-HOME2-IG-EMPTY
+
+# CSRF inválido en restore home
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F 'csrf_token=invalid-token' \
+    -F 'settings_action=restore_home_content'
+assert_status H-HOME2-RESTORE-CSRF 403
+assert_sql H-HOME2-RESTORE-CSRF 'Footer Stage2' "SELECT setting_value FROM store_settings WHERE setting_key='footer_description'"
+pass H-HOME2-RESTORE-CSRF
+
+# Conservar identidad Stage1 y commercial al restaurar contenido
+sql "UPDATE store_settings SET setting_value='#112233' WHERE setting_key='brand_primary_color'"
+sql "UPDATE store_settings SET setting_value='5491199999999' WHERE setting_key='whatsapp_number'"
+sql "INSERT INTO store_settings(setting_key,setting_value) VALUES('payment_methods','Efectivo, Mercado Pago') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)"
+PROMO_BEFORE_RESTORE="$(sql "SELECT setting_value FROM store_settings WHERE setting_key='promo_image'")"
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_home_content'
+assert_status H-HOME2-RESTORE 302
+assert_header_contains H-HOME2-RESTORE 'Location: admin_settings.php?home_restored=1'
+assert_sql H-HOME2-RESTORE '0' "SELECT setting_value FROM store_settings WHERE setting_key='announcement_enabled'"
+assert_sql H-HOME2-RESTORE '0' "SELECT setting_value FROM store_settings WHERE setting_key='promo_enabled'"
+assert_sql H-HOME2-RESTORE 'featured,promo,categories,benefits' "SELECT setting_value FROM store_settings WHERE setting_key='home_section_order'"
+assert_sql H-HOME2-RESTORE 'Tecnología, periféricos y soluciones para tu equipo.' "SELECT setting_value FROM store_settings WHERE setting_key='footer_description'"
+assert_sql H-HOME2-RESTORE '#112233' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"
+assert_sql H-HOME2-RESTORE '5491199999999' "SELECT setting_value FROM store_settings WHERE setting_key='whatsapp_number'"
+assert_sql H-HOME2-RESTORE 'Efectivo, Mercado Pago' "SELECT setting_value FROM store_settings WHERE setting_key='payment_methods'"
+assert_sql H-HOME2-RESTORE '' "SELECT setting_value FROM store_settings WHERE setting_key='promo_image'"
+if [[ -n "$PROMO_BEFORE_RESTORE" && -f "$ROOT/$PROMO_BEFORE_RESTORE" ]]; then
+    fail H-HOME2-RESTORE 'promo_image no fue limpiada tras restore'
+fi
+pass H-HOME2-RESTORE
+
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_home_content'
+assert_status H-HOME2-RESTORE2 302
+assert_sql H-HOME2-RESTORE2 '1' "SELECT setting_value FROM store_settings WHERE setting_key='benefits_enabled'"
+pass H-HOME2-RESTORE2
+
+run_home2_chrome restore H-HOME2-CHROME-RESTORE
+run_home2_chrome default H-HOME2-CHROME-DEFAULT
+
+# Error interno no expuesto
+sql "CREATE TRIGGER settings_home_fail BEFORE UPDATE ON store_settings FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='SQLSTATE internal path=/workspace/secret.sql'"
+settings_form 'HTTP Test Store' \
+    -F 'announcement_enabled=1' \
+    -F 'announcement_text=No debe persistir'
+assert_status H-HOME2-INTERNAL 200
+assert_body_contains H-HOME2-INTERNAL 'No se pudo guardar'
+assert_body_excludes H-HOME2-INTERNAL '/workspace/secret.sql'
+assert_body_excludes H-HOME2-INTERNAL 'SQLSTATE'
+sql 'DROP TRIGGER IF EXISTS settings_home_fail'
+pass H-HOME2-INTERNAL
 
 printf 'Prueba XSS por HTTP...\n'
 sql 'UPDATE products SET stock=2 WHERE id=2'

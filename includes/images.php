@@ -235,11 +235,13 @@ function save_settings_with_images(
     ?callable $deleteFile = null
 ): array {
     require_once __DIR__ . '/theme.php';
-    $imageKeys = ['hero_background', 'body_background', 'brand_logo', 'brand_favicon'];
+    require_once __DIR__ . '/home_content.php';
+    $imageKeys = ['hero_background', 'body_background', 'brand_logo', 'brand_favicon', 'promo_image'];
     $pngOnly = ['brand_logo' => true, 'brand_favicon' => true];
     $officialFallback = [
         'brand_logo' => THEME_OFFICIAL_LOGO,
         'brand_favicon' => '',
+        'promo_image' => '',
     ];
     $newPaths = [];
     $oldPaths = [];
@@ -282,6 +284,9 @@ function save_settings_with_images(
                     $images[$key] = THEME_OFFICIAL_LOGO;
                 }
                 if ($key === 'brand_favicon' && $images[$key] !== '' && !is_safe_brand_favicon_path($images[$key])) {
+                    $images[$key] = '';
+                }
+                if ($key === 'promo_image' && $images[$key] !== '' && !is_safe_promo_image_path($images[$key])) {
                     $images[$key] = '';
                 }
             }

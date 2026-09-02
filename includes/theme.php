@@ -150,8 +150,10 @@ function is_safe_local_theme_url(string $value): bool {
  * @return list<string>
  */
 function theme_allowed_setting_keys(): array {
+    require_once __DIR__ . '/home_content.php';
     return array_values(array_unique(array_merge(
         array_keys(theme_default_settings()),
+        home_content_keys(),
         [
             'store_name',
             'whatsapp_number',

@@ -6,9 +6,11 @@ require_once 'includes/functions.php';
 require_once 'includes/security.php';
 require_once 'includes/images.php';
 require_once 'includes/theme.php';
+require_once 'includes/home_content.php';
 
 $defaults = get_store_settings();
 $theme = resolve_theme_settings($defaults);
+$home = resolve_home_content_settings($defaults);
 $message = '';
 $messageType = 'info';
 $contrastWarnings = theme_contrast_warnings($theme);
@@ -33,6 +35,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($action === 'restore_home_content') {
+            $pdo->beginTransaction();
+            try {
+                $result = restore_home_content_defaults($pdo);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            foreach ($result['cleanup_candidates'] as $path) {
+                delete_unreferenced_image($pdo, $path);
+            }
+            header('Location: admin_settings.php?home_restored=1');
+            exit;
+        }
+
         $name = trim($_POST['store_name'] ?? '');
         $whatsapp = preg_replace('/\D/', '', $_POST['whatsapp_number'] ?? '');
         if ($name === '' || mb_strlen($name) > 80 || strlen($whatsapp) < 8 || strlen($whatsapp) > 16) {
@@ -48,13 +66,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new PublicSettingsException(implode(' ', $themeCollect['errors']));
         }
 
+        $homeCollect = collect_home_content_settings_from_post($_POST);
+        if ($homeCollect['errors']) {
+            throw new PublicSettingsException(implode(' ', $homeCollect['errors']));
+        }
+
         $heroTitle = sanitize_theme_plain_text((string) ($_POST['hero_title'] ?? ''), 140);
         $heroSubtitle = sanitize_theme_plain_text((string) ($_POST['hero_subtitle'] ?? ''), 240);
         if ($heroTitle === '' || $heroSubtitle === '') {
             throw new PublicSettingsException('Completá el título y el subtítulo de la portada.');
         }
 
-        $values = array_merge($themeCollect['values'], [
+        $values = array_merge($themeCollect['values'], $homeCollect['values'], [
             'store_name' => $name,
             'whatsapp_number' => $whatsapp,
             'instagram_url' => $instagram,
@@ -74,12 +97,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'body_background' => $_FILES['body_background_file'] ?? [],
                 'brand_logo' => $_FILES['brand_logo_file'] ?? [],
                 'brand_favicon' => $_FILES['brand_favicon_file'] ?? [],
+                'promo_image' => $_FILES['promo_image_file'] ?? [],
             ],
             [
                 'hero_background' => isset($_POST['remove_hero_background']),
                 'body_background' => isset($_POST['remove_body_background']),
                 'brand_logo' => isset($_POST['restore_official_logo']),
                 'brand_favicon' => isset($_POST['remove_brand_favicon']),
+                'promo_image' => isset($_POST['remove_promo_image']),
             ]
         );
         header('Location: admin_settings.php?saved=1');
@@ -89,12 +114,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $messageType = 'danger';
         $defaults = array_merge($defaults, $_POST);
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
+        $home = resolve_home_content_settings(array_merge($defaults, collect_home_content_settings_from_post($_POST)['values'] ?? []));
         $contrastWarnings = theme_contrast_warnings($theme);
     } catch (InvalidArgumentException $e) {
         $message = $e->getMessage();
         $messageType = 'danger';
         $defaults = array_merge($defaults, $_POST);
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
+        $home = resolve_home_content_settings(array_merge($defaults, collect_home_content_settings_from_post($_POST)['values'] ?? []));
         $contrastWarnings = theme_contrast_warnings($theme);
     } catch (Throwable $e) {
         error_log('admin_settings: ' . $e->getMessage());
@@ -102,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $messageType = 'danger';
         $defaults = array_merge($defaults, $_POST);
         $theme = resolve_theme_settings(array_merge($defaults, collect_theme_settings_from_post($_POST)['values'] ?? []));
+        $home = resolve_home_content_settings(array_merge($defaults, collect_home_content_settings_from_post($_POST)['values'] ?? []));
         $contrastWarnings = theme_contrast_warnings($theme);
     }
 }
@@ -114,6 +142,15 @@ if (isset($_GET['restored'])) {
     $messageType = 'success';
     $defaults = get_store_settings();
     $theme = resolve_theme_settings($defaults);
+    $home = resolve_home_content_settings($defaults);
+    $contrastWarnings = theme_contrast_warnings($theme);
+}
+if (isset($_GET['home_restored'])) {
+    $message = 'Contenido de portada restaurado. Se conservaron identidad visual, logo, colores y datos comerciales.';
+    $messageType = 'success';
+    $defaults = get_store_settings();
+    $theme = resolve_theme_settings($defaults);
+    $home = resolve_home_content_settings($defaults);
     $contrastWarnings = theme_contrast_warnings($theme);
 }
 
@@ -135,6 +172,24 @@ $heightOptions = ['compact' => 'Compacta', 'normal' => 'Normal', 'large' => 'Gra
 $alignOptions = ['left' => 'Izquierda', 'center' => 'Centro'];
 $overlayOptions = ['soft' => 'Suave', 'medium' => 'Medio', 'strong' => 'Fuerte'];
 $navOptions = ['white' => 'Blanca', 'navy' => 'Navy'];
+$announcementStyles = ['primary' => 'Principal', 'secondary' => 'Secundario', 'navy' => 'Navy'];
+$iconLabels = [
+    'bi-truck' => 'Envío',
+    'bi-shield-check' => 'Seguridad',
+    'bi-whatsapp' => 'WhatsApp',
+    'bi-credit-card' => 'Pago',
+    'bi-headset' => 'Atención',
+    'bi-box-seam' => 'Paquete',
+    'bi-lightning-charge' => 'Rápido',
+    'bi-tools' => 'Soporte',
+];
+$sectionLabels = [
+    'featured' => 'Productos destacados',
+    'promo' => 'Banner promocional',
+    'categories' => 'Categorías',
+    'benefits' => 'Beneficios',
+];
+$orderRanks = home_content_order_ranks($home);
 $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] : THEME_OFFICIAL_LOGO;
 ?>
 <!DOCTYPE html>
@@ -160,7 +215,7 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
 </nav>
 <main class="container py-4" style="max-width:980px">
     <h1 class="h2"><i class="bi bi-sliders" aria-hidden="true"></i> Configuración de la tienda</h1>
-    <p class="text-muted">Los cambios se reflejan en el sitio público. La identidad visual es opcional y conserva CyberLeo por defecto.</p>
+    <p class="text-muted">Los cambios se reflejan en el sitio público. La identidad visual y el contenido de portada son opcionales y conservan CyberLeo por defecto.</p>
     <?php if ($message): ?>
         <div class="alert alert-<?= htmlspecialchars($messageType) ?>" role="status"><?= htmlspecialchars($message) ?></div>
     <?php endif; ?>
@@ -366,6 +421,168 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
                     </div>
                 </div>
             </div>
+
+            <hr>
+            <h2 class="h4 mb-3">Aviso superior</h2>
+            <div class="row g-3 mb-4">
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="announcement_enabled" name="announcement_enabled" value="1"<?= $home['announcement_enabled'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="announcement_enabled">Mostrar franja informativa</label>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label" for="announcement_text">Texto (máx. 140)</label>
+                    <input class="form-control" id="announcement_text" name="announcement_text" maxlength="140" value="<?= htmlspecialchars($home['announcement_text']) ?>">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="announcement_style">Estilo</label>
+                    <select class="form-select" id="announcement_style" name="announcement_style">
+                        <?php foreach ($announcementStyles as $value => $label): ?>
+                            <option value="<?= $value ?>"<?= $home['announcement_style'] === $value ? ' selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="announcement_url">Enlace opcional (ruta local)</label>
+                    <input class="form-control" id="announcement_url" name="announcement_url" maxlength="180" value="<?= htmlspecialchars($home['announcement_url']) ?>">
+                    <small class="text-muted">Solo rutas locales seguras. Sin URLs externas.</small>
+                </div>
+            </div>
+
+            <hr>
+            <h2 class="h4 mb-3">Banner promocional</h2>
+            <div class="row g-3 mb-4">
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="promo_enabled" name="promo_enabled" value="1"<?= $home['promo_enabled'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="promo_enabled">Mostrar banner promocional</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="promo_title">Título (máx. 100)</label>
+                    <input class="form-control" id="promo_title" name="promo_title" maxlength="100" value="<?= htmlspecialchars($home['promo_title']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="promo_button_text">Texto del botón (máx. 60)</label>
+                    <input class="form-control" id="promo_button_text" name="promo_button_text" maxlength="60" value="<?= htmlspecialchars($home['promo_button_text']) ?>">
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="promo_text">Texto (máx. 240)</label>
+                    <textarea class="form-control" id="promo_text" name="promo_text" rows="2" maxlength="240"><?= htmlspecialchars($home['promo_text']) ?></textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="promo_button_url">Enlace del botón (ruta local)</label>
+                    <input class="form-control" id="promo_button_url" name="promo_button_url" maxlength="180" value="<?= htmlspecialchars($home['promo_button_url']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="promo_image_file">Imagen (JPG, PNG o WebP)</label>
+                    <input class="form-control" type="file" id="promo_image_file" name="promo_image_file" accept="image/jpeg,image/png,image/webp">
+                    <?php if (!empty($home['promo_image']) && is_safe_promo_image_path($home['promo_image'])): ?>
+                        <img class="img-thumbnail mt-2" style="max-height:100px" src="<?= htmlspecialchars($home['promo_image']) ?>" alt="Imagen promocional actual">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="remove_promo_image" id="remove_promo_image" value="1">
+                            <label class="form-check-label" for="remove_promo_image">Quitar imagen promocional</label>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <hr>
+            <h2 class="h4 mb-3">Orden de portada</h2>
+            <p class="text-muted small">Asigná posiciones del 1 al 4 sin duplicados. El buscador permanece fijo debajo del hero.</p>
+            <div class="row g-3 mb-4">
+                <?php foreach ($sectionLabels as $token => $label): ?>
+                <div class="col-md-3 col-6">
+                    <label class="form-label" for="home_order_<?= $token ?>"><?= htmlspecialchars($label) ?></label>
+                    <select class="form-select" id="home_order_<?= $token ?>" name="home_order_<?= $token ?>">
+                        <?php for ($n = 1; $n <= 4; $n++): ?>
+                            <option value="<?= $n ?>"<?= ((int) ($orderRanks[$token] ?? 0) === $n) ? ' selected' : '' ?>><?= $n ?></option>
+                        <?php endfor; ?>
+                    </select>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <hr>
+            <h2 class="h4 mb-3">Beneficios</h2>
+            <div class="row g-3 mb-4">
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="benefits_enabled" name="benefits_enabled" value="1"<?= $home['benefits_enabled'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="benefits_enabled">Mostrar bloque de beneficios</label>
+                    </div>
+                </div>
+                <?php for ($i = 1; $i <= 3; $i++): ?>
+                <div class="col-12"><h3 class="h6 mb-0">Beneficio <?= $i ?></h3></div>
+                <div class="col-md-3">
+                    <label class="form-label" for="benefit_<?= $i ?>_icon">Ícono</label>
+                    <select class="form-select" id="benefit_<?= $i ?>_icon" name="benefit_<?= $i ?>_icon">
+                        <?php foreach ($iconLabels as $icon => $iconLabel): ?>
+                            <option value="<?= $icon ?>"<?= $home["benefit_{$i}_icon"] === $icon ? ' selected' : '' ?>><?= htmlspecialchars($iconLabel) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="benefit_<?= $i ?>_title">Título</label>
+                    <input class="form-control" id="benefit_<?= $i ?>_title" name="benefit_<?= $i ?>_title" maxlength="60" value="<?= htmlspecialchars($home["benefit_{$i}_title"]) ?>">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label" for="benefit_<?= $i ?>_text">Texto</label>
+                    <input class="form-control" id="benefit_<?= $i ?>_text" name="benefit_<?= $i ?>_text" maxlength="180" value="<?= htmlspecialchars($home["benefit_{$i}_text"]) ?>">
+                </div>
+                <?php endfor; ?>
+            </div>
+
+            <hr>
+            <h2 class="h4 mb-3">Footer y datos visibles</h2>
+            <div class="row g-3 mb-2">
+                <div class="col-12">
+                    <label class="form-label" for="footer_description">Descripción (máx. 180)</label>
+                    <textarea class="form-control" id="footer_description" name="footer_description" rows="2" maxlength="180"><?= htmlspecialchars($home['footer_description']) ?></textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="footer_instagram_text">Texto enlace Instagram</label>
+                    <input class="form-control" id="footer_instagram_text" name="footer_instagram_text" maxlength="60" value="<?= htmlspecialchars($home['footer_instagram_text']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="footer_whatsapp_text">Texto enlace WhatsApp</label>
+                    <input class="form-control" id="footer_whatsapp_text" name="footer_whatsapp_text" maxlength="60" value="<?= htmlspecialchars($home['footer_whatsapp_text']) ?>">
+                </div>
+                <div class="col-12">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="footer_show_logo" name="footer_show_logo" value="1"<?= $home['footer_show_logo'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="footer_show_logo">Mostrar logo</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="footer_show_instagram" name="footer_show_instagram" value="1"<?= $home['footer_show_instagram'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="footer_show_instagram">Mostrar Instagram</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="footer_show_whatsapp" name="footer_show_whatsapp" value="1"<?= $home['footer_show_whatsapp'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="footer_show_whatsapp">Mostrar WhatsApp</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="footer_show_business_hours" name="footer_show_business_hours" value="1"<?= $home['footer_show_business_hours'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="footer_show_business_hours">Mostrar horarios</label>
+                    </div>
+                    <label class="form-label" for="business_hours">Horarios</label>
+                    <input class="form-control" id="business_hours" name="business_hours" maxlength="140" value="<?= htmlspecialchars($home['business_hours']) ?>">
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="footer_show_location" name="footer_show_location" value="1"<?= $home['footer_show_location'] === '1' ? ' checked' : '' ?>>
+                        <label class="form-check-label" for="footer_show_location">Mostrar ubicación</label>
+                    </div>
+                    <label class="form-label" for="business_location">Ubicación</label>
+                    <input class="form-control" id="business_location" name="business_location" maxlength="180" value="<?= htmlspecialchars($home['business_location']) ?>">
+                </div>
+                <div class="col-12">
+                    <small class="text-muted">WhatsApp e Instagram usan los datos comerciales de arriba. Si Instagram está vacío, no se muestra el enlace.</small>
+                </div>
+            </div>
         </div>
         <div class="card-footer bg-white d-flex flex-wrap gap-2 justify-content-between">
             <button type="submit" class="btn btn-primary"><i class="bi bi-save" aria-hidden="true"></i> Guardar cambios</button>
@@ -373,16 +590,23 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
         </div>
     </form>
 
-    <form method="post" class="mb-4" id="restore-cyberleo-form">
-        <?= csrf_input() ?>
-        <input type="hidden" name="settings_action" value="restore_cyberleo">
-        <button type="submit" class="btn btn-outline-danger"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Restaurar identidad CyberLeo</button>
-    </form>
+    <div class="d-flex flex-wrap gap-2 mb-4">
+        <form method="post" id="restore-cyberleo-form">
+            <?= csrf_input() ?>
+            <input type="hidden" name="settings_action" value="restore_cyberleo">
+            <button type="submit" class="btn btn-outline-danger"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Restaurar identidad CyberLeo</button>
+        </form>
+        <form method="post" id="restore-home-content-form">
+            <?= csrf_input() ?>
+            <input type="hidden" name="settings_action" value="restore_home_content">
+            <button type="submit" class="btn btn-outline-warning"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Restaurar contenido predeterminado</button>
+        </form>
+    </div>
 
-    <section class="card shadow-sm" aria-labelledby="preview-heading">
+    <section class="card shadow-sm mb-4" aria-labelledby="preview-heading">
         <div class="card-header bg-white"><h2 class="h5 mb-0" id="preview-heading">Vista previa</h2></div>
         <div class="card-body">
-            <div id="theme-preview" class="theme-preview border rounded overflow-hidden">
+            <div id="theme-preview" class="theme-preview border rounded overflow-hidden mb-3">
                 <div id="preview-nav" class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
                     <img id="preview-logo" src="<?= htmlspecialchars($logoSrc, ENT_QUOTES, 'UTF-8') ?>" alt="CyberLeo" style="height:42px;width:auto;object-fit:contain">
                     <span id="preview-nav-link" class="small">Inicio · Catálogo · Carrito</span>
@@ -401,6 +625,38 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
                     </div>
                 </div>
             </div>
+
+            <h3 class="h6">Contenido de portada</h3>
+            <p class="small text-muted mb-2">Orden: <span id="preview-home-order"></span></p>
+            <div class="home-preview-block mb-3">
+                <div id="preview-announcement" class="home-preview-announcement is-primary">
+                    <span id="preview-announcement-text">Aviso</span>
+                </div>
+                <div id="preview-promo" class="home-preview-promo">
+                    <strong id="preview-promo-title">Promoción</strong>
+                    <p class="mb-2 small" id="preview-promo-text"></p>
+                    <span class="btn btn-sm btn-light" id="preview-promo-button">Ver más</span>
+                </div>
+                <div id="preview-benefits" class="home-preview-benefits">
+                    <?php for ($i = 1; $i <= 3; $i++): ?>
+                    <div class="home-preview-benefit">
+                        <i id="preview-benefit-<?= $i ?>-icon" class="bi bi-truck" aria-hidden="true"></i>
+                        <strong id="preview-benefit-<?= $i ?>-title"></strong>
+                        <div id="preview-benefit-<?= $i ?>-text" class="text-muted"></div>
+                    </div>
+                    <?php endfor; ?>
+                </div>
+                <div class="home-preview-footer">
+                    <div id="preview-footer-logo" class="mb-2">
+                        <img src="<?= htmlspecialchars($logoSrc, ENT_QUOTES, 'UTF-8') ?>" alt="" style="height:28px;width:auto">
+                    </div>
+                    <div id="preview-footer-desc" class="mb-2"></div>
+                    <div id="preview-footer-ig-wrap" class="mb-1"><span id="preview-footer-ig"></span></div>
+                    <div id="preview-footer-wa-wrap" class="mb-1"><span id="preview-footer-wa"></span></div>
+                    <div id="preview-footer-hours-wrap" class="mb-1"><span id="preview-footer-hours"></span></div>
+                    <div id="preview-footer-location-wrap"><span id="preview-footer-location"></span></div>
+                </div>
+            </div>
             <p class="small text-muted mt-2 mb-0">La vista previa no guarda cambios. Usá “Guardar cambios” para persistir.</p>
         </div>
     </section>
@@ -409,5 +665,6 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
 window.THEME_PREVIEW_BOOT = <?= json_encode($previewPayload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?>;
 </script>
 <script src="<?= htmlspecialchars('assets/js/theme-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
+<script src="<?= htmlspecialchars('assets/js/home-content-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
 </body>
 </html>
