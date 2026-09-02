@@ -160,7 +160,11 @@ php "$ROOT/tests/functions_bootstrap_test.php"
 
 printf 'Verificando inventario de imágenes con fixtures...\n'
 INVENTORY_ROOT="$WORK_DIR/image-inventory"
-mkdir -p "$INVENTORY_ROOT/assets/images/products" "$INVENTORY_ROOT/assets/images/settings"
+mkdir -p "$INVENTORY_ROOT/assets/images/products" "$INVENTORY_ROOT/assets/images/settings" \
+    "$INVENTORY_ROOT/includes"
+# verify_production_images carga deps exclusivamente desde --root (sin fallback privado).
+cp "$ROOT/includes/config.php" "$ROOT/includes/db.php" "$ROOT/includes/images.php" \
+    "$INVENTORY_ROOT/includes/"
 PRODUCT_FIXTURE='assets/images/products/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg'
 SETTING_FIXTURE='assets/images/settings/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp'
 printf fixture >"$INVENTORY_ROOT/$PRODUCT_FIXTURE"
