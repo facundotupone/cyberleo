@@ -975,7 +975,12 @@ pass H-THEME-RESTORE
 
 request GET index.php
 assert_status H-THEME-HOME 200
-assert_body_contains H-THEME-HOME '--brand-blue:'
+if ! LC_ALL=C rg --fixed-strings --quiet '--brand-blue:' "$HTTP_BODY"; then
+    cp "$HTTP_BODY" /tmp/h-theme-home.body
+    printf 'H-THEME-HOME bytes=%s\n' "$(wc -c <"$HTTP_BODY")" >&2
+    sed -n '1,100p' "$HTTP_BODY" >&2
+    fail H-THEME-HOME 'la respuesta no contiene <--brand-blue:>'
+fi
 assert_body_contains H-THEME-HOME '--brand-font-family:'
 assert_body_contains H-THEME-HOME 'assets/images/brand/cyberleo-logo.png'
 assert_body_excludes H-THEME-HOME 'javascript:'
