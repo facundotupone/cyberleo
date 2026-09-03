@@ -683,7 +683,7 @@ fi
 exit 0
 BASH
 );
-chmod(0755, $fakeStty);
+chmod($fakeStty, 0755);
 $ptyScript = $work . '/pty_prompt_test.py';
 file_put_contents($ptyScript, <<<'PY'
 import os, sys, time, select, pty, subprocess
