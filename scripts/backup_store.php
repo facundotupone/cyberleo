@@ -10,7 +10,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/maintenance.php';
 
 maintenance_require_cli();
-maintenance_require_zip_and_proc();
+maintenance_require_zip();
+maintenance_require_proc_open();
+maintenance_require_mysqldump();
 
 $publicRootArg = '';
 $outputDirArg = '';

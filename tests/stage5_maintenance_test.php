@@ -38,7 +38,11 @@ function s5_run(array $env, array $cmd, ?string $stdin = null): array
     return maintenance_proc_open($full, $stdin);
 }
 
-maintenance_require_zip_and_proc();
+maintenance_require_zip();
+maintenance_require_proc_open();
+maintenance_require_mysql_client();
+maintenance_require_mysqldump();
+// Capability split is exercised per-script; suite needs the full set available.
 
 $work = sys_get_temp_dir() . '/cyberleo-s5-' . bin2hex(random_bytes(4));
 mkdir($work, 0700, true);
@@ -650,6 +654,136 @@ $credPrompt = maintenance_proc_open([
 ], "secret\n");
 s5($credPrompt['code'] !== 0, 'S5-CRED-NO-STTY', 'prompt hidden sin stty seguro falla');
 
+// S5-CRED-STTY-ECHO-FAIL: real PTY where stty -g OK but stty -echo fails → abort before fgets.
+$secretPass = 'super-secret-password-NEVER-ECHO';
+$fakeSttyDir = $work . '/fake-stty-bin';
+mkdir($fakeSttyDir, 0700, true);
+$fakeStty = $fakeSttyDir . '/stty';
+file_put_contents($fakeStty, <<<'BASH'
+#!/bin/bash
+set -euo pipefail
+args=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -F|-f) shift 2 ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+if [[ ${#args[@]} -eq 0 ]]; then
+  exit 2
+fi
+if [[ "${args[0]}" == "-g" ]]; then
+  printf '%s\n' '500:5:bf:8a3b:3:1c:7f:15:4:0:1:0:11:13:1a:0:12:f:17:16:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'
+  exit 0
+fi
+if [[ "${args[0]}" == "-echo" ]]; then
+  exit 1
+fi
+# restore / echo / other: pretend success without touching real tty
+exit 0
+BASH
+);
+chmod(0755, $fakeStty);
+$ptyScript = $work . '/pty_prompt_test.py';
+file_put_contents($ptyScript, <<<'PY'
+import os, sys, time, select, pty, subprocess
+secret = sys.argv[1]
+php = sys.argv[2]
+maintenance = sys.argv[3]
+fake_bin = sys.argv[4]
+transcript_path = sys.argv[5]
+
+env = os.environ.copy()
+env["PATH"] = fake_bin + os.pathsep + env.get("PATH", "")
+# Clear DB_* so prompt path is used
+for k in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASS"):
+    env.pop(k, None)
+
+master, slave = pty.openpty()
+cmd = [
+    php, "-r",
+    "require $argv[1]; maintenance_prompt('DB_PASS: ', true); echo 'SHOULD_NOT_PRINT\\n';",
+    maintenance,
+]
+proc = subprocess.Popen(
+    cmd,
+    stdin=slave,
+    stdout=slave,
+    stderr=slave,
+    env=env,
+    close_fds=True,
+)
+os.close(slave)
+buf = b""
+deadline = time.time() + 5.0
+typed = False
+while time.time() < deadline:
+    r, _, _ = select.select([master], [], [], 0.1)
+    if master in r:
+        try:
+            chunk = os.read(master, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        buf += chunk
+    rc = proc.poll()
+    if rc is not None:
+        # Drain remaining
+        while True:
+            r, _, _ = select.select([master], [], [], 0.05)
+            if master not in r:
+                break
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            buf += chunk
+        break
+    # Only type secret if process still running after prompt-ish activity —
+    # with the fix it should already have exited before reading.
+    if (not typed) and b"DB_PASS" in buf and proc.poll() is None and time.time() > deadline - 4.0:
+        # Give a brief moment; if still alive, attempt type (bug would echo).
+        time.sleep(0.2)
+        if proc.poll() is None:
+            os.write(master, (secret + "\n").encode())
+            typed = True
+else:
+    proc.kill()
+    proc.wait()
+
+os.close(master)
+rc = proc.wait()
+text = buf.decode("utf-8", "replace")
+open(transcript_path, "w", encoding="utf-8").write(text)
+# exit 0 from this helper means TEST ASSERTIONS PASSED
+if rc == 0:
+    sys.stderr.write("php exited 0 unexpectedly\n")
+    sys.exit(11)
+if "SHOULD_NOT_PRINT" in text:
+    sys.stderr.write("password was read\n")
+    sys.exit(12)
+if secret in text:
+    sys.stderr.write("secret leaked into PTY transcript\n")
+    sys.exit(13)
+if "variable de entorno" not in text and "variable de entorno" not in text.lower():
+    # Message goes to STDERR attached to PTY, should be in transcript
+    if "ocultar" not in text and "entorno" not in text:
+        sys.stderr.write("expected generic env message\n")
+        sys.exit(14)
+sys.exit(0)
+PY
+);
+$ptyOut = $work . '/pty-transcript.txt';
+$ptyRun = maintenance_proc_open([
+    'python3', $ptyScript, $secretPass, PHP_BINARY, $private . '/scripts/lib/maintenance.php', $fakeSttyDir, $ptyOut,
+]);
+$ptyCombined = $ptyRun['stdout'] . $ptyRun['stderr'] . (is_file($ptyOut) ? (string) file_get_contents($ptyOut) : '');
+s5($ptyRun['code'] === 0, 'S5-CRED-STTY-ECHO-FAIL', 'PTY: stty -echo falla aborta antes de leer');
+s5(!str_contains($ptyCombined, $secretPass), 'S5-CRED-STTY-ECHO-FAIL-SECRET', 'secreto ausente de stdout/stderr/transcript');
+
 // Insecure backup perms rejected (assert deletes)
 $insecure = $work . '/insecure.zip';
 file_put_contents($insecure, 'x');
@@ -714,6 +848,255 @@ $healthSafe = maintenance_proc_open([
 ]);
 @chmod($unreadable . '/assets/images/products', 0755);
 s5($healthSafe['code'] === 0 && $healthSafe['stderr'] === '', 'S5-DIAG-UNREADABLE', 'uploads ilegibles sin excepción ni fuga de rutas');
+
+// --- S5-RES-PARTIAL-COPY: partial dest left then fail → cleanup ---
+$dbPartial = $dbName . '_s5partial';
+$admin->exec('DROP DATABASE IF EXISTS `' . str_replace('`', '``', $dbPartial) . '`');
+$admin->exec('CREATE DATABASE `' . str_replace('`', '``', $dbPartial) . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+$publicPartial = $work . '/public_partial';
+maintenance_proc_open(['cp', '-a', $publicB, $publicPartial]);
+foreach (['products', 'settings'] as $scope) {
+    $dir = $publicPartial . '/assets/images/' . $scope;
+    foreach (scandir($dir) ?: [] as $n) {
+        if ($n === '.' || $n === '..' || $n === '.htaccess') {
+            continue;
+        }
+        @unlink($dir . '/' . $n);
+    }
+}
+$htHashes = [];
+foreach (['products', 'settings'] as $scope) {
+    $ht = $publicPartial . '/assets/images/' . $scope . '/.htaccess';
+    s5(is_file($ht), 'S5-RES-PARTIAL-HT-PRE-' . $scope, '.htaccess presente antes');
+    $htHashes[$scope] = hash_file('sha256', $ht);
+}
+file_put_contents($publicPartial . '/includes/config.local.php', "<?php\n" .
+    "define('DB_HOST', " . var_export('localhost;unix_socket=' . $socket, true) . ");\n" .
+    "define('DB_USER', 'root');\n" .
+    "define('DB_PASS', '');\n" .
+    "define('DB_NAME', " . var_export($dbPartial, true) . ");\n" .
+    "define('SITE_URL', 'http://localhost:8000');\n" .
+    "define('STORE_NAME', 'Partial');\n" .
+    "define('WHATSAPP_NUMBER', '5491100000000');\n" .
+    "define('STORE_INSTAGRAM', '');\n" .
+    "define('APP_SECRET', " . var_export(bin2hex(random_bytes(32)), true) . ");\n"
+);
+@chmod($publicPartial . '/includes/config.local.php', 0600);
+s5(is_string($zipTwo) && is_file($zipTwo), 'S5-RES-PARTIAL-ZIP', 'backup con imágenes disponible');
+$resPartial = s5_run(
+    ['CYBERLEO_TEST_PARTIAL_UPLOAD_COPY' => '1'],
+    [
+        'php', $private . '/scripts/restore_store.php',
+        '--restore-empty=' . $zipTwo,
+        '--public-root=' . $publicPartial,
+    ]
+);
+s5($resPartial['code'] !== 0, 'S5-RES-PARTIAL-COPY', 'restore falla con copia parcial simulada');
+$partialLeft = 0;
+foreach (['products', 'settings'] as $scope) {
+    foreach (scandir($publicPartial . '/assets/images/' . $scope) ?: [] as $n) {
+        if ($n === '.' || $n === '..') {
+            continue;
+        }
+        if ($n === '.htaccess') {
+            $ht = $publicPartial . '/assets/images/' . $scope . '/.htaccess';
+            s5(hash_file('sha256', $ht) === $htHashes[$scope], 'S5-RES-PARTIAL-HT-HASH-' . $scope, '.htaccess hash preservado');
+            continue;
+        }
+        $partialLeft++;
+    }
+}
+s5($partialLeft === 0, 'S5-RES-PARTIAL-CLEAN', 'sin archivos parciales residuales');
+// Recreate empty DB and confirm retry not blocked
+$admin->exec('DROP DATABASE `' . str_replace('`', '``', $dbPartial) . '`');
+$admin->exec('CREATE DATABASE `' . str_replace('`', '``', $dbPartial) . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+$resPartialRetry = s5_run([], [
+    'php', $private . '/scripts/restore_store.php',
+    '--restore-empty=' . $zipTwo,
+    '--public-root=' . $publicPartial,
+]);
+s5($resPartialRetry['code'] === 0, 'S5-RES-PARTIAL-RETRY', 'restore posterior no bloqueado por residuos');
+
+// --- Capability-specific PATH tests ---
+$mkPath = static function (string $dir, array $bins) use ($work): string {
+    $pathDir = $work . '/' . $dir;
+    mkdir($pathDir, 0700, true);
+    foreach ($bins as $name) {
+        $real = trim((string) shell_exec('command -v ' . escapeshellarg($name)));
+        if ($real === '' || !is_file($real)) {
+            fwrite(STDERR, "bin missing for PATH fixture: {$name}\n");
+            exit(1);
+        }
+        symlink($real, $pathDir . '/' . $name);
+    }
+    // Always include php for invoking scripts via relative name if needed
+    return $pathDir;
+};
+$phpOnly = $mkPath('path-php', ['php']);
+$phpMysql = $mkPath('path-php-mysql', ['php', 'mysql']);
+$phpDump = $mkPath('path-php-dump', ['php', 'mysqldump']);
+$phpMysqlDump = $mkPath('path-php-mysql-dump', ['php', 'mysql', 'mysqldump']);
+
+// S5-VERIFY-NO-DB-BINS: verify works without mysql/mysqldump
+$verifyNoDb = s5_run(['PATH' => $phpOnly], [
+    $phpOnly . '/php', $private . '/scripts/restore_store.php', '--verify=' . $zipPath,
+]);
+s5($verifyNoDb['code'] === 0, 'S5-VERIFY-NO-DB-BINS', 'verify válido sin mysql/mysqldump');
+s5(
+    !str_contains($verifyNoDb['stdout'] . $verifyNoDb['stderr'], $socket)
+    && !str_contains($verifyNoDb['stdout'] . $verifyNoDb['stderr'], '/workspace/'),
+    'S5-VERIFY-NO-DB-BINS-SAFE',
+    'verify sin fugas de rutas'
+);
+
+// Negativo: backup without mysqldump
+$bakNoDump = s5_run(['PATH' => $phpMysql], [
+    $phpMysql . '/php', $private . '/scripts/backup_store.php',
+    '--public-root=' . $publicA,
+    '--output-dir=' . $backups,
+]);
+s5($bakNoDump['code'] !== 0, 'S5-BAK-NEED-DUMP', 'backup falla sin mysqldump');
+s5(
+    !str_contains($bakNoDump['stderr'], $socket)
+    && !preg_match('/DB_PASS|password-segura/', $bakNoDump['stdout'] . $bakNoDump['stderr']),
+    'S5-BAK-NEED-DUMP-SAFE',
+    'error genérico sin secretos/rutas'
+);
+
+// S5-INST-NO-MYSQLDUMP: install with mysql, without mysqldump
+$dbInst = $dbName . '_s5instnodump';
+$admin->exec('DROP DATABASE IF EXISTS `' . str_replace('`', '``', $dbInst) . '`');
+$admin->exec('CREATE DATABASE `' . str_replace('`', '``', $dbInst) . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+$publicInst = $work . '/public_inst_nodump';
+maintenance_proc_open(['cp', '-a', $publicB, $publicInst]);
+@unlink($publicInst . '/includes/config.local.php');
+foreach (['products', 'settings'] as $scope) {
+    $dir = $publicInst . '/assets/images/' . $scope;
+    foreach (scandir($dir) ?: [] as $n) {
+        if ($n === '.' || $n === '..' || $n === '.htaccess') {
+            continue;
+        }
+        @unlink($dir . '/' . $n);
+    }
+}
+$instNoDump = s5_run(array_merge($baseEnv, [
+    'PATH' => $phpMysql,
+    'DB_NAME' => $dbInst,
+    'ADMIN_USERNAME' => 'instnodump',
+    'ADMIN_PASSWORD' => 'password-segura-12',
+]), [
+    $phpMysql . '/php', $private . '/scripts/install_store.php',
+    '--public-root=' . $publicInst,
+    '--non-interactive',
+]);
+s5($instNoDump['code'] === 0, 'S5-INST-NO-MYSQLDUMP', 'install OK sin mysqldump');
+
+// Negativo install without mysql
+$publicInst2 = $work . '/public_inst_needmysql';
+maintenance_proc_open(['cp', '-a', $publicB, $publicInst2]);
+@unlink($publicInst2 . '/includes/config.local.php');
+foreach (['products', 'settings'] as $scope) {
+    $dir = $publicInst2 . '/assets/images/' . $scope;
+    foreach (scandir($dir) ?: [] as $n) {
+        if ($n === '.' || $n === '..' || $n === '.htaccess') {
+            continue;
+        }
+        @unlink($dir . '/' . $n);
+    }
+}
+$dbInst2 = $dbName . '_s5needmysql';
+$admin->exec('DROP DATABASE IF EXISTS `' . str_replace('`', '``', $dbInst2) . '`');
+$admin->exec('CREATE DATABASE `' . str_replace('`', '``', $dbInst2) . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+$instNoMysql = s5_run(array_merge($baseEnv, [
+    'PATH' => $phpOnly,
+    'DB_NAME' => $dbInst2,
+    'ADMIN_USERNAME' => 'needmysql',
+]), [
+    $phpOnly . '/php', $private . '/scripts/install_store.php',
+    '--public-root=' . $publicInst2,
+    '--non-interactive',
+]);
+s5($instNoMysql['code'] !== 0, 'S5-INST-NEED-MYSQL', 'install falla sin mysql');
+s5(
+    !str_contains($instNoMysql['stderr'], $socket)
+    && !str_contains($instNoMysql['stdout'] . $instNoMysql['stderr'], 'password-segura'),
+    'S5-INST-NEED-MYSQL-SAFE',
+    'error install genérico'
+);
+
+// S5-BAK-NO-MYSQL-CLIENT: backup with mysqldump, without mysql client
+foreach (glob($backups . '/cyberleo-backup-*.zip') ?: [] as $old) {
+    @unlink($old);
+}
+$bakNoMysql = s5_run(['PATH' => $phpDump], [
+    $phpDump . '/php', $private . '/scripts/backup_store.php',
+    '--public-root=' . $publicA,
+    '--output-dir=' . $backups,
+]);
+s5($bakNoMysql['code'] === 0, 'S5-BAK-NO-MYSQL-CLIENT', 'backup OK sin cliente mysql');
+$bakZips = glob($backups . '/cyberleo-backup-*.zip') ?: [];
+s5(count($bakZips) >= 1, 'S5-BAK-NO-MYSQL-CLIENT-FILE', 'backup zip creado');
+
+// Negativo backup without mysqldump already covered; negativo without zip would need unloading ZipArchive — skip.
+
+// S5-RES-NO-MYSQLDUMP: restore with mysql, without mysqldump
+$dbResNd = $dbName . '_s5resnodump';
+$admin->exec('DROP DATABASE IF EXISTS `' . str_replace('`', '``', $dbResNd) . '`');
+$admin->exec('CREATE DATABASE `' . str_replace('`', '``', $dbResNd) . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+$publicResNd = $work . '/public_res_nodump';
+maintenance_proc_open(['cp', '-a', $publicB, $publicResNd]);
+foreach (['products', 'settings'] as $scope) {
+    $dir = $publicResNd . '/assets/images/' . $scope;
+    foreach (scandir($dir) ?: [] as $n) {
+        if ($n === '.' || $n === '..' || $n === '.htaccess') {
+            continue;
+        }
+        @unlink($dir . '/' . $n);
+    }
+}
+file_put_contents($publicResNd . '/includes/config.local.php', "<?php\n" .
+    "define('DB_HOST', " . var_export('localhost;unix_socket=' . $socket, true) . ");\n" .
+    "define('DB_USER', 'root');\n" .
+    "define('DB_PASS', '');\n" .
+    "define('DB_NAME', " . var_export($dbResNd, true) . ");\n" .
+    "define('SITE_URL', 'http://localhost:8000');\n" .
+    "define('STORE_NAME', 'ResNoDump');\n" .
+    "define('WHATSAPP_NUMBER', '5491100000000');\n" .
+    "define('STORE_INSTAGRAM', '');\n" .
+    "define('APP_SECRET', " . var_export(bin2hex(random_bytes(32)), true) . ");\n"
+);
+@chmod($publicResNd . '/includes/config.local.php', 0600);
+$resNoDump = s5_run(['PATH' => $phpMysql], [
+    $phpMysql . '/php', $private . '/scripts/restore_store.php',
+    '--restore-empty=' . $bakZips[0],
+    '--public-root=' . $publicResNd,
+]);
+s5($resNoDump['code'] === 0, 'S5-RES-NO-MYSQLDUMP', 'restore OK sin mysqldump');
+
+// Negativo restore without mysql
+$admin->exec('DROP DATABASE `' . str_replace('`', '``', $dbResNd) . '`');
+$admin->exec('CREATE DATABASE `' . str_replace('`', '``', $dbResNd) . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+foreach (['products', 'settings'] as $scope) {
+    $dir = $publicResNd . '/assets/images/' . $scope;
+    foreach (scandir($dir) ?: [] as $n) {
+        if ($n === '.' || $n === '..' || $n === '.htaccess') {
+            continue;
+        }
+        @unlink($dir . '/' . $n);
+    }
+}
+$resNeedMysql = s5_run(['PATH' => $phpOnly], [
+    $phpOnly . '/php', $private . '/scripts/restore_store.php',
+    '--restore-empty=' . $bakZips[0],
+    '--public-root=' . $publicResNd,
+]);
+s5($resNeedMysql['code'] !== 0, 'S5-RES-NEED-MYSQL', 'restore falla sin mysql');
+s5(
+    !str_contains($resNeedMysql['stderr'], $socket)
+    && !str_contains($resNeedMysql['stdout'] . $resNeedMysql['stderr'], 'password-segura'),
+    'S5-RES-NEED-MYSQL-SAFE',
+    'error restore genérico'
+);
 
 // S5-PKG-PRIVATE-RUNTIME: build private zip and run from extracted trees only
 $privBuild = maintenance_proc_open(

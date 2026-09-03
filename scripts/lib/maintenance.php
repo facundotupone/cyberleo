@@ -252,6 +252,53 @@ function maintenance_db_credentials_from_env(): ?array
     return $creds;
 }
 
+/**
+ * Resolve absolute executable path for stty.
+ */
+function maintenance_resolve_stty(): string
+{
+    if (PHP_OS_FAMILY === 'Windows') {
+        maintenance_fail('No se puede ocultar la contraseña de forma segura. Definí la variable de entorno correspondiente.');
+    }
+    $path = trim((string) shell_exec('command -v stty 2>/dev/null'));
+    if ($path === '' || !str_starts_with($path, DIRECTORY_SEPARATOR) || !is_file($path) || !is_executable($path)) {
+        maintenance_fail('No se puede ocultar la contraseña de forma segura. Definí la variable de entorno correspondiente.');
+    }
+    return $path;
+}
+
+/**
+ * Run stty against the controlling terminal; return exit code and stdout.
+ *
+ * @param list<string> $args
+ * @return array{code:int,stdout:string,stderr:string}
+ */
+function maintenance_stty_run(string $sttyBin, array $args): array
+{
+    // Operate on the real terminal, not a redirected pipe.
+    $cmd = [$sttyBin];
+    if (is_readable('/dev/tty') && is_writable('/dev/tty')) {
+        $cmd[] = '-F';
+        $cmd[] = '/dev/tty';
+    }
+    $cmd = array_merge($cmd, $args);
+    $descriptors = [
+        0 => ['file', '/dev/null', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = @proc_open($cmd, $descriptors, $pipes);
+    if (!is_resource($process)) {
+        return ['code' => 127, 'stdout' => '', 'stderr' => 'proc_open failed'];
+    }
+    $stdout = stream_get_contents($pipes[1]) ?: '';
+    $stderr = stream_get_contents($pipes[2]) ?: '';
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $code = proc_close($process);
+    return ['code' => $code, 'stdout' => $stdout, 'stderr' => $stderr];
+}
+
 function maintenance_prompt(string $label, bool $hidden = false): string
 {
     if (!defined('STDIN') || !is_resource(STDIN) || stream_isatty(STDIN) === false) {
@@ -259,28 +306,33 @@ function maintenance_prompt(string $label, bool $hidden = false): string
     }
     fwrite(STDERR, $label);
     if ($hidden) {
-        $stty = trim((string) shell_exec('command -v stty'));
-        if ($stty === '' || PHP_OS_FAMILY === 'Windows') {
-            maintenance_fail('No se puede ocultar la contraseña de forma segura. Definí la variable de entorno correspondiente.');
-        }
-        $prev = shell_exec('stty -g 2>/dev/null');
-        $ok = false;
+        $sttyBin = maintenance_resolve_stty();
+        $prevState = null;
+        $echoDisabled = false;
+        $line = false;
         try {
-            $disable = shell_exec('stty -echo 2>/dev/null');
-            if ($disable === null && $prev === null) {
-                maintenance_fail('No se pudo desactivar el eco del terminal. Definí la variable de entorno correspondiente.');
+            $save = maintenance_stty_run($sttyBin, ['-g']);
+            if ($save['code'] !== 0 || trim($save['stdout']) === '') {
+                maintenance_fail('No se puede ocultar la contraseña de forma segura. Definí la variable de entorno correspondiente.');
             }
+            $prevState = trim($save['stdout']);
+            $disable = maintenance_stty_run($sttyBin, ['-echo']);
+            if ($disable['code'] !== 0) {
+                maintenance_fail('No se puede ocultar la contraseña de forma segura. Definí la variable de entorno correspondiente.');
+            }
+            $echoDisabled = true;
+            // Only read after confirmed echo-off.
             $line = fgets(STDIN);
-            $ok = true;
         } finally {
-            if (is_string($prev) && $prev !== '') {
-                shell_exec('stty ' . escapeshellarg(trim($prev)) . ' 2>/dev/null');
-            } else {
-                shell_exec('stty echo 2>/dev/null');
+            if (is_string($prevState) && $prevState !== '') {
+                // Restore exact prior settings; never pass secrets here.
+                maintenance_stty_run($sttyBin, [$prevState]);
+            } elseif ($echoDisabled) {
+                maintenance_stty_run($sttyBin, ['echo']);
             }
             fwrite(STDERR, "\n");
         }
-        if (!$ok || $line === false) {
+        if ($line === false) {
             maintenance_fail("No se pudo leer: {$label}");
         }
         return rtrim($line, "\r\n");
@@ -707,16 +759,39 @@ function maintenance_require_cli(): void
     }
 }
 
-function maintenance_require_zip_and_proc(): void
+function maintenance_require_zip(): void
 {
     if (!class_exists('ZipArchive')) {
         maintenance_fail('Falta la extensión PHP ZipArchive. Instalá php-zip antes de continuar.');
     }
+}
+
+function maintenance_require_proc_open(): void
+{
     if (!function_exists('proc_open')) {
         maintenance_fail('proc_open no está disponible; es obligatorio para mantenimiento seguro.');
     }
+}
+
+function maintenance_require_mysql_client(): void
+{
     maintenance_mysql_bin('mysql');
+}
+
+function maintenance_require_mysqldump(): void
+{
     maintenance_mysql_bin('mysqldump');
+}
+
+/**
+ * @deprecated Prefer capability-specific helpers.
+ */
+function maintenance_require_zip_and_proc(): void
+{
+    maintenance_require_zip();
+    maintenance_require_proc_open();
+    maintenance_require_mysql_client();
+    maintenance_require_mysqldump();
 }
 
 function maintenance_app_commit(): ?string

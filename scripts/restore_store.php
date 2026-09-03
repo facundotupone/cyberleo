@@ -11,7 +11,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/maintenance.php';
 
 maintenance_require_cli();
-maintenance_require_zip_and_proc();
 
 $mode = '';
 $zipArg = '';
@@ -41,6 +40,13 @@ if ($mode === 'restore' && $publicRootArg === '') {
     maintenance_fail('--public-root es obligatorio con --restore-empty.');
 }
 
+// Prerequisites depend on mode (parse first, then require).
+maintenance_require_zip();
+if ($mode === 'restore') {
+    maintenance_require_proc_open();
+    maintenance_require_mysql_client();
+}
+
 $verified = maintenance_verify_backup_zip($zipArg);
 fwrite(STDOUT, "Verificación OK.\n");
 fwrite(STDOUT, 'Archivos: ' . count($verified['manifest']['files']) . "\n");
@@ -66,7 +72,10 @@ if (!maintenance_database_is_empty($pdo)) {
 
 $tmpdir = $verified['tmpdir'];
 $sqlImported = false;
+/** @var list<string> $createdFiles final destinies published by this attempt */
 $createdFiles = [];
+/** @var list<string> $tempFiles temp copies not yet renamed */
+$tempFiles = [];
 
 try {
     maintenance_import_sql_file($creds, $tmpdir . '/database.sql');
@@ -89,7 +98,21 @@ try {
         if (!is_dir($destDir) && !mkdir($destDir, 0755, true) && !is_dir($destDir)) {
             throw new RuntimeException('mkdir-failed');
         }
-        // Optional test hook: fail on second image copy.
+
+        // Test hook: leave a partial destination then fail (cleanup must remove it).
+        if (getenv('CYBERLEO_TEST_PARTIAL_UPLOAD_COPY') === '1') {
+            static $partialDone = false;
+            if (!$partialDone) {
+                $partialDone = true;
+                if (file_put_contents($dest, 'PARTIAL-CORRUPT') === false) {
+                    throw new RuntimeException('partial-setup-failed');
+                }
+                $createdFiles[] = $dest;
+                throw new RuntimeException('simulated-partial-copy-fail');
+            }
+        }
+
+        // Optional test hook: fail on second image copy (after first success).
         if (getenv('CYBERLEO_TEST_FAIL_UPLOAD_COPY') === '1') {
             static $copyCount = 0;
             $copyCount++;
@@ -97,12 +120,26 @@ try {
                 throw new RuntimeException('simulated-copy-fail');
             }
         }
-        if (!copy($src, $dest)) {
+
+        // Copy to temp in same directory, then atomic rename to destination.
+        $tmpDest = $destDir . '/.cyberleo-restore-' . bin2hex(random_bytes(8)) . '.tmp';
+        $tempFiles[] = $tmpDest;
+        if (!copy($src, $tmpDest)) {
             throw new RuntimeException('copy-failed');
         }
+        if (!rename($tmpDest, $dest)) {
+            throw new RuntimeException('rename-failed');
+        }
+        // Temp successfully published; track only the final path.
+        $tempFiles = array_values(array_filter($tempFiles, static fn(string $p): bool => $p !== $tmpDest));
         $createdFiles[] = $dest;
     }
 } catch (Throwable $e) {
+    foreach ($tempFiles as $tmp) {
+        if (is_file($tmp) && !is_link($tmp) && basename($tmp) !== '.htaccess') {
+            @unlink($tmp);
+        }
+    }
     foreach ($createdFiles as $created) {
         if (is_file($created) && !is_link($created) && basename($created) !== '.htaccess') {
             @unlink($created);
