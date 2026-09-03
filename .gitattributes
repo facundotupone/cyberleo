@@ -1,0 +1,5 @@
+.gitattributes text eol=lf
+*.php text eol=lf
+*.js text eol=lf
+*.sql text eol=lf
+*.sh text eol=lf

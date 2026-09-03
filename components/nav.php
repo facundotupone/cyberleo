@@ -1,0 +1,56 @@
+<?php
+if (!isset($categories)) { $categories = get_categories(); }
+if (!isset($storeSettings)) { $storeSettings = get_store_settings(); }
+require_once __DIR__ . '/../includes/theme.php';
+require_once __DIR__ . '/../includes/home_content.php';
+if (!isset($themeSettings)) { $themeSettings = resolve_theme_settings($storeSettings); }
+if (!isset($homeContent)) { $homeContent = resolve_home_content_settings($storeSettings); }
+$currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
+$brandLogoPath = is_safe_brand_logo_path($themeSettings['brand_logo'] ?? '')
+    ? $themeSettings['brand_logo']
+    : THEME_OFFICIAL_LOGO;
+$navClass = 'navbar navbar-expand-lg site-navbar sticky-top'
+    . (($themeSettings['nav_style'] ?? 'white') === 'navy' ? ' site-navbar-navy' : '');
+require __DIR__ . '/announcement.php';
+?>
+<nav class="<?= htmlspecialchars($navClass) ?>" aria-label="Navegación principal">
+    <div class="container">
+        <a class="navbar-brand" href="index.php" title="<?= htmlspecialchars($storeSettings['store_name']) ?>">
+            <img
+                src="<?= htmlspecialchars($brandLogoPath, ENT_QUOTES, 'UTF-8') ?>"
+                alt="CyberLeo"
+                class="brand-logo"
+                width="220"
+                height="62"
+                decoding="async"
+            >
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Abrir menú">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="mainNav">
+            <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
+                <li class="nav-item">
+                    <a class="nav-link<?= $currentScript === 'index.php' ? ' active' : '' ?>" href="index.php"<?= $currentScript === 'index.php' ? ' aria-current="page"' : '' ?>>Inicio</a>
+                </li>
+                <?php foreach ($categories as $category): ?>
+                    <?php
+                    $isActiveCategory = $currentScript === 'category.php'
+                        && isset($_GET['id'])
+                        && (int)$_GET['id'] === (int)$category['id'];
+                    ?>
+                    <li class="nav-item">
+                        <a class="nav-link<?= $isActiveCategory ? ' active' : '' ?>" href="category.php?id=<?= (int)$category['id'] ?>"<?= $isActiveCategory ? ' aria-current="page"' : '' ?>><?= htmlspecialchars($category['name']) ?></a>
+                    </li>
+                <?php endforeach; ?>
+                <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
+                    <a class="nav-cart-btn<?= $currentScript === 'cart.php' ? ' active' : '' ?>" href="cart.php">
+                        <i class="bi bi-cart3" aria-hidden="true"></i>
+                        <span>Carrito</span>
+                        <span class="cart-count" aria-label="Productos en el carrito">0</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>

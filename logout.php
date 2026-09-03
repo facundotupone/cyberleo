@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once 'includes/security.php';
+start_secure_session();
 
 // Destruir todas las variables de sesión
 $_SESSION = [];

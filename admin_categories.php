@@ -3,17 +3,21 @@ require_once 'includes/auth_check.php';
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/security.php';
 
 $message = '';
 $categories = get_categories();
 
 // Procesar el formulario de categoría y subcategoría
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    require_csrf();
     if (isset($_POST['action'])) {
         if ($_POST['action'] === 'add_category') {
             $name = trim($_POST['name']);
             $icon = trim($_POST['icon']);
-            if (!empty($name)) {
+            if (!preg_match('/^bi bi-[a-z0-9-]{1,60}$/', $icon)) {
+                $message = 'Icono inválido.';
+            } elseif (!empty($name)) {
                 $stmt = $pdo->prepare("INSERT INTO categories (name, icon) VALUES (?, ?)");
                 if ($stmt->execute([$name, $icon])) {
                     $message = 'Categoría agregada exitosamente.';
@@ -58,22 +62,20 @@ $categories = get_categories();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administrar Categorías - HappyEars</title>
-    <link rel="icon" href="./assets/images/favicon.ico" type="image/x-icon">
-
+    <title>Administrar Categorías - <?= htmlspecialchars(STORE_NAME) ?></title>
     <!-- Bootstrap + Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    
+
     <!-- MISMO ESTILO QUE admin_products.php -->
     <style>
         body {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background: linear-gradient(135deg, #f3f8fc 0%, #dceaf8 100%);
             min-height: 100vh;
         }
 
         .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
@@ -85,7 +87,7 @@ $categories = get_categories();
 
         .nav-link.active {
             color: #fff !important;
-            border-bottom: 3px solid #ffd700;
+            border-bottom: 3px solid #00aeef;
             padding-bottom: 0.5rem;
         }
 
@@ -110,7 +112,7 @@ $categories = get_categories();
             border-radius: 15px 15px 0 0 !important;
             font-weight: 600;
             letter-spacing: 0.5px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%) !important;
             color: #fff;
         }
 
@@ -140,8 +142,8 @@ $categories = get_categories();
         }
 
         .form-control:focus, .form-select:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.15);
+            border-color: #0057b8;
+            box-shadow: 0 0 0 0.2rem rgba(0, 87, 184, 0.15);
         }
 
         .btn {
@@ -153,13 +155,13 @@ $categories = get_categories();
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
+            box-shadow: 0 4px 15px rgba(0, 87, 184, 0.3);
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 6px 20px rgba(0, 87, 184, 0.4);
         }
 
         .btn-danger {
@@ -191,8 +193,8 @@ $categories = get_categories();
         }
 
         .list-group-item:hover {
-            border-color: #667eea;
-            background: rgba(102, 126, 234, 0.05);
+            border-color: #0057b8;
+            background: rgba(0, 87, 184, 0.05);
             transform: translateX(5px);
         }
 
@@ -253,6 +255,21 @@ $categories = get_categories();
                             <i class="bi bi-tags"></i> Categorías
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin_orders.php">
+                            <i class="bi bi-receipt"></i> Pedidos
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin_settings.php">
+                            <i class="bi bi-sliders"></i> Configuración
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin_system.php">
+                            <i class="bi bi-heartbeat"></i> Sistema
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -260,7 +277,7 @@ $categories = get_categories();
 
     <div class="container my-4">
         <h1>Administrar Categorías</h1>
-        
+
         <?php if ($message): ?>
         <div class="alert alert-info"><?php echo htmlspecialchars($message); ?></div>
         <?php endif; ?>
@@ -273,6 +290,7 @@ $categories = get_categories();
                     </div>
                     <div class="card-body">
                         <form method="POST" class="mb-4">
+                            <?= csrf_input() ?>
                             <input type="hidden" name="action" value="add_category">
                             <div class="mb-3">
                                 <label for="name" class="form-label">Nombre de la Categoría</label>
@@ -280,16 +298,16 @@ $categories = get_categories();
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Icono de categoría</label>
-                            
+
                                 <div class="input-group">
                                     <input type="text" class="form-control" id="iconInput" name="icon" placeholder="bi bi-star" required>
                                     <button type="button" class="btn btn-outline-secondary" id="openIconPicker">
                                         <i class="bi bi-grid"></i>
                                     </button>
                                 </div>
-                            
+
                                 <div class="mt-2" id="iconPreview" style="font-size: 2rem;"></div>
-                            
+
                                 <small class="text-muted">
                                     Elegí un icono o escribí manualmente. Ej: <code>bi bi-heart</code>
                                 </small>
@@ -298,13 +316,14 @@ $categories = get_categories();
 
                             <button type="submit" class="btn btn-primary mb-3">Agregar Categoría</button>
                         </form>
-                        
-                       
+
+
 
 
                         <hr>
                         <h2 class="h5 mb-3">Agregar Nueva Subcategoría</h2>
                         <form method="POST" class="mb-4">
+                            <?= csrf_input() ?>
                             <input type="hidden" name="action" value="add_subcategory">
                             <div class="mb-3">
                                 <label for="parent_category_id" class="form-label">Categoría Padre</label>
@@ -332,9 +351,9 @@ $categories = get_categories();
                     <div class="card-header bg-warning text-white">
                         <h2 class="h5 mb-0">Categorías y Subcategorías Existentes</h2>
                     </div>
-                    
+
                     <div class="list-group">
-                        <?php foreach ($categories as $category): 
+                        <?php foreach ($categories as $category):
                             $subcategories = get_subcategories($category['id']);
                         ?>
                         <div class="list-group-item">
@@ -346,9 +365,10 @@ $categories = get_categories();
                                     <strong><?php echo htmlspecialchars($category['name']); ?></strong>
                                 </div>
                                 <form method="POST" class="d-inline">
+                                    <?= csrf_input() ?>
                                     <input type="hidden" name="action" value="delete_category">
                                     <input type="hidden" name="id" value="<?php echo $category['id']; ?>">
-                                    <button type="submit" class="btn btn-danger btn-sm" 
+                                    <button type="submit" class="btn btn-danger btn-sm"
                                             onclick="return confirm('¿Estás seguro de eliminar esta categoría y todas sus subcategorías?')">
                                         Eliminar
                                     </button>
@@ -360,6 +380,7 @@ $categories = get_categories();
                                 <div class="d-flex justify-content-between align-items-center mb-2">
                                     <span><?php echo htmlspecialchars($subcategory['name']); ?></span>
                                     <form method="POST" class="d-inline">
+                                        <?= csrf_input() ?>
                                         <input type="hidden" name="action" value="delete_subcategory">
                                         <input type="hidden" name="id" value="<?php echo $subcategory['id']; ?>">
                                         <button type="submit" class="btn btn-danger btn-sm"
@@ -379,24 +400,24 @@ $categories = get_categories();
         </div>
     </div>
      <!-- MODAL ICONO -->
-                        
+
     <div class="modal fade" id="iconModal" tabindex="-1">
       <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
-    
+
           <div class="modal-header">
             <h5 class="modal-title">Seleccionar Icono</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
-    
+
           <div class="modal-body">
-    
+
             <input type="text" class="form-control mb-3" id="iconSearch" placeholder="Buscar icono...">
-    
+
             <div class="row row-cols-6 g-3" id="iconList"></div>
-    
+
           </div>
-    
+
         </div>
       </div>
     </div>
@@ -491,7 +512,7 @@ function renderIcons(filter = "") {
     const list = document.getElementById("iconList");
 
     // Limpiar contenido previo
-    list.innerHTML = "";
+    list.replaceChildren();
 
     // Filtrar e iterar íconos
     icons
@@ -501,7 +522,9 @@ function renderIcons(filter = "") {
             const div = document.createElement("div");
             div.className = "col icon-option";
             div.setAttribute("data-icon", icon);
-            div.innerHTML = `<i class="${icon}"></i>`;
+            const iconNode = document.createElement('i');
+            iconNode.className = icon;
+            div.appendChild(iconNode);
 
             // Insertar en el DOM
             list.appendChild(div);
@@ -562,7 +585,9 @@ document.addEventListener("click", function(e){
     document.getElementById("iconInput").value = icon;
 
     // Mostrar preview
-    document.getElementById("iconPreview").innerHTML = `<i class="${icon}"></i>`;
+    const preview = document.getElementById("iconPreview");
+    preview.replaceChildren();
+    const previewIcon = document.createElement('i'); previewIcon.className = icon; preview.appendChild(previewIcon);
 
     // Cerrar modal
     bootstrap.Modal.getInstance(document.getElementById("iconModal")).hide();
@@ -578,7 +603,9 @@ document.addEventListener("click", function(e){
 
 document.getElementById("iconInput").addEventListener("input", function(){
     const val = this.value.trim();
-    document.getElementById("iconPreview").innerHTML = val ? `<i class="${val}"></i>` : "";
+    const preview = document.getElementById("iconPreview");
+    preview.replaceChildren();
+    if (/^bi bi-[a-z0-9-]{1,60}$/.test(val)) { const node = document.createElement('i'); node.className = val; preview.appendChild(node); }
 });
 
 </script>

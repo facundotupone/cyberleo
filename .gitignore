@@ -1,0 +1,9 @@
+
+/artifacts/
+/cyberleo-actualizacion-estetica.zip
+/dist/
+/.env
+/includes/config.local.php
+*.log
+/logs/
+/tmp/

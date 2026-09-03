@@ -1,6 +1,53 @@
-
 <?php
 require_once 'db.php';
+
+function get_store_settings() {
+    global $pdo;
+
+    require_once __DIR__ . '/theme.php';
+    require_once __DIR__ . '/home_content.php';
+    require_once __DIR__ . '/catalog_display.php';
+    require_once __DIR__ . '/checkout_display.php';
+    $settings = array_merge([
+        'store_name' => STORE_NAME,
+        'whatsapp_number' => WHATSAPP_NUMBER,
+        'instagram_url' => STORE_INSTAGRAM,
+        'hero_title' => 'Tecnología para trabajar, estudiar y disfrutar',
+        'hero_subtitle' => 'Encontrá notebooks, componentes y periféricos con stock actualizado.',
+        'hero_background' => '',
+        'body_background' => '',
+        'reservation_minutes' => '120',
+        'admin_email' => '',
+        'mail_from' => '',
+        'payment_methods' => 'Efectivo, Transferencia, Mercado Pago',
+    ], theme_default_settings(), home_content_default_settings(), catalog_display_default_settings(), checkout_display_default_settings());
+    try {
+        $rows = $pdo->query('SELECT setting_key, setting_value FROM store_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
+        $emptyOk = array_flip(array_merge(
+            theme_empty_allowed_keys(),
+            theme_boolean_keys(),
+            home_content_empty_allowed_keys(),
+            home_content_boolean_keys(),
+            catalog_display_empty_allowed_keys(),
+            catalog_display_boolean_keys(),
+            checkout_display_empty_allowed_keys(),
+            checkout_display_boolean_keys()
+        ));
+        foreach ($rows as $key => $value) {
+            if (!array_key_exists($key, $settings)) continue;
+            if ($value === '' && !isset($emptyOk[$key])) continue;
+            $settings[$key] = $value;
+        }
+    } catch (PDOException $e) {
+        // La tienda sigue mostrando valores seguros por defecto hasta importar schema.sql.
+        error_log($e->getMessage());
+    }
+    return $settings;
+}
+
+function get_theme_settings(): array {
+    return resolve_theme_settings(get_store_settings());
+}
 
 function get_categories() {
     global $pdo;
@@ -36,10 +83,10 @@ function format_price($price) {
 function get_featured_products() {
     global $pdo;
     $stmt = $pdo->query("
-        SELECT p.*, c.name as category_name 
-        FROM products p 
-        JOIN categories c ON p.category_id = c.id 
-        WHERE p.destacados > 0 
+        SELECT p.*, c.name as category_name
+        FROM products p
+        JOIN categories c ON p.category_id = c.id
+        WHERE p.destacados > 0 AND p.is_active = 1
         ORDER BY p.destacados ASC
     ");
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -72,4 +119,3 @@ function get_products_by_subcategory($category_id, $subcategory_id) {
         return [];
     }
 }
-?>

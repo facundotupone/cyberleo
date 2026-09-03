@@ -1,97 +1,81 @@
-<footer class="footer mt-5 pt-4 pb-2 border-top shadow-lg" style="background: linear-gradient(90deg, #90caf9 0%, #ffe0b2 100%); color: #222; border-color: #eee !important; font-family: 'Montserrat', Arial, sans-serif; box-shadow: 0 -4px 24px 0 rgba(0,0,0,0.07);">
+<?php
+if (!isset($storeSettings)) { $storeSettings = get_store_settings(); }
+require_once __DIR__ . '/../includes/theme.php';
+require_once __DIR__ . '/../includes/home_content.php';
+if (!isset($themeSettings)) { $themeSettings = resolve_theme_settings($storeSettings); }
+if (!isset($homeContent)) { $homeContent = resolve_home_content_settings($storeSettings); }
+$brandLogoPath = is_safe_brand_logo_path($themeSettings['brand_logo'] ?? '')
+    ? $themeSettings['brand_logo']
+    : THEME_OFFICIAL_LOGO;
+$showLogo = ($homeContent['footer_show_logo'] ?? '1') === '1';
+$showIg = ($homeContent['footer_show_instagram'] ?? '1') === '1'
+    && !empty($storeSettings['instagram_url']);
+$showWa = ($homeContent['footer_show_whatsapp'] ?? '1') === '1'
+    && !empty($storeSettings['whatsapp_number']);
+$showHours = ($homeContent['footer_show_business_hours'] ?? '0') === '1'
+    && trim((string) ($homeContent['business_hours'] ?? '')) !== '';
+$showLocation = ($homeContent['footer_show_location'] ?? '0') === '1'
+    && trim((string) ($homeContent['business_location'] ?? '')) !== '';
+$footerDescription = (string) ($homeContent['footer_description'] ?? '');
+$igText = (string) ($homeContent['footer_instagram_text'] ?? 'Seguinos en Instagram');
+$waText = (string) ($homeContent['footer_whatsapp_text'] ?? 'Contactar por WhatsApp');
+?>
+<footer class="footer pt-4 pb-3" role="contentinfo">
     <div class="container">
-        <!-- Banners destacados en el pie -->
-        <div class="row justify-content-center mb-2">
+        <?php if ($showLogo): ?>
+        <div class="text-center footer-brand">
+            <a href="index.php" title="<?= htmlspecialchars($storeSettings['store_name']) ?>">
+                <img
+                    src="<?= htmlspecialchars($brandLogoPath, ENT_QUOTES, 'UTF-8') ?>"
+                    alt="CyberLeo"
+                    class="brand-logo brand-logo-sm"
+                    width="150"
+                    height="42"
+                    decoding="async"
+                >
+            </a>
+        </div>
+        <?php endif; ?>
+        <div class="row justify-content-center mb-3">
             <div class="col-lg-10">
                 <div class="d-flex flex-column flex-md-row gap-3 justify-content-center align-items-stretch">
-                    <!-- Instagram -->
-                    <div class="footer-banner d-flex align-items-center gap-2 flex-grow-1" style="background: linear-gradient(90deg, #fdf6ee 0%, #e3f2fd 100%); border: 1.5px solid #fd7e14; border-radius: 1.5em; padding: 0.7em 1.2em; min-width: 0;">
-                        <span style="font-size: 1.7rem; background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; display: flex; align-items: center;"><i class="bi bi-instagram"></i></span>
-                        <span style="font-size: 1.02rem; color: #222;">
-                            Seguinos en <b>Instagram</b> para novedades, sorteos y tips:<br>
-                            <a href="https://www.instagram.com/happy.ears4u" target="_blank" rel="noopener" style="color: #dc2743; font-weight: 600; text-decoration: underline;">@happy.ears4u</a>
+                    <?php if ($showIg || $footerDescription !== ''): ?>
+                    <div class="footer-banner footer-ig d-flex align-items-center gap-2 flex-grow-1">
+                        <span class="footer-icon" aria-hidden="true"><i class="bi bi-instagram"></i></span>
+                        <span>
+                            <?= htmlspecialchars($footerDescription) ?>
+                            <?php if ($showIg): ?>
+                                <br><a href="<?= htmlspecialchars($storeSettings['instagram_url']) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($igText) ?></a>
+                            <?php endif; ?>
                         </span>
                     </div>
-                    <!-- WhatsApp -->
-                    <div class="footer-banner d-flex align-items-center gap-2 flex-grow-1" style="background: linear-gradient(90deg, #e3f2fd 0%, #e0f7fa 100%); border: 1.5px solid #25d366; border-radius: 1.5em; padding: 0.7em 1.2em; min-width: 0;">
-                        <span style="font-size: 1.7rem; color: #25d366; display: flex; align-items: center;"><i class="bi bi-whatsapp"></i></span>
-                        <span style="font-size: 1.02rem; color: #222;">
-                            Escribinos por cualquier consulta de nuestros productos:<br>
-                            <a href="https://wa.me/5491149357558?text=Hola HappyEars! Me gustaría consultar acerca de..." target="_blank" rel="noopener" style="color: #128c7e; font-weight: 600; text-decoration: underline;">+54 9 11 4935 7558</a>
+                    <?php endif; ?>
+                    <?php if ($showWa): ?>
+                    <div class="footer-banner footer-wa d-flex align-items-center gap-2 flex-grow-1">
+                        <span class="footer-icon" aria-hidden="true"><i class="bi bi-whatsapp"></i></span>
+                        <span>
+                            Escribinos por cualquier consulta o para coordinar tu compra:<br>
+                            <a href="https://wa.me/<?= htmlspecialchars($storeSettings['whatsapp_number']) ?>?text=<?= urlencode('Hola ' . $storeSettings['store_name'] . ', quisiera hacer una consulta.') ?>" target="_blank" rel="noopener"><?= htmlspecialchars($waText) ?></a>
                         </span>
                     </div>
-                    <!-- Email -->
-                    
+                    <?php endif; ?>
                 </div>
+                <?php if ($showHours || $showLocation): ?>
+                <div class="footer-meta text-center mt-3">
+                    <?php if ($showHours): ?>
+                        <p class="mb-1"><span class="visually-hidden">Horarios: </span><?= htmlspecialchars($homeContent['business_hours']) ?></p>
+                    <?php endif; ?>
+                    <?php if ($showLocation): ?>
+                        <p class="mb-0"><span class="visually-hidden">Ubicación: </span><?= htmlspecialchars($homeContent['business_location']) ?></p>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
-        <!-- Fin banners destacados en el pie -->
         <div class="row">
             <div class="col text-center">
-                <small class="footer-copyright">&copy; <?php echo date('Y'); ?> HappyEars. Todos los derechos reservados.</small>
+                <small class="footer-copyright">&copy; <?php echo date('Y'); ?> <?= htmlspecialchars($storeSettings['store_name']) ?>. Todos los derechos reservados.</small>
             </div>
         </div>
     </div>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-        .footer, .footer * {
-            font-family: 'Montserrat', Arial, sans-serif !important;
-        }
-        .footer {
-            background: linear-gradient(90deg, #90caf9 0%, #ffe0b2 100%) !important;
-            color: #222;
-            border-top: 1px solid #eee !important;
-            box-shadow: 0 -4px 24px 0 rgba(0,0,0,0.07);
-        }
-        .footer-social {
-            color: #222;
-            font-size: 1.08rem;
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.2s;
-        }
-        .footer-social .footer-icon-bg {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            font-size: 1.5rem;
-            background: #fff;
-            border: 1.5px solid #fd7e14;
-            margin-bottom: 2px;
-            color: #fd7e14;
-            transition: background 0.2s, color 0.2s, box-shadow 0.2s;
-        }
-        .footer-social.footer-ig .footer-icon-bg { color: #dc2743; border-color: #dc2743; }
-        .footer-social.footer-wa .footer-icon-bg { color: #128c7e; border-color: #128c7e; }
-        .footer-social.footer-mail .footer-icon-bg { color: #fd7e14; border-color: #fd7e14; }
-        .footer-social:hover {
-            color: #fd7e14;
-        }
-        .footer-social:hover .footer-icon-bg {
-            background: #fff7ef;
-            box-shadow: 0 2px 8px rgba(253,126,20,0.13);
-        }
-        .footer-social-text {
-            font-size: 1.08rem;
-            font-weight: 500;
-            letter-spacing: 0.1px;
-        }
-        .footer-copyright {
-            color: #444;
-            font-size: 1.02rem;
-            font-weight: 400;
-            letter-spacing: 0.2px;
-        }
-        @media (max-width: 767px) {
-            .footer-social-text {
-                display: none;
-            }
-            .footer-icon-bg {
-                margin-right: 0;
-            }
-        }
-    </style>
 </footer>

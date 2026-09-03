@@ -1,24 +1,30 @@
-
 <?php
 require_once 'includes/auth_check.php';
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
+require_once 'includes/security.php';
+require_once 'includes/images.php';
 
 // --- ENDPOINT AJAX PARA PRODUCTOS DESTACADOS ---
 if (isset($_GET['action']) && $_GET['action'] === 'get_featured_products') {
-    header('Content-Type: application/json');
-    if (function_exists('get_featured_products')) {
-        $featured = get_featured_products();
-        echo json_encode($featured);
-    } else {
-        echo json_encode([]);
+    header('Content-Type: application/json; charset=UTF-8');
+    try {
+        $rows = $pdo->query('SELECT id, name, image, destacados FROM products WHERE destacados > 0 AND is_active = 1 ORDER BY destacados')->fetchAll(PDO::FETCH_ASSOC);
+        $featured = [];
+        foreach ($rows as $row) $featured[] = ['id'=>(int)$row['id'], 'name'=>(string)$row['name'], 'image'=>is_safe_product_image_path($row['image']) ? $row['image'] : null, 'destacados'=>(int)$row['destacados']];
+        echo json_encode($featured, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    } catch (Throwable $e) {
+        error_log('Featured products error: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['success'=>false,'message'=>'No se pudieron cargar productos.']);
     }
     exit;
 }
 
 // --- ENDPOINT PARA GUARDAR ORDEN DE DESTACADOS ---
 if (isset($_GET['action']) && $_GET['action'] === 'save_featured_order') {
+    require_csrf(true);
     header('Content-Type: application/json');
     $data = json_decode(file_get_contents('php://input'), true);
     $success = true;
@@ -40,17 +46,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'save_featured_order') {
 
 $message = '';
 $categories = get_categories();
+$storeSettings = get_store_settings();
 
 // Obtener todas las subcategorías
 $stmtSub = $pdo->query("SELECT s.id, s.name, s.category_id FROM subcategories s ORDER BY s.name");
 $subcategories = $stmtSub->fetchAll(PDO::FETCH_ASSOC);
 
-// Obtener todos los aromas
-$stmtAromas = $pdo->query("SELECT id, nombre FROM aromas ORDER BY nombre");
-$aromas = $stmtAromas->fetchAll(PDO::FETCH_ASSOC);
-
 // Procesar el formulario de producto
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    require_csrf();
 
     if (isset($_POST['action'])) {
         // Agregar nuevo producto
@@ -59,44 +63,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $description = trim($_POST['description']);
             $price = floatval($_POST['price']);
             $price_sale = isset($_POST['price_sale']) && $_POST['price_sale'] !== '' ? floatval($_POST['price_sale']) : 0;
+            $stock = max(0, intval($_POST['stock'] ?? 0));
             $category_id = intval($_POST['category_id']);
             $subcategory_id = !empty($_POST['subcategory_id']) ? intval($_POST['subcategory_id']) : null;
                 $destacados = 0;
-            $aromas_sel = isset($_POST['aromas']) ? $_POST['aromas'] : [];
 
+            $storedImages = [];
             $pdo->beginTransaction();
             try {
                 // Insertar producto sin imagen principal aún
-                $stmt = $pdo->prepare("INSERT INTO products (name, description, price, price_sale, category_id, subcategory_id, destacados, image) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)");
-                $stmt->execute([$name, $description, $price, $price_sale, $category_id, $subcategory_id, $destacados]);
+                $stmt = $pdo->prepare("INSERT INTO products (name, description, price, price_sale, stock, category_id, subcategory_id, destacados, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)");
+                $stmt->execute([$name, $description, $price, $price_sale, $stock, $category_id, $subcategory_id, $destacados]);
                 $product_id = $pdo->lastInsertId();
 
-                if (!empty($aromas_sel)) {
-                    $stmtInsert = $pdo->prepare("INSERT INTO producto_aroma (producto_id, aroma_id) VALUES (?, ?)");
-                    foreach ($aromas_sel as $aroma_id) {
-                        $stmtInsert->execute([$product_id, $aroma_id]);
-                    }
-                }
-
                 $main_image_path = null;
-                if (!empty($_FILES['images']['name'][0])) {
-                    $upload_dir = 'assets/images/products/';
-                    if (!file_exists($upload_dir)) {
-                        mkdir($upload_dir, 0777, true);
-                    }
-                    foreach ($_FILES['images']['tmp_name'] as $key => $tmp_name) {
-                        if ($_FILES['images']['error'][$key] === UPLOAD_ERR_OK) {
-                            $file_extension = strtolower(pathinfo($_FILES['images']['name'][$key], PATHINFO_EXTENSION));
-                            $new_filename = uniqid() . '.' . $file_extension;
-                            $image_path = $upload_dir . $new_filename;
-                            if (move_uploaded_file($tmp_name, $image_path)) {
-                                $is_main = ($key === 0) ? 1 : 0;
-                                $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
-                                $stmt->execute([$product_id, $image_path, $is_main]);
-                                if ($is_main) {
-                                    $main_image_path = $image_path;
-                                }
-                            }
+                if (!empty($_FILES['images'])) {
+                    $storedImages = store_image_batch(normalize_upload_batch($_FILES['images']), 'products');
+                    foreach ($storedImages as $key => $image_path) {
+                        $is_main = ($key === 0) ? 1 : 0;
+                        $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
+                        $stmt->execute([$product_id, $image_path, $is_main]);
+                        if ($is_main) {
+                            $main_image_path = $image_path;
                         }
                     }
                 }
@@ -107,8 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $pdo->commit();
                 $message = 'Producto agregado exitosamente.';
-            } catch (Exception $e) {
-                $pdo->rollBack();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                cleanup_stored_images($storedImages);
                 $message = 'Error al agregar el producto: ' . $e->getMessage();
             }
         }
@@ -122,91 +111,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $category_id = intval($_POST['category_id']);
             $subcategory_id = !empty($_POST['subcategory_id']) ? intval($_POST['subcategory_id']) : null;
             $destacados = isset($_POST['destacados']) ? 1 : 0;
+            $is_active = isset($_POST['is_active']) ? 1 : 0;
             $main_image_id = isset($_POST['main_image']) ? intval($_POST['main_image']) : null;
-            $aromas_sel = isset($_POST['aromas']) ? $_POST['aromas'] : [];
 
+            $storedImages = [];
             $pdo->beginTransaction();
 
             try {
-                $stmt = $pdo->prepare("UPDATE products SET name = ?, description = ?, price = ?, price_sale = ?, category_id = ?, subcategory_id = ?, destacados = ? WHERE id = ?");
-                $stmt->execute([$name, $description, $price, $price_sale, $category_id, $subcategory_id, $destacados, $id]);
-
-                $pdo->prepare("DELETE FROM producto_aroma WHERE producto_id = ?")->execute([$id]);
-                if (!empty($aromas_sel)) {
-                    $stmtInsert = $pdo->prepare("INSERT INTO producto_aroma (producto_id, aroma_id) VALUES (?, ?)");
-                    foreach ($aromas_sel as $aroma_id) {
-                        $stmtInsert->execute([$id, $aroma_id]);
-                    }
-                }
+                $stmt = $pdo->prepare("UPDATE products SET name = ?, description = ?, price = ?, price_sale = ?, category_id = ?, subcategory_id = ?, destacados = ?, is_active = ? WHERE id = ?");
+                $stmt->execute([$name, $description, $price, $price_sale, $category_id, $subcategory_id, $destacados, $is_active, $id]);
 
                 if ($main_image_id) {
+                    $mainImage = $pdo->prepare('SELECT image_path FROM product_images WHERE id = ? AND product_id = ? FOR UPDATE');
+                    $mainImage->execute([$main_image_id, $id]);
+                    $mainImagePath = $mainImage->fetchColumn();
+                    if (!$mainImagePath) throw new RuntimeException('La imagen principal no pertenece al producto.');
                     $stmt = $pdo->prepare("UPDATE product_images SET is_main = 0 WHERE product_id = ?");
                     $stmt->execute([$id]);
-                    $stmt = $pdo->prepare("UPDATE product_images SET is_main = 1 WHERE id = ?");
-                    $stmt->execute([$main_image_id]);
+                    $stmt = $pdo->prepare("UPDATE product_images SET is_main = 1 WHERE id = ? AND product_id = ?");
+                    $stmt->execute([$main_image_id, $id]);
+                    $pdo->prepare('UPDATE products SET image = ? WHERE id = ?')->execute([$mainImagePath, $id]);
                 }
 
-                if (!empty($_FILES['new_images']['name'][0])) {
-                    $upload_dir = 'assets/images/products/';
-                    if (!file_exists($upload_dir)) {
-                        mkdir($upload_dir, 0777, true);
-                    }
-
-                    foreach ($_FILES['new_images']['tmp_name'] as $key => $tmp_name) {
-                        if ($_FILES['new_images']['error'][$key] === UPLOAD_ERR_OK) {
-                            $file_extension = strtolower(pathinfo($_FILES['new_images']['name'][$key], PATHINFO_EXTENSION));
-                            $new_filename = uniqid() . '.' . $file_extension;
-                            $image_path = $upload_dir . $new_filename;
-
-                            if (move_uploaded_file($tmp_name, $image_path)) {
-                                $is_main = 0;
-                                $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
-                                $stmt->execute([$id, $image_path, $is_main]);
-                            }
+                if (!empty($_FILES['new_images'])) {
+                    $storedImages = store_image_batch(normalize_upload_batch($_FILES['new_images']), 'products');
+                    $countImages = $pdo->prepare('SELECT COUNT(*) FROM product_images WHERE product_id=?');
+                    $countImages->execute([$id]);
+                    $hasImages = (int)$countImages->fetchColumn() > 0;
+                    foreach ($storedImages as $image_path) {
+                        $isMain = $hasImages ? 0 : 1;
+                        $stmt = $pdo->prepare("INSERT INTO product_images (product_id, image_path, is_main) VALUES (?, ?, ?)");
+                        $stmt->execute([$id, $image_path, $isMain]);
+                        if ($isMain) {
+                            $pdo->prepare('UPDATE products SET image=? WHERE id=?')->execute([$image_path,$id]);
+                            $hasImages = true;
                         }
                     }
                 }
+                repair_product_main_image($pdo, $id);
 
                 $pdo->commit();
                 $message = 'Producto actualizado exitosamente.';
-            } catch (Exception $e) {
-                $pdo->rollBack();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                cleanup_stored_images($storedImages);
                 $message = 'Error al actualizar el producto: ' . $e->getMessage();
             }
         }
         // Eliminar producto
         elseif ($_POST['action'] === 'delete' && isset($_POST['id'])) {
             $product_id = intval($_POST['id']);
-
-            $pdo->beginTransaction();
-
             try {
-                $stmt = $pdo->prepare("SELECT image_path FROM product_images WHERE product_id = ?");
-                $stmt->execute([$product_id]);
-                $images = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-                $stmt = $pdo->prepare("DELETE FROM products WHERE id = ?");
-                $success = $stmt->execute([$product_id]);
-
-                if ($success) {
-                    foreach ($images as $image_path) {
-                        if (file_exists($image_path)) {
-                            unlink($image_path);
-                        }
-                    }
-                    $pdo->commit();
+                $result = delete_product_record($pdo, $product_id);
+                if ($result['status'] === 'deleted') {
+                    cleanup_product_images_after_commit($pdo, $result['paths']);
                     $message = 'Producto eliminado exitosamente.';
+                } elseif ($result['status'] === 'not_found') {
+                    $message = 'Producto no encontrado.';
                 } else {
-                    $pdo->rollBack();
                     $message = 'Error al eliminar el producto.';
                 }
             } catch (Exception $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 $message = 'Error al eliminar el producto: ' . $e->getMessage();
             }
         }
         // Otras acciones (toggle_featured, update_stock, etc.)
-      
+
         elseif ($_POST['action'] === 'toggle_featured' && isset($_POST['product_id'])) {
             $product_id = intval($_POST['product_id']);
             $current_status = isset($_POST['current_status']) ? intval($_POST['current_status']) : 0;
@@ -249,9 +220,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $stmt = $pdo->query("
     SELECT p.*, c.name as category_name, s.name as subcategory_name,
            (SELECT COUNT(*) FROM product_images WHERE product_id = p.id) as image_count
-    FROM products p 
-    LEFT JOIN categories c ON p.category_id = c.id 
-    LEFT JOIN subcategories s ON p.subcategory_id = s.id 
+    FROM products p
+    LEFT JOIN categories c ON p.category_id = c.id
+    LEFT JOIN subcategories s ON p.subcategory_id = s.id
     ORDER BY c.name, p.name
 ");
 $products = $stmt->fetchAll();
@@ -269,17 +240,17 @@ foreach ($products as $product) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administrar Productos - HappyEars</title>
+    <title>Administrar Productos - <?= htmlspecialchars($storeSettings['store_name']) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
         body {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background: linear-gradient(135deg, #f3f8fc 0%, #dceaf8 100%);
             min-height: 100vh;
         }
 
         .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
@@ -291,7 +262,7 @@ foreach ($products as $product) {
 
         .nav-link.active {
             color: #fff !important;
-            border-bottom: 3px solid #ffd700;
+            border-bottom: 3px solid #00aeef;
             padding-bottom: 0.5rem;
         }
 
@@ -316,7 +287,7 @@ foreach ($products as $product) {
             border-radius: 15px 15px 0 0 !important;
             font-weight: 600;
             letter-spacing: 0.5px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%) !important;
         }
 
         .card-body {
@@ -345,8 +316,8 @@ foreach ($products as $product) {
         }
 
         .form-control:focus, .form-select:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.15);
+            border-color: #0057b8;
+            box-shadow: 0 0 0 0.2rem rgba(0, 87, 184, 0.15);
         }
 
         .form-floating > label {
@@ -363,13 +334,13 @@ foreach ($products as $product) {
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
+            box-shadow: 0 4px 15px rgba(0, 87, 184, 0.3);
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 6px 20px rgba(0, 87, 184, 0.4);
         }
 
         .btn-info {
@@ -409,8 +380,8 @@ foreach ($products as $product) {
 
         .btn-outline-secondary:hover {
             background: #f5f5f5;
-            border-color: #667eea;
-            color: #667eea;
+            border-color: #0057b8;
+            color: #0057b8;
         }
 
         .btn-success {
@@ -443,12 +414,12 @@ foreach ($products as $product) {
         }
 
         .btn-outline-primary {
-            border: 2px solid #667eea;
-            color: #667eea;
+            border: 2px solid #0057b8;
+            color: #0057b8;
         }
 
         .btn-outline-primary:hover {
-            background: #667eea;
+            background: #0057b8;
             color: white;
         }
 
@@ -460,7 +431,7 @@ foreach ($products as $product) {
         }
 
         .table-dark {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
             color: white;
         }
 
@@ -483,7 +454,7 @@ foreach ($products as $product) {
         }
 
         .table tbody tr:hover {
-            background: rgba(102, 126, 234, 0.05);
+            background: rgba(0, 87, 184, 0.05);
         }
 
         .badge {
@@ -526,8 +497,8 @@ foreach ($products as $product) {
         }
 
         .image-thumbnail:hover {
-            border-color: #667eea;
-            box-shadow: 0 4px 10px rgba(102, 126, 234, 0.2);
+            border-color: #0057b8;
+            box-shadow: 0 4px 10px rgba(0, 87, 184, 0.2);
             transform: scale(1.05);
         }
 
@@ -548,7 +519,7 @@ foreach ($products as $product) {
         }
 
         .image-container:hover {
-            background: rgba(102, 126, 234, 0.08);
+            background: rgba(0, 87, 184, 0.08);
             transform: translateY(-2px);
         }
 
@@ -596,14 +567,14 @@ foreach ($products as $product) {
         }
 
         .list-group-item:hover {
-            border-color: #667eea;
-            background: rgba(102, 126, 234, 0.05);
+            border-color: #0057b8;
+            background: rgba(0, 87, 184, 0.05);
             transform: translateX(5px);
         }
 
         .modal-header {
             border-radius: 15px 15px 0 0 !important;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%) !important;
             border: none;
         }
 
@@ -630,8 +601,8 @@ foreach ($products as $product) {
         }
 
         .form-check-input:checked {
-            background-color: #667eea;
-            border-color: #667eea;
+            background-color: #0057b8;
+            border-color: #0057b8;
         }
 
         .product-name {
@@ -672,6 +643,21 @@ foreach ($products as $product) {
                             <i class="bi bi-tags"></i> Categorías
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin_orders.php">
+                            <i class="bi bi-receipt"></i> Pedidos
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin_settings.php">
+                            <i class="bi bi-sliders"></i> Configuración
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="admin_system.php">
+                            <i class="bi bi-heartbeat"></i> Sistema
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -679,18 +665,18 @@ foreach ($products as $product) {
 
     <div class="container-fluid my-4">
         <div class="d-flex align-items-center gap-3 mb-4">
-            <i class="bi bi-cube" style="font-size: 2.5rem; color: #667eea;"></i>
+            <i class="bi bi-cube" style="font-size: 2.5rem; color: #0057b8;"></i>
             <div>
                 <h1 class="mb-0">Administrar Productos</h1>
                 <small class="text-muted">Gestiona tu catálogo</small>
             </div>
         </div>
-        
-        <?php if ($message): ?>
+
+<?php if ($message): ?>
         <div class="alert alert-info mb-4">
             <i class="bi bi-check-circle"></i> <?= htmlspecialchars($message) ?>
         </div>
-        <?php endif; ?>
+<?php endif; ?>
 
         <div class="row">
             <div class="col-md-4">
@@ -702,6 +688,7 @@ foreach ($products as $product) {
                     </div>
                     <div class="card-body">
                         <form method="POST" enctype="multipart/form-data" class="mb-4">
+                            <?= csrf_input() ?>
                             <input type="hidden" name="action" value="add">
 
                             <div class="mb-3 form-floating">
@@ -720,13 +707,17 @@ foreach ($products as $product) {
                                 <input type="number" class="form-control" id="price_sale" name="price_sale" step="0.01" placeholder="Precio Promoción (opcional)">
                                 <label for="price_sale"><i class="bi bi-tag"></i> Precio Promoción</label>
                             </div>
+                            <div class="mb-3 form-floating">
+                                <input type="number" class="form-control" id="stock" name="stock" min="0" value="0" placeholder="Stock" required>
+                                <label for="stock"><i class="bi bi-boxes"></i> Stock inicial</label>
+                            </div>
                             <div class="mb-3">
                                 <label for="category_id" class="form-label fw-600"><i class="bi bi-folder"></i> Categoría</label>
                                 <select class="form-select" id="category_id" name="category_id" required>
                                     <option value="">Seleccionar categoría</option>
-                                    <?php foreach ($categories as $category): ?>
+<?php foreach ($categories as $category): ?>
                                     <option value="<?= $category['id'] ?>"><?= htmlspecialchars($category['name']) ?></option>
-                                    <?php endforeach; ?>
+<?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -734,13 +725,6 @@ foreach ($products as $product) {
                                 <select class="form-select" id="subcategory_id" name="subcategory_id" required>
                                     <option value="">Seleccionar</option>
                                 </select>
-                            </div>
-                            <div class="mb-3 d-none">
-                                <label for="aromas" class="form-label d-none">Aromas</label>
-                                <select name="aromas[]" id="aromas" class="form-select" multiple>
-                                    <option disabled>Seleccione una subcategoría</option>
-                                </select>
-                                <small class="text-muted">Ctrl+Click para seleccionar varios.</small>
                             </div>
                             <div class="mb-3">
                                 <label for="images" class="form-label fw-600"><i class="bi bi-images"></i> Imágenes (Múltiples)</label>
@@ -784,51 +768,44 @@ foreach ($products as $product) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                        <?php foreach ($productsByCategory as $catName => $catProducts): ?>
+<?php foreach ($productsByCategory as $catName => $catProducts): ?>
                             <tr class="table-warning">
                                 <td colspan="6"><strong><?= htmlspecialchars($catName) ?></strong></td>
                             </tr>
-                            <?php foreach ($catProducts as $product): 
+<?php foreach ($catProducts as $product):
                                 $stmt = $pdo->prepare("SELECT * FROM product_images WHERE product_id = ? ORDER BY is_main DESC");
                                 $stmt->execute([$product['id']]);
                                 $images = $stmt->fetchAll();
 
-                                $stmtAroma = $pdo->prepare("SELECT a.id, a.nombre FROM producto_aroma pa INNER JOIN aromas a ON pa.aroma_id = a.id WHERE pa.producto_id = ?");
-                                $stmtAroma->execute([$product['id']]);
-                                $productAromas = $stmtAroma->fetchAll(PDO::FETCH_ASSOC);
                             ?>
                             <tr>
                                 <td>
-                                    <?php if (!empty($images)): ?>
+<?php if (!empty($images)): ?>
                                         <div class="d-flex flex-wrap gap-1">
-                                            <?php foreach ($images as $image): ?>
-                                                <img src="<?= htmlspecialchars($image['image_path']) ?>"
-                                                    class="image-thumbnail <?= $image['is_main'] ? 'main-image' : '' ?>"
-                                                    title="<?= $image['is_main'] ? 'Imagen principal' : '' ?>">
-                                            <?php endforeach; ?>
+<?php foreach ($images as $image): ?>
+<?php if (is_safe_product_image_path($image['image_path'])): ?>
+                                                    <img src="<?= htmlspecialchars($image['image_path'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        class="image-thumbnail <?= $image['is_main'] ? 'main-image' : '' ?>"
+                                                        title="<?= $image['is_main'] ? 'Imagen principal' : '' ?>">
+<?php endif; ?>
+<?php endforeach; ?>
                                         </div>
                                         <small><?= count($images) ?> <?= count($images) === 1 ? 'imagen' : 'imágenes' ?></small>
-                                    <?php else: ?>
+<?php else: ?>
                                         <span class="text-muted">Sin imágenes</span>
-                                    <?php endif; ?>
+<?php endif; ?>
                                 </td>
                                 <td class="product-name">
                                     <span class="fw-bold"><?= htmlspecialchars($product['name']) ?></span>
-                                    <?php if (!empty($productAromas)): ?>
-                                        <br>
-                                        <small class="text-muted">
-                                            Aromas: <?= implode(', ', array_map(function($a){ return htmlspecialchars($a['nombre']); }, $productAromas)) ?>
-                                        </small>
-                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <span class="badge bg-info"><?= htmlspecialchars($product['category_name']) ?></span>
-                                    <?php if (!empty($product['subcategory_name'])): ?>
+<?php if (!empty($product['subcategory_name'])): ?>
                                         <small class="d-block text-muted"><?= htmlspecialchars($product['subcategory_name']) ?></small>
-                                    <?php endif; ?>
+<?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
+<?php if (!empty($product['price_sale']) && $product['price_sale'] > 0): ?>
                                         <div class="d-flex flex-column align-items-start gap-1">
                                             <span class="badge bg-danger">LIQUIDACIÓN</span>
                                             <div>
@@ -836,26 +813,28 @@ foreach ($products as $product) {
                                                 <span class="badge bg-danger fs-6">$<?= number_format($product['price_sale'], 2) ?></span>
                                             </div>
                                         </div>
-                                    <?php else: ?>
+<?php else: ?>
                                         <span class="badge bg-success">$<?= number_format($product['price'], 2) ?></span>
-                                    <?php endif; ?>
+<?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if ($product['stock'] == 0): ?>
+<?php if ($product['stock'] == 0): ?>
                                         <span class="badge bg-danger">Sin stock</span>
-                                    <?php elseif ($product['stock'] < 5): ?>
+<?php elseif ($product['stock'] < 5): ?>
                                         <span class="badge bg-warning text-dark"><?= $product['stock'] ?></span>
-                                    <?php else: ?>
+<?php else: ?>
                                         <span class="badge bg-secondary"><?= $product['stock'] ?></span>
-                                    <?php endif; ?>
+<?php endif; ?>
                                     <div class="d-flex align-items-center mt-2">
                                         <form method="POST" class="me-1">
+                                            <?= csrf_input() ?>
                                             <input type="hidden" name="action" value="update_stock">
                                             <input type="hidden" name="change" value="-1">
                                             <input type="hidden" name="id" value="<?= $product['id'] ?>">
                                             <button type="submit" class="btn btn-sm btn-outline-danger" <?= $product['stock'] <= 0 ? 'disabled' : '' ?> title="Restar 1" data-bs-toggle="tooltip">-</button>
                                         </form>
                                         <form method="POST" class="d-flex align-items-center mx-2" style="gap:4px;">
+                                            <?= csrf_input() ?>
                                             <input type="hidden" name="action" value="set_stock">
                                             <input type="hidden" name="id" value="<?= $product['id'] ?>">
                                             <input type="number" name="new_stock" value="<?= $product['stock'] ?>" min="0" class="form-control form-control-sm" style="width:60px;">
@@ -864,6 +843,7 @@ foreach ($products as $product) {
                                             </button>
                                         </form>
                                         <form method="POST">
+                                            <?= csrf_input() ?>
                                             <input type="hidden" name="action" value="update_stock">
                                             <input type="hidden" name="change" value="1">
                                             <input type="hidden" name="id" value="<?= $product['id'] ?>">
@@ -873,25 +853,27 @@ foreach ($products as $product) {
                                 </td>
                                 <td>
                                     <div class="d-flex flex-column gap-2">
-                                        <button class="btn btn-info btn-sm" title="Editar producto" data-bs-toggle="tooltip"
-                                            onclick="editProduct(<?= htmlspecialchars(json_encode($product)) ?>, <?= htmlspecialchars(json_encode($images)) ?>, <?= htmlspecialchars(json_encode(array_column($productAromas, 'id'))) ?>)">
+                                        <button type="button" class="btn btn-info btn-sm edit-product-btn" title="Editar producto" data-bs-toggle="tooltip"
+                                            data-product="<?= htmlspecialchars(json_encode($product, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>"
+                                            data-images="<?= htmlspecialchars(json_encode($images, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>">
                                             <i class="bi bi-pencil-square"></i> Editar
                                         </button>
-                                        <form method="POST" style="margin: 0;">
+                                        <form method="POST" class="delete-product-form" style="margin: 0;">
+                                            <?= csrf_input() ?>
                                             <input type="hidden" name="action" value="delete">
                                             <input type="hidden" name="id" value="<?= $product['id'] ?>">
-                                            <button type="submit" class="btn btn-danger btn-sm w-100" onclick="return confirm('¿Eliminar este producto?')" title="Eliminar producto" data-bs-toggle="tooltip">
+                                            <button type="submit" class="btn btn-danger btn-sm w-100" title="Eliminar producto" data-bs-toggle="tooltip">
                                                 <i class="bi bi-trash"></i> Eliminar
                                             </button>
                                         </form>
-                                        <button type="button" class="btn btn-sm <?= $product['destacados'] ? 'btn-warning' : 'btn-outline-secondary' ?>" title="Destacar/Quitar destacado" data-bs-toggle="tooltip" onclick="openFeaturedOrderModal(<?= $product['id'] ?>)">
+                                        <button type="button" class="btn btn-sm featured-order-btn <?= $product['destacados'] ? 'btn-warning' : 'btn-outline-secondary' ?>" title="Destacar/Quitar destacado" data-bs-toggle="tooltip" data-product-id="<?= (int) $product['id'] ?>">
                                             <?= $product['destacados'] ? '<i class="bi bi-star-fill"></i> Destacado' : '<i class="bi bi-star"></i> Destacar' ?>
                                         </button>
                                     </div>
                                 </td>
                             </tr>
-                            <?php endforeach; ?>
-                        <?php endforeach; ?>
+<?php endforeach; ?>
+<?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
@@ -935,10 +917,11 @@ foreach ($products as $product) {
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form method="POST" enctype="multipart/form-data">
+                    <?= csrf_input() ?>
                     <div class="modal-body">
                         <input type="hidden" name="action" value="edit">
                         <input type="hidden" name="id" id="edit_id">
-                        
+
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
@@ -957,22 +940,15 @@ foreach ($products as $product) {
                                     <label class="form-label fw-600"><i class="bi bi-tag"></i> Precio Promoción</label>
                                     <input type="number" class="form-control" id="edit_price_sale" name="price_sale" step="0.01" placeholder="Opcional">
                                 </div>
-                                <div class="mb-3">
-                                    <label class="form-label fw-600"><i class="bi bi-flower1"></i> Aromas</label>
-                                    <select name="aromas[]" id="edit_aromas" class="form-select" multiple>
-                                        <option disabled>Seleccione una subcategoría</option>
-                                    </select>
-                                    <small class="text-muted">Ctrl+Click para seleccionar varios.</small>
-                                </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
                                     <label class="form-label fw-600"><i class="bi bi-folder"></i> Categoría</label>
                                     <select class="form-select" id="edit_category_id" name="category_id" required>
                                         <option value="">Seleccionar</option>
-                                        <?php foreach ($categories as $category): ?>
+<?php foreach ($categories as $category): ?>
                                         <option value="<?= $category['id'] ?>"><?= htmlspecialchars($category['name']) ?></option>
-                                        <?php endforeach; ?>
+<?php endforeach; ?>
                                     </select>
                                 </div>
                                 <div class="mb-3">
@@ -986,13 +962,17 @@ foreach ($products as $product) {
                                     <input type="number" class="form-control" id="edit_destacados" name="destacados" min="0" max="99" value="0">
                                     <small class="text-muted d-block mt-2">0 = no destacado, 1-9 = orden de prioridad</small>
                                 </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="edit_is_active" name="is_active" value="1">
+                                    <label class="form-check-label" for="edit_is_active">Publicado y visible en la tienda</label>
+                                </div>
                             </div>
                         </div>
-                        
+
                         <div class="mb-3">
                             <label class="form-label fw-600"><i class="bi bi-image"></i> Imágenes Actuales</label>
                             <div id="current_images_container" class="d-flex flex-wrap gap-3 mb-3"></div>
-                            
+
                             <label class="form-label fw-600 mt-4">Agregar Nuevas Imágenes</label>
                             <input type="file" class="form-control" name="new_images[]" multiple accept="image/*">
                             <small class="text-muted d-block mt-2">Seleccione imágenes adicionales (opcional)</small>
@@ -1025,79 +1005,104 @@ foreach ($products as $product) {
     });
     </script>
     <script>
- // --- Drag & drop y guardado de orden de destacados ---
+// --- Orden y guardado de destacados ---
 let featuredOrderList = null;
 let featuredOrderModal = null;
+const PRODUCT_IMAGE_PATH = /^assets\/images\/products\/(?:[a-f0-9]{13}|[a-f0-9]{32})\.(?:jpg|jpeg|png|webp)$/i;
 
-// Definir la función en el ámbito global ANTES de cualquier uso
-function openFeaturedOrderModal(productId) {
-    // Inicializar referencias si aún no existen
+function validId(value) {
+    return typeof value === 'string' || typeof value === 'number'
+        ? /^[1-9]\d*$/.test(String(value)) && Number.isSafeInteger(Number(value))
+        : false;
+}
+
+function safeProductImagePath(value) {
+    return typeof value === 'string' && PRODUCT_IMAGE_PATH.test(value) ? value : null;
+}
+
+function icon(className) {
+    const element = document.createElement('i');
+    element.className = className;
+    return element;
+}
+
+function actionButton(className, title, iconClass, listener) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.appendChild(icon(iconClass));
+    button.addEventListener('click', listener);
+    return button;
+}
+function productImageOrPlaceholder(path, className, styleText) {
+    const safePath = safeProductImagePath(path);
+    if (!safePath) {
+        const placeholder = document.createElement('span');
+        placeholder.className = `${className} d-inline-flex align-items-center justify-content-center bg-light text-muted`;
+        placeholder.style.cssText = styleText;
+        placeholder.appendChild(icon('bi bi-image'));
+        return placeholder;
+    }
+    const image = document.createElement('img');
+    image.src = safePath;
+    image.alt = '';
+    image.className = className;
+    image.style.cssText = styleText;
+    image.addEventListener('error', () => image.replaceWith(productImageOrPlaceholder(null, className, styleText)), {once: true});
+    return image;
+}
+
+function createFeaturedItem(product, position) {
+    const item = document.createElement('div');
+    item.className = 'list-group-item list-group-item-action d-flex align-items-center gap-2';
+    item.dataset.id = String(product.id);
+
+    const image = productImageOrPlaceholder(product.image, '', 'width:40px;height:40px;object-fit:cover;border-radius:6px;');
+
+    const name = document.createElement('span');
+    name.textContent = typeof product.name === 'string' ? product.name : 'Producto';
+
+    const badge = document.createElement('span');
+    badge.className = 'badge bg-warning ms-auto';
+    badge.textContent = String(position);
+
+    item.append(
+        image,
+        name,
+        badge,
+        actionButton('btn btn-sm btn-outline-secondary ms-2', 'Subir', 'bi bi-arrow-up', () => {
+            if (item.previousElementSibling) featuredOrderList.insertBefore(item, item.previousElementSibling);
+        }),
+        actionButton('btn btn-sm btn-outline-secondary ms-1', 'Bajar', 'bi bi-arrow-down', () => {
+            if (item.nextElementSibling) featuredOrderList.insertBefore(item.nextElementSibling, item);
+        }),
+        actionButton('btn btn-sm btn-outline-danger ms-2', 'Quitar de destacados', 'bi bi-x-lg', () => item.remove())
+    );
+    return item;
+}
+
+function openFeaturedOrderModal(productId, sourceButton) {
+    if (!validId(productId)) return;
     if (!featuredOrderList) featuredOrderList = document.getElementById('featuredOrderList');
     if (!featuredOrderModal) featuredOrderModal = new bootstrap.Modal(document.getElementById('featuredOrderModal'));
-
-    // Mostrar el modal
     featuredOrderModal.show();
 
-    // Cargar productos destacados vía AJAX
     fetch('admin_products.php?action=get_featured_products')
-        .then(r => r.json())
+        .then(r => r.ok ? r.json() : Promise.reject(new Error('No se pudieron cargar los destacados')))
         .then(data => {
-            // Si el producto no está en destacados, buscarlo en la tabla y agregarlo temporalmente
-            const already = data.some(p => String(p.id) === String(productId));
-            if (!already) {
-                // Buscar datos del producto en la tabla HTML
-                const row = document.querySelector(`#products-table tr button[onclick*='openFeaturedOrderModal(${productId})']`);
-                if (row) {
-                    // Subir al <tr> y obtener datos
-                    const tr = row.closest('tr');
-                    const name = tr.querySelector('.product-name span.fw-bold')?.textContent || 'Producto';
-                    const img = tr.querySelector('img.image-thumbnail')?.getAttribute('src') || 'assets/images/products/default.jpg';
-                    data.push({id: productId, name: name, image: img, destacados: data.length+1});
-                }
+            const products = Array.isArray(data) ? data.filter(product => product && validId(product.id)) : [];
+            const already = products.some(product => String(product.id) === String(productId));
+            if (!already && sourceButton instanceof HTMLElement) {
+                const row = sourceButton.closest('tr');
+                const name = row?.querySelector('.product-name span.fw-bold')?.textContent || 'Producto';
+                const tableImage = row?.querySelector('img.image-thumbnail')?.getAttribute('src');
+                products.push({id: productId, name, image: safeProductImagePath(tableImage)});
             }
-            // Renderizar lista
-            featuredOrderList.innerHTML = '';
-            data.forEach((prod, idx) => {
-                const item = document.createElement('div');
-                item.className = 'list-group-item list-group-item-action d-flex align-items-center gap-2';
-                item.setAttribute('data-id', prod.id);
-                // No draggable
-                item.innerHTML = `
-                    <img src="${prod.image || 'assets/images/products/default.jpg'}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;">
-                    <span>${prod.name}</span>
-                    <span class='badge bg-warning ms-auto'>${prod.destacados}</span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary ms-2 move-up-btn" title="Subir"><i class="bi bi-arrow-up"></i></button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1 move-down-btn" title="Bajar"><i class="bi bi-arrow-down"></i></button>
-                    <button type="button" class="btn btn-sm btn-outline-danger ms-2 remove-featured-btn" title="Quitar de destacados"><i class="bi bi-x-lg"></i></button>
-                `;
-                featuredOrderList.appendChild(item);
-            });
-            // Listeners para quitar productos
-            featuredOrderList.querySelectorAll('.remove-featured-btn').forEach(btn => {
-                btn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    const parent = btn.closest('.list-group-item');
-                    parent.remove();
-                });
-            });
-            // Listeners para mover arriba/abajo
-            featuredOrderList.querySelectorAll('.move-up-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const item = btn.closest('.list-group-item');
-                    if (item.previousElementSibling) {
-                        featuredOrderList.insertBefore(item, item.previousElementSibling);
-                    }
-                });
-            });
-            featuredOrderList.querySelectorAll('.move-down-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const item = btn.closest('.list-group-item');
-                    if (item.nextElementSibling) {
-                        featuredOrderList.insertBefore(item.nextElementSibling, item);
-                    }
-                });
-            });
-        });
+            featuredOrderList.replaceChildren(...products.map((product, index) => createFeaturedItem(product, index + 1)));
+        })
+        .catch(error => console.error('Error loading featured products:', error));
 }
 
 // Inicializar listeners una sola vez
@@ -1105,16 +1110,23 @@ document.addEventListener('DOMContentLoaded', function() {
     featuredOrderList = document.getElementById('featuredOrderList');
     featuredOrderModal = new bootstrap.Modal(document.getElementById('featuredOrderModal'));
     document.getElementById('saveFeaturedOrderBtn').addEventListener('click', saveFeaturedOrder);
+    document.querySelectorAll('.featured-order-btn').forEach(button => {
+        button.addEventListener('click', () => openFeaturedOrderModal(button.dataset.productId, button));
+    });
 });
 
 function saveFeaturedOrder() {
     // Obtener ids y orden de los destacados actuales
-    const destacadosArr = Array.from(featuredOrderList.children).map((el, idx) => ({id:el.getAttribute('data-id'), destacados:idx+1}));
+    const destacadosArr = Array.from(featuredOrderList.children)
+        .filter(el => validId(el.dataset.id))
+        .map((el, idx) => ({id: el.dataset.id, destacados: idx + 1}));
     // Obtener todos los ids de productos destacados antes de cambios (para saber cuáles fueron quitados)
     fetch('admin_products.php?action=get_featured_products')
         .then(r => r.json())
         .then(originalData => {
-            const originalIds = originalData.map(p => String(p.id));
+            const originalIds = Array.isArray(originalData)
+                ? originalData.filter(product => product && validId(product.id)).map(product => String(product.id))
+                : [];
             const currentIds = destacadosArr.map(p => String(p.id));
             // Los ids que estaban y ya no están deben ir con destacados=0
             const removed = originalIds.filter(id => !currentIds.includes(id)).map(id => ({id:id, destacados:0}));
@@ -1122,7 +1134,7 @@ function saveFeaturedOrder() {
             const payload = [...destacadosArr, ...removed];
             fetch('admin_products.php?action=save_featured_order', {
                 method: 'POST',
-                headers: {'Content-Type':'application/json'},
+                headers: {'Content-Type':'application/json', 'X-CSRF-Token': '<?= csrf_token() ?>'},
                 body: JSON.stringify(payload)
             })
             .then(r=>r.json())
@@ -1141,19 +1153,19 @@ function saveFeaturedOrder() {
 document.getElementById('category_id').addEventListener('change', function() {
     const categoryId = this.value;
     const subcategorySelect = document.getElementById('subcategory_id');
-    subcategorySelect.innerHTML = '<option value="">Seleccionar</option>';
-    document.getElementById('aromas').innerHTML = '<option disabled>Seleccione una subcategoría</option>';
-    if (categoryId) {
-        fetch(`get_subcategories.php?category_id=${categoryId}`)
+    setSubcategoryMessage(subcategorySelect, 'Seleccionar');
+    if (validId(categoryId)) {
+        fetch(`get_subcategories.php?category_id=${encodeURIComponent(categoryId)}`)
             .then(response => response.json())
             .then(data => {
-                if (data.length === 0) {
-                    subcategorySelect.innerHTML = '<option disabled>No hay subcategorías</option>';
+                if (!Array.isArray(data) || data.length === 0) {
+                    setSubcategoryMessage(subcategorySelect, 'No hay subcategorías', true);
                 } else {
                     data.forEach(subcategory => {
+                        if (!subcategory || !validId(subcategory.id)) return;
                         const option = document.createElement('option');
                         option.value = subcategory.id;
-                        option.textContent = subcategory.name;
+                        option.textContent = typeof subcategory.name === 'string' ? subcategory.name : '';
                         subcategorySelect.appendChild(option);
                     });
                 }
@@ -1161,155 +1173,132 @@ document.getElementById('category_id').addEventListener('change', function() {
     }
 });
 
-// Cargar aromas según subcategoría seleccionada (alta)
-document.getElementById('subcategory_id').addEventListener('change', function() {
-    const subcatId = this.value;
-    const aromasSelect = document.getElementById('aromas');
-    aromasSelect.innerHTML = '';
-    if (subcatId) {
-        fetch('get_aromas_by_subcat.php?subcat_id=' + subcatId)
-            .then(response => response.json())
-            .then(data => {
-                if (data.length === 0) {
-                    aromasSelect.innerHTML = '<option disabled>No hay aromas asociados</option>';
-                } else {
-                    data.forEach(aroma => {
-                        const option = document.createElement('option');
-                        option.value = aroma.id;
-                        option.textContent = aroma.nombre;
-                        aromasSelect.appendChild(option);
-                    });
-                }
-            });
-    } else {
-        aromasSelect.innerHTML = '<option disabled>Seleccione una subcategoría</option>';
-    }
-});
+function setSubcategoryMessage(select, message, disabled = false) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = message;
+    option.disabled = disabled;
+    select.replaceChildren(option);
+}
 
-// Función auxiliar para cargar aromas en edición
-function loadAromasForEdit(subcatId, selectedAromas) {
-    const aromasSelect = document.getElementById('edit_aromas');
-    aromasSelect.innerHTML = '';
-    
-    if (subcatId) {
-        fetch('get_aromas_by_subcat.php?subcat_id=' + subcatId)
-            .then(response => response.json())
-            .then(data => {
-                if (data.length === 0) {
-                    aromasSelect.innerHTML = '<option disabled>No hay aromas asociados</option>';
-                } else {
-                    data.forEach(aroma => {
-                        const option = document.createElement('option');
-                        option.value = aroma.id;
-                        option.textContent = aroma.nombre;
-                        // Marcar como seleccionado si está en los aromas del producto
-                        if (selectedAromas.includes(parseInt(aroma.id))) {
-                            option.selected = true;
-                        }
-                        aromasSelect.appendChild(option);
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Error loading aromas:', error);
-                aromasSelect.innerHTML = '<option disabled>Error al cargar aromas</option>';
-            });
-    } else {
-        aromasSelect.innerHTML = '<option disabled>Seleccione una subcategoría</option>';
+function parseEditData(button) {
+    try {
+        const product = JSON.parse(button.dataset.product || '');
+        const images = JSON.parse(button.dataset.images || '[]');
+        if (!product || !validId(product.id) || !validId(product.category_id) || !Array.isArray(images)) return null;
+        return {
+            product,
+            images: images.filter(image => image && validId(image.id)).map(image => ({
+                id: String(image.id),
+                image_path: safeProductImagePath(image.image_path),
+                is_main: Number(image.is_main) === 1
+            }))
+        };
+    } catch {
+        return null;
     }
 }
 
-// Modal de edición: cargar subcategorías y aromas dinámicamente
-function editProduct(product, images, aromasIds) {
+// Modal de edición: cargar subcategorías dinámicamente
+function editProduct(product, images) {
+    if (!product || !validId(product.id) || !validId(product.category_id)) return;
     document.getElementById('edit_id').value = product.id;
-    document.getElementById('edit_name').value = product.name;
-    document.getElementById('edit_description').value = product.description;
+    document.getElementById('edit_name').value = typeof product.name === 'string' ? product.name : '';
+    document.getElementById('edit_description').value = typeof product.description === 'string' ? product.description : '';
     document.getElementById('edit_price').value = product.price;
     document.getElementById('edit_price_sale').value = product.price_sale || '';
+    document.getElementById('edit_is_active').checked = Number(product.is_active) === 1;
     document.getElementById('edit_category_id').value = product.category_id;
     document.getElementById('edit_destacados').value = product.destacados || 0;
 
     // Cargar subcategorías para la categoría seleccionada
     const subcategorySelect = document.getElementById('edit_subcategory_id');
-    subcategorySelect.innerHTML = '<option value="">Seleccionar</option>';
-    
-    if (product.category_id) {
-        fetch(`get_subcategories.php?category_id=${product.category_id}`)
+    setSubcategoryMessage(subcategorySelect, 'Seleccionar');
+
+    if (validId(product.category_id)) {
+        fetch(`get_subcategories.php?category_id=${encodeURIComponent(product.category_id)}`)
             .then(response => response.json())
             .then(data => {
-                if (data.length === 0) {
-                    subcategorySelect.innerHTML = '<option value="">No hay subcategorías</option>';
+                if (!Array.isArray(data) || data.length === 0) {
+                    setSubcategoryMessage(subcategorySelect, 'No hay subcategorías');
                 } else {
                     data.forEach(subcategory => {
+                        if (!subcategory || !validId(subcategory.id)) return;
                         const option = document.createElement('option');
                         option.value = subcategory.id;
-                        option.textContent = subcategory.name;
+                        option.textContent = typeof subcategory.name === 'string' ? subcategory.name : '';
                         if (subcategory.id == product.subcategory_id) {
                             option.selected = true;
                         }
                         subcategorySelect.appendChild(option);
                     });
-                    
-                    // Después de cargar subcategorías, cargar aromas si hay subcategoría
-                    if (product.subcategory_id) {
-                        loadAromasForEdit(product.subcategory_id, aromasIds);
-                    } else {
-                        document.getElementById('edit_aromas').innerHTML = '<option disabled>Seleccione una subcategoría primero</option>';
-                    }
                 }
             })
             .catch(error => {
                 console.error('Error loading subcategories:', error);
-                subcategorySelect.innerHTML = '<option value="">Error al cargar</option>';
+                setSubcategoryMessage(subcategorySelect, 'Error al cargar');
             });
-    } else {
-        document.getElementById('edit_aromas').innerHTML = '<option disabled>Seleccione una categoría primero</option>';
     }
 
     // Mostrar imágenes actuales
     const imagesContainer = document.getElementById('current_images_container');
-    imagesContainer.innerHTML = '';
-    if (images && images.length > 0) {
+    const content = [];
+    if (Array.isArray(images) && images.length > 0) {
         images.forEach(image => {
+            if (!image || !validId(image.id)) return;
             const imageDiv = document.createElement('div');
             imageDiv.className = 'image-container';
-            imageDiv.innerHTML = `
-                <img src="${image.image_path}" class="image-thumbnail ${image.is_main ? 'main-image' : ''}" 
-                     style="width: 80px; height: 80px;">
-                <div class="form-check mt-2 text-center">
-                    <input class="form-check-input" type="radio" name="main_image" 
-                           value="${image.id}" ${image.is_main ? 'checked' : ''}>
-                    <label class="form-check-label">Principal</label>
-                </div>
-                <button type="button" class="delete-image-btn" 
-                        onclick="deleteImage(${image.id}, this)">&times;</button>
-            `;
-            imagesContainer.appendChild(imageDiv);
+            const thumbnail = productImageOrPlaceholder(
+                image.image_path,
+                `image-thumbnail${Number(image.is_main) === 1 ? ' main-image' : ''}`,
+                'width:80px;height:80px;'
+            );
+            const checkContainer = document.createElement('div');
+            checkContainer.className = 'form-check mt-2 text-center';
+            const mainImageInput = document.createElement('input');
+            mainImageInput.className = 'form-check-input';
+            mainImageInput.type = 'radio';
+            mainImageInput.name = 'main_image';
+            mainImageInput.value = String(image.id);
+            mainImageInput.checked = Number(image.is_main) === 1;
+            const mainImageLabel = document.createElement('label');
+            mainImageLabel.className = 'form-check-label';
+            mainImageLabel.textContent = 'Principal';
+            checkContainer.append(mainImageInput, mainImageLabel);
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'delete-image-btn';
+            deleteButton.textContent = '×';
+            deleteButton.setAttribute('aria-label', 'Eliminar imagen');
+            deleteButton.addEventListener('click', () => deleteImage(image.id, deleteButton));
+            imageDiv.append(thumbnail, checkContainer, deleteButton);
+            content.push(imageDiv);
         });
-    } else {
-        imagesContainer.innerHTML = '<p class="text-muted">No hay imágenes</p>';
     }
+    if (content.length === 0) {
+        const emptyMessage = document.createElement('p');
+        emptyMessage.className = 'text-muted';
+        emptyMessage.textContent = 'No hay imágenes';
+        content.push(emptyMessage);
+    }
+    imagesContainer.replaceChildren(...content);
 
     // Mostrar modal
     const editModal = new bootstrap.Modal(document.getElementById('editModal'));
     editModal.show();
 }
 
-// Modal de edición: cargar aromas al cambiar subcategoría
-document.getElementById('edit_subcategory_id').addEventListener('change', function() {
-    const subcatId = this.value;
-    loadAromasForEdit(subcatId, []);
-});
-
 // Eliminar imagen en el modal de edición
 function deleteImage(imageId, button) {
+    if (!validId(imageId) || !(button instanceof HTMLElement)) return;
     if (confirm('¿Eliminar esta imagen?')) {
         fetch('delete_image.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': '<?= csrf_token() ?>',
             },
-            body: `image_id=${imageId}`
+            body: new URLSearchParams({image_id: String(imageId)}).toString()
         })
         .then(response => response.json())
         .then(data => {
@@ -1321,6 +1310,20 @@ function deleteImage(imageId, button) {
         });
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.edit-product-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const data = parseEditData(button);
+            if (data) editProduct(data.product, data.images);
+        });
+    });
+    document.querySelectorAll('.delete-product-form').forEach(form => {
+        form.addEventListener('submit', event => {
+            if (!confirm('¿Eliminar este producto?')) event.preventDefault();
+        });
+    });
+});
 
 // Funcion para busqueda de productos
 function normalize(str) {
