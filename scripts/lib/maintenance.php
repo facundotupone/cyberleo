@@ -253,6 +253,31 @@ function maintenance_db_credentials_from_env(): ?array
 }
 
 /**
+ * Locate an executable by absolute PATH scan (no shell_exec).
+ * Hostinger and similar hosts often disable shell_exec in PHP CLI.
+ */
+function maintenance_find_executable(string $name): ?string
+{
+    if ($name === '' || str_contains($name, '/') || str_contains($name, "\0")) {
+        return null;
+    }
+    $pathEnv = getenv('PATH');
+    if (!is_string($pathEnv) || $pathEnv === '') {
+        $pathEnv = '/usr/local/bin:/usr/bin:/bin';
+    }
+    foreach (explode(PATH_SEPARATOR, $pathEnv) as $dir) {
+        if ($dir === '') {
+            continue;
+        }
+        $candidate = rtrim($dir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $name;
+        if (is_file($candidate) && is_executable($candidate)) {
+            return $candidate;
+        }
+    }
+    return null;
+}
+
+/**
  * Resolve absolute executable path for stty.
  */
 function maintenance_resolve_stty(): string
@@ -260,8 +285,12 @@ function maintenance_resolve_stty(): string
     if (PHP_OS_FAMILY === 'Windows') {
         maintenance_fail('No se puede ocultar la contraseña de forma segura. Definí la variable de entorno correspondiente.');
     }
-    $path = trim((string) shell_exec('command -v stty 2>/dev/null'));
-    if ($path === '' || !str_starts_with($path, DIRECTORY_SEPARATOR) || !is_file($path) || !is_executable($path)) {
+    $path = maintenance_find_executable('stty');
+    if ($path === null && function_exists('shell_exec')) {
+        $path = trim((string) @shell_exec('command -v stty 2>/dev/null'));
+        $path = $path !== '' ? $path : null;
+    }
+    if ($path === null || !str_starts_with($path, DIRECTORY_SEPARATOR) || !is_file($path) || !is_executable($path)) {
         maintenance_fail('No se puede ocultar la contraseña de forma segura. Definí la variable de entorno correspondiente.');
     }
     return $path;
@@ -519,8 +548,17 @@ function maintenance_proc_open(array $command, ?string $stdin = null, ?string $c
 
 function maintenance_mysql_bin(string $name): string
 {
-    $path = trim((string) shell_exec('command -v ' . $name));
-    if ($path === '' || !is_executable($path)) {
+    if (!in_array($name, ['mysql', 'mysqldump'], true)) {
+        maintenance_fail('Binario MySQL no permitido.');
+    }
+    $path = maintenance_find_executable($name);
+    if ($path === null && function_exists('shell_exec')) {
+        $resolved = trim((string) @shell_exec('command -v ' . escapeshellarg($name) . ' 2>/dev/null'));
+        if ($resolved !== '' && is_file($resolved) && is_executable($resolved)) {
+            $path = $resolved;
+        }
+    }
+    if ($path === null || !is_executable($path)) {
         maintenance_fail("Falta el binario ejecutable {$name}.");
     }
     return $path;
@@ -800,7 +838,15 @@ function maintenance_app_commit(): ?string
     if (!is_dir($private . '/.git')) {
         return null;
     }
-    $out = trim((string) shell_exec('git -C ' . escapeshellarg($private) . ' rev-parse HEAD 2>/dev/null'));
+    $git = maintenance_find_executable('git');
+    if ($git === null) {
+        return null;
+    }
+    $result = maintenance_proc_open([$git, '-C', $private, 'rev-parse', 'HEAD']);
+    if ($result['code'] !== 0) {
+        return null;
+    }
+    $out = trim($result['stdout']);
     return $out !== '' ? $out : null;
 }
 
