@@ -938,8 +938,10 @@ $phpDump = $mkPath('path-php-dump', ['php', 'mysqldump']);
 $phpMysqlDump = $mkPath('path-php-mysql-dump', ['php', 'mysql', 'mysqldump']);
 
 // S5-VERIFY-NO-DB-BINS: verify works without mysql/mysqldump
+$verifyZip = is_string($zipTwo) && is_file($zipTwo) ? $zipTwo : $zipPath;
+s5(is_file($verifyZip), 'S5-VERIFY-ZIP-PRESENT', 'ZIP de verify presente');
 $verifyNoDb = s5_run(['PATH' => $phpOnly], [
-    $phpOnly . '/php', $private . '/scripts/restore_store.php', '--verify=' . $zipPath,
+    $phpOnly . '/php', $private . '/scripts/restore_store.php', '--verify=' . $verifyZip,
 ]);
 s5($verifyNoDb['code'] === 0, 'S5-VERIFY-NO-DB-BINS', 'verify válido sin mysql/mysqldump');
 s5(
