@@ -161,6 +161,6 @@ $emptyText = (string) ($catalogDisplay['catalog_empty_text'] ?? 'No hay producto
     <span class="cart-count">0</span>
 </a>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="<?= htmlspecialchars('assets/js/catalog-cards.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
+<script src="<?= htmlspecialchars(cyberleo_safe_asset_url('assets/js/catalog-cards.js'), ENT_QUOTES, 'UTF-8') ?>" defer></script>
 </body>
 </html>

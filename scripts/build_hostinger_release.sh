@@ -64,6 +64,8 @@ FILES=(
     forgot_password.php
     get_subcategories.php
     includes/admin_nav.php
+    includes/asset_safe_url.php
+    includes/asset_version.php
     includes/auth_check.php
     includes/catalog_display.php
     includes/checkout_display.php

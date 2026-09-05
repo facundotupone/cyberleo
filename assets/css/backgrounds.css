@@ -17,6 +17,7 @@
 body {
     background-attachment: fixed;
     background-size: cover;
+    background-color: #f3f8fc;
 }
 
 .categories-section {

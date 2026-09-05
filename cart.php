@@ -173,6 +173,6 @@ if ((string) $checkout['cart_summary_sticky'] === '1') {
 <script type="application/json" id="cart-products-boot"><?= json_encode($products, $jsonFlags) ?></script>
 <script type="application/json" id="cart-images-boot"><?= json_encode($productImages, $jsonFlags) ?></script>
 <script type="application/json" id="cart-checkout-boot"><?= json_encode($checkoutBoot, $jsonFlags) ?></script>
-<script src="assets/js/cart-checkout.js" defer></script>
+<script src="<?= htmlspecialchars(cyberleo_safe_asset_url('assets/js/cart-checkout.js'), ENT_QUOTES, 'UTF-8') ?>" defer></script>
 </body>
 </html>

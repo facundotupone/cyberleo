@@ -137,7 +137,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         <span class="cart-count">0</span>
     </a>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="<?= htmlspecialchars('assets/js/catalog-cards.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
+    <script src="<?= htmlspecialchars(cyberleo_safe_asset_url('assets/js/catalog-cards.js'), ENT_QUOTES, 'UTF-8') ?>" defer></script>
     <script>
         // Buscador de productos (solo si show_search renderizó ambos nodos)
         (function initProductSearch() {

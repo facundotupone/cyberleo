@@ -1724,6 +1724,205 @@ pass H-NAV-UNIFY-RESTORE
 run_nav_unify_chrome unify H-NAV-UNIFY-DESKTOP
 run_nav_unify_chrome mobile H-NAV-UNIFY-MOBILE
 
+run_refine_publish_chrome() {
+    local mode=$1
+    local id=$2
+    local scenario=${3:-home}
+    if ! command -v google-chrome >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
+        fail "$id" 'google-chrome o node no están disponibles'
+    fi
+    local port
+    port="$(python3 - <<'PY'
+import socket
+s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()
+PY
+)"
+    local cmd=(google-chrome --headless=new --disable-gpu --remote-debugging-port="$port" --user-data-dir="$HTTP_TMP/chrome-refine-$mode-$scenario-profile" about:blank)
+    setsid "${cmd[@]}" >"$HTTP_TMP/chrome-refine-$mode-$scenario.out" 2>"$HTTP_TMP/chrome-refine-$mode-$scenario.log" & local pid=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$port/json/list" >/dev/null && break; sleep .05; done
+    if timeout 90 env HTTP_TEST_ADMIN_PASSWORD="$WINNING_PASSWORD" node "$ROOT/tests/helpers/chrome_refine_publish.mjs" \
+        "$port" "$HTTP_BASE_URL" "$mode" "$scenario" >"$HTTP_TMP/chrome-refine-$mode-$scenario-test.out" 2>>"$HTTP_TMP/chrome-refine-$mode-$scenario.log"; then
+        sed -n '1,120p' "$HTTP_TMP/chrome-refine-$mode-$scenario-test.out"
+        pass "$id"
+    else
+        sed -n '1,200p' "$HTTP_TMP/chrome-refine-$mode-$scenario-test.out" >&2
+        sed -n '1,80p' "$HTTP_TMP/chrome-refine-$mode-$scenario.log" >&2
+        fail "$id" "Chromium refine publish mode=$mode scenario=$scenario falló"
+    fi
+    kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+}
+
+# Ensure home content restored for refine publish asserts
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_home_content'
+assert_status H-REFINE-PUBLISH-RESTORE 302
+pass H-REFINE-PUBLISH-RESTORE
+
+# --- Login asset helper degradation (partial deploy must not 500) ---
+run_login_asset_isolated() {
+    local scenario=$1
+    local id=$2
+    local expect_versioned=$3
+    local helper="$ROOT/includes/asset_version.php"
+    local bak="$HTTP_TMP/asset_version.$scenario.bak"
+    local stub="$HTTP_TMP/asset_version.$scenario.stub"
+    local port pid base cookie body status
+    port="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    base="http://127.0.0.1:$port"
+    cookie="$HTTP_TMP/login-asset-$scenario.cookie"
+    body="$HTTP_TMP/login-asset-$scenario.body"
+    : >"$cookie"
+
+    cp "$helper" "$bak"
+    case "$scenario" in
+        missing)
+            mv "$helper" "$stub"
+            ;;
+        unreadable)
+            chmod 0000 "$helper"
+            ;;
+        function-missing)
+            mv "$helper" "$stub"
+            printf '<?php\n// stub without cyberleo_asset_url\n' >"$helper"
+            ;;
+        ok) ;;
+        *)
+            fail "$id" "escenario desconocido: $scenario"
+            ;;
+    esac
+
+    (
+        cd "$ROOT"
+        exec env \
+            PHP_CLI_SERVER_WORKERS=1 \
+            APP_ENV=test \
+            APP_SECRET='http-suite-secret-that-is-not-used-outside-tests' \
+            SITE_URL="$base" \
+            DB_HOST="localhost;unix_socket=$TEST_DB_SOCKET" \
+            DB_NAME="$TEST_DB_NAME" DB_USER=root DB_PASS='' \
+            MAIL_TRANSPORT=log MAIL_LOG_PATH="$MAIL_LOG" \
+            php -S "127.0.0.1:$port" "$ROOT/tests/helpers/php_server_router.php"
+    ) >"$HTTP_TMP/login-asset-$scenario.server.log" 2>&1 & pid=$!
+
+    for _ in {1..80}; do
+        curl --silent --fail --max-time 1 "$base/admin_login.php" >/dev/null 2>&1 && break
+        sleep 0.05
+    done
+
+    status="$(
+        curl --silent --show-error --max-time 15 \
+            --cookie "$cookie" --cookie-jar "$cookie" \
+            --output "$body" --write-out '%{http_code}' \
+            "$base/admin_login.php"
+    )"
+
+    # Restore helper before assertions that may exit
+    if [[ -f "$stub" ]]; then
+        rm -f "$helper"
+        mv "$stub" "$helper"
+    fi
+    if [[ -f "$bak" ]]; then
+        chmod 0644 "$helper" 2>/dev/null || true
+        cp "$bak" "$helper"
+        chmod 0644 "$helper"
+    fi
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+
+    [[ "$status" == "200" ]] || fail "$id" "HTTP $status (esperado 200)"
+    LC_ALL=C rg --fixed-strings --quiet -e 'name="username"' -- "$body" || fail "$id" 'falta input username'
+    LC_ALL=C rg --fixed-strings --quiet -e 'name="password"' -- "$body" || fail "$id" 'falta input password'
+    LC_ALL=C rg --ignore-case --quiet -e 'Fatal error|Uncaught|Stack trace:' -- "$body" && fail "$id" 'error visible en HTML'
+    if [[ "$expect_versioned" == "1" ]]; then
+        LC_ALL=C rg --quiet -e 'assets/css/style\.css\?v=[a-zA-Z0-9]+' -- "$body" || fail "$id" 'esperaba style.css?v='
+    else
+        LC_ALL=C rg --quiet -e 'assets/css/style\.css\?v=' -- "$body" && fail "$id" 'no debía versionar CSS'
+        LC_ALL=C rg --fixed-strings --quiet -e 'assets/css/style.css' -- "$body" || fail "$id" 'falta fallback style.css'
+    fi
+    pass "$id"
+}
+
+run_login_asset_isolated ok H-LOGIN-ASSET-HELPER-OK 1
+run_login_asset_isolated missing H-LOGIN-ASSET-HELPER-MISSING 0
+if [[ "$(id -u)" -eq 0 ]]; then
+    pass H-LOGIN-ASSET-HELPER-UNREADABLE
+else
+    run_login_asset_isolated unreadable H-LOGIN-ASSET-HELPER-UNREADABLE 0
+fi
+run_login_asset_isolated function-missing H-LOGIN-ASSET-FUNCTION-MISSING 0
+
+# Auth still works after degradation probes (helper restored)
+HTTP_COOKIE="$HTTP_TMP/login-asset-auth.cookie"
+: >"$HTTP_COOKIE"
+request GET admin_login.php
+assert_status H-LOGIN-ASSET-AUTH-FORM 200
+assert_body_contains H-LOGIN-ASSET-AUTH-FORM 'name="username"'
+assert_body_contains H-LOGIN-ASSET-AUTH-FORM 'name="password"'
+pass H-LOGIN-ASSET-AUTH-FORM
+request POST admin_login.php --data-urlencode 'username=http-admin' --data-urlencode 'password=not-the-password'
+assert_status H-LOGIN-ASSET-AUTH-BAD 200
+assert_body_contains H-LOGIN-ASSET-AUTH-BAD 'incorrectos'
+pass H-LOGIN-ASSET-AUTH-BAD
+request POST admin_login.php --data-urlencode 'username=http-admin' --data-urlencode "password=$WINNING_PASSWORD"
+assert_status H-LOGIN-ASSET-AUTH-OK 302
+pass H-LOGIN-ASSET-AUTH-OK
+HTTP_COOKIE="$ADMIN_COOKIE"
+
+request GET index.php
+assert_status H-REFINE-ASSETS 200
+assert_body_contains H-REFINE-ASSETS 'assets/css/style.css?v='
+assert_body_contains H-REFINE-ASSETS 'assets/css/backgrounds.css?v='
+assert_body_contains H-REFINE-ASSETS 'site-footer-grid'
+assert_body_contains H-REFINE-ASSETS 'benefits-surface'
+assert_body_excludes H-REFINE-ASSETS 'footer-banner'
+assert_body_contains H-REFINE-ASSETS 'cyberleo-release'
+pass H-REFINE-ASSETS
+
+# Login page only renders when anonymous (admin session redirects to panel).
+HTTP_COOKIE="$HTTP_TMP/refine-anon.cookie"
+: >"$HTTP_COOKIE"
+request GET admin_login.php
+assert_status H-REFINE-ADMIN-LOGIN-ASSETS 200
+assert_body_contains H-REFINE-ADMIN-LOGIN-ASSETS 'assets/css/style.css?v='
+pass H-REFINE-ADMIN-LOGIN-ASSETS
+HTTP_COOKIE="$ADMIN_COOKIE"
+
+request GET admin_settings.php
+assert_status H-REFINE-ADMIN-SETTINGS-ASSETS 200
+assert_body_contains H-REFINE-ADMIN-SETTINGS-ASSETS 'assets/css/style.css?v='
+assert_body_contains H-REFINE-ADMIN-SETTINGS-ASSETS 'theme-preview.js?v='
+assert_body_contains H-REFINE-ADMIN-SETTINGS-ASSETS 'home-content-preview.js?v='
+pass H-REFINE-ADMIN-SETTINGS-ASSETS
+
+# Cache-bust proof: two style.css contents must change ?v=
+STYLE_V1="$(php -r "require '$ROOT/includes/asset_version.php'; echo cyberleo_asset_version('assets/css/style.css');")"
+STYLE_BACKUP="$HTTP_TMP/style.css.refine-bak"
+cp "$ROOT/assets/css/style.css" "$STYLE_BACKUP"
+printf '\n/* refine-cache-bust-probe */\n' >>"$ROOT/assets/css/style.css"
+STYLE_V2="$(php -r "require '$ROOT/includes/asset_version.php'; echo cyberleo_asset_version('assets/css/style.css');")"
+mv "$STYLE_BACKUP" "$ROOT/assets/css/style.css"
+[[ "$STYLE_V1" =~ ^[a-f0-9]{12}$ ]] || fail H-REFINE-CACHE-BUST "v1 inválido: $STYLE_V1"
+[[ "$STYLE_V2" =~ ^[a-f0-9]{12}$ ]] || fail H-REFINE-CACHE-BUST "v2 inválido: $STYLE_V2"
+[[ "$STYLE_V1" != "$STYLE_V2" ]] || fail H-REFINE-CACHE-BUST "hash no cambió tras modificar style.css"
+request GET index.php
+assert_status H-REFINE-CACHE-BUST 200
+assert_body_contains H-REFINE-CACHE-BUST "assets/css/style.css?v=$STYLE_V1"
+pass H-REFINE-CACHE-BUST
+
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-DESKTOP home
+run_refine_publish_chrome mobile H-REFINE-PUBLISH-MOBILE home
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-MATRIX-DESKTOP matrix
+run_refine_publish_chrome mobile H-REFINE-PUBLISH-MATRIX-MOBILE matrix
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-CATEGORY category
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-CART-EMPTY cart-empty
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-CART-ITEMS cart-with-items
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-LOGIN login
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-ADMIN admin-settings
+
 # Footer toggles off: no empty contact column
 request GET admin_settings.php
 CSRF_TOKEN="$(csrf_from_body)"
@@ -1752,17 +1951,22 @@ assert_status H-NAV-FOOTER-TOGGLES-SAVE 302
 sql "UPDATE store_settings SET setting_value='0' WHERE setting_key IN ('footer_show_instagram','footer_show_whatsapp','footer_show_business_hours','footer_show_location')"
 pass H-NAV-FOOTER-TOGGLES-SAVE
 run_nav_unify_chrome footer-toggles H-NAV-FOOTER-TOGGLES
+run_refine_publish_chrome desktop H-REFINE-FOOTER-TOGGLES footer-toggles-off
+run_refine_publish_chrome mobile H-REFINE-FOOTER-TOGGLES-MOBILE footer-toggles-off
 
 # Footer logo + description + nav only (explicit social off)
 sql "UPDATE store_settings SET setting_value='1' WHERE setting_key='footer_show_logo'"
 sql "UPDATE store_settings SET setting_value='0' WHERE setting_key IN ('footer_show_instagram','footer_show_whatsapp','footer_show_business_hours','footer_show_location')"
 run_nav_unify_chrome footer-logo-only H-NAV-FOOTER-LOGO-ONLY
+run_refine_publish_chrome desktop H-REFINE-FOOTER-LOGO footer-logo-only
 
 # Benefits disabled should remove section without breaking layout
 sql "UPDATE store_settings SET setting_value='0' WHERE setting_key='benefits_enabled'"
 run_nav_unify_chrome benefits-off H-NAV-BENEFITS-OFF
+run_refine_publish_chrome desktop H-REFINE-BENEFITS-OFF benefits-off
+run_refine_publish_chrome mobile H-REFINE-BENEFITS-OFF-MOBILE benefits-off
 sql "UPDATE store_settings SET setting_value='1' WHERE setting_key='benefits_enabled'"
-
+run_refine_publish_chrome desktop H-REFINE-BENEFITS-ON benefits-on
 # Alternate theme still keeps shared header/footer computed styles across pages
 request GET admin_settings.php
 CSRF_TOKEN="$(csrf_from_body)"
