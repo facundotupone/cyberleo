@@ -5,6 +5,7 @@ require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
 require_once 'includes/theme.php';
+require_once 'includes/asset_version.php';
 
 // Si ya está logueado, redirigir al panel de administración
 if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
@@ -55,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login Administrador - <?= htmlspecialchars(STORE_NAME) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="assets/css/style.css" rel="stylesheet">
+    <link href="<?= htmlspecialchars(cyberleo_asset_url('assets/css/style.css'), ENT_QUOTES, 'UTF-8') ?>" rel="stylesheet">
     <style><?php
         $themeSettings = resolve_theme_settings(get_store_settings());
         echo theme_css_custom_properties($themeSettings);
