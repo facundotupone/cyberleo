@@ -1772,10 +1772,14 @@ assert_body_excludes H-REFINE-ASSETS 'footer-banner'
 assert_body_contains H-REFINE-ASSETS 'cyberleo-release'
 pass H-REFINE-ASSETS
 
+# Login page only renders when anonymous (admin session redirects to panel).
+HTTP_COOKIE="$HTTP_TMP/refine-anon.cookie"
+: >"$HTTP_COOKIE"
 request GET admin_login.php
 assert_status H-REFINE-ADMIN-LOGIN-ASSETS 200
 assert_body_contains H-REFINE-ADMIN-LOGIN-ASSETS 'assets/css/style.css?v='
 pass H-REFINE-ADMIN-LOGIN-ASSETS
+HTTP_COOKIE="$ADMIN_COOKIE"
 
 request GET admin_settings.php
 assert_status H-REFINE-ADMIN-SETTINGS-ASSETS 200
