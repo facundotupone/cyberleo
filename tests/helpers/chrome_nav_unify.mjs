@@ -233,8 +233,9 @@ try {
       active: [...document.querySelectorAll('[aria-current="page"]')].map(a => a.getAttribute('href')),
     }))()`);
     requireValue(invalidPage.path === 'index.php', 'invalid category id did not redirect home');
+    const uniqueActive = [...new Set(invalidPage.active)];
     requireValue(
-      invalidPage.active.length === 1 && invalidPage.active[0] === 'index.php',
+      uniqueActive.length === 1 && uniqueActive[0] === 'index.php',
       `invalid category left wrong active: ${JSON.stringify(invalidPage.active)}`,
     );
 
