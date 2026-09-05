@@ -119,3 +119,9 @@ function get_products_by_subcategory($category_id, $subcategory_id) {
         return [];
     }
 }
+
+// Soft-load optional asset URL helper (never fatal if the file is absent).
+$cyberleoAssetSafeUrl = __DIR__ . '/asset_safe_url.php';
+if (!function_exists('cyberleo_safe_asset_url') && is_file($cyberleoAssetSafeUrl) && is_readable($cyberleoAssetSafeUrl)) {
+    require_once $cyberleoAssetSafeUrl;
+}

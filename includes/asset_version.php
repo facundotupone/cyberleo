@@ -4,6 +4,8 @@ declare(strict_types=1);
 /**
  * Stable cache-busting for first-party CSS/JS.
  * Uses content hash (not filemtime) so ZIP timestamps cannot keep stale browsers.
+ *
+ * Compatible with PHP 8.0+ (Hostinger / project baseline).
  */
 
 const CYBERLEO_ASSET_VERSION_FALLBACK = 'refinamientohotfix20260905';
@@ -11,22 +13,25 @@ const CYBERLEO_ASSET_VERSION_FALLBACK = 'refinamientohotfix20260905';
 /**
  * Only first-party storefront/admin assets under these prefixes may be versioned.
  *
- * @return list<string>
+ * @return array<int, string>
  */
-function cyberleo_asset_allowed_prefixes(): array
+function cyberleo_asset_allowed_prefixes()
 {
-    return [
+    return array(
         'assets/css/',
         'assets/js/',
-    ];
+    );
 }
 
 /**
  * Normalize and validate a relative asset path. Returns '' when rejected.
+ *
+ * @param string $relativePath
+ * @return string
  */
-function cyberleo_asset_normalize_path(string $relativePath): string
+function cyberleo_asset_normalize_path($relativePath)
 {
-    $relativePath = str_replace('\\', '/', trim($relativePath));
+    $relativePath = str_replace('\\', '/', trim((string) $relativePath));
     if ($relativePath === '') {
         return '';
     }
@@ -34,7 +39,7 @@ function cyberleo_asset_normalize_path(string $relativePath): string
     if ($relativePath[0] === '/' || preg_match('#^[a-z][a-z0-9+.-]*:#i', $relativePath) === 1) {
         return '';
     }
-    if (str_contains($relativePath, "\0") || str_contains($relativePath, '..')) {
+    if (strpos($relativePath, "\0") !== false || strpos($relativePath, '..') !== false) {
         return '';
     }
     // Only safe path characters.
@@ -44,7 +49,7 @@ function cyberleo_asset_normalize_path(string $relativePath): string
     $relativePath = ltrim($relativePath, '/');
     $allowed = false;
     foreach (cyberleo_asset_allowed_prefixes() as $prefix) {
-        if (str_starts_with($relativePath, $prefix)) {
+        if (strpos($relativePath, $prefix) === 0) {
             $allowed = true;
             break;
         }
@@ -62,10 +67,13 @@ function cyberleo_asset_normalize_path(string $relativePath): string
 /**
  * Short content hash for a public-root-relative asset path.
  * Returns '' for rejected/missing/unreadable paths (never warns, never leaks FS paths).
+ *
+ * @param string $relativePath
+ * @return string
  */
-function cyberleo_asset_version(string $relativePath): string
+function cyberleo_asset_version($relativePath)
 {
-    static $cache = [];
+    static $cache = array();
 
     $relativePath = cyberleo_asset_normalize_path($relativePath);
     if ($relativePath === '') {
@@ -79,9 +87,11 @@ function cyberleo_asset_version(string $relativePath): string
     $full = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
     $version = '';
 
-    // is_file/is_readable/hash_file can warn on some hosts; suppress and keep empty.
-    if (@is_file($full) && !@is_link($full) && @is_readable($full)) {
-        $hash = @hash_file('sha256', $full);
+    $isFile = is_file($full);
+    $isLink = $isFile ? is_link($full) : false;
+    $isReadable = ($isFile && !$isLink) ? is_readable($full) : false;
+    if ($isReadable) {
+        $hash = hash_file('sha256', $full);
         if (is_string($hash) && preg_match('/^[a-f0-9]{64}$/', $hash) === 1) {
             $candidate = substr($hash, 0, 12);
             if (preg_match('/^[a-zA-Z0-9]+$/', $candidate) === 1) {
@@ -97,8 +107,11 @@ function cyberleo_asset_version(string $relativePath): string
 /**
  * Build a versioned relative URL: path?v=abcdef123456
  * Uses alphanumeric fallback when the hash cannot be computed.
+ *
+ * @param string $relativePath
+ * @return string
  */
-function cyberleo_asset_url(string $relativePath): string
+function cyberleo_asset_url($relativePath)
 {
     $normalized = cyberleo_asset_normalize_path($relativePath);
     if ($normalized === '') {

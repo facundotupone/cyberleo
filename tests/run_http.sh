@@ -1762,6 +1762,116 @@ request POST admin_settings.php \
 assert_status H-REFINE-PUBLISH-RESTORE 302
 pass H-REFINE-PUBLISH-RESTORE
 
+# --- Login asset helper degradation (partial deploy must not 500) ---
+run_login_asset_isolated() {
+    local scenario=$1
+    local id=$2
+    local expect_versioned=$3
+    local helper="$ROOT/includes/asset_version.php"
+    local bak="$HTTP_TMP/asset_version.$scenario.bak"
+    local stub="$HTTP_TMP/asset_version.$scenario.stub"
+    local port pid base cookie body status
+    port="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    base="http://127.0.0.1:$port"
+    cookie="$HTTP_TMP/login-asset-$scenario.cookie"
+    body="$HTTP_TMP/login-asset-$scenario.body"
+    : >"$cookie"
+
+    cp "$helper" "$bak"
+    case "$scenario" in
+        missing)
+            mv "$helper" "$stub"
+            ;;
+        unreadable)
+            chmod 0000 "$helper"
+            ;;
+        function-missing)
+            mv "$helper" "$stub"
+            printf '<?php\n// stub without cyberleo_asset_url\n' >"$helper"
+            ;;
+        ok) ;;
+        *)
+            fail "$id" "escenario desconocido: $scenario"
+            ;;
+    esac
+
+    (
+        cd "$ROOT"
+        exec env \
+            PHP_CLI_SERVER_WORKERS=1 \
+            APP_ENV=test \
+            APP_SECRET='http-suite-secret-that-is-not-used-outside-tests' \
+            SITE_URL="$base" \
+            DB_HOST="localhost;unix_socket=$TEST_DB_SOCKET" \
+            DB_NAME="$TEST_DB_NAME" DB_USER=root DB_PASS='' \
+            MAIL_TRANSPORT=log MAIL_LOG_PATH="$MAIL_LOG" \
+            php -S "127.0.0.1:$port" "$ROOT/tests/helpers/php_server_router.php"
+    ) >"$HTTP_TMP/login-asset-$scenario.server.log" 2>&1 & pid=$!
+
+    for _ in {1..80}; do
+        curl --silent --fail --max-time 1 "$base/admin_login.php" >/dev/null 2>&1 && break
+        sleep 0.05
+    done
+
+    status="$(
+        curl --silent --show-error --max-time 15 \
+            --cookie "$cookie" --cookie-jar "$cookie" \
+            --output "$body" --write-out '%{http_code}' \
+            "$base/admin_login.php"
+    )"
+
+    # Restore helper before assertions that may exit
+    if [[ -f "$stub" ]]; then
+        rm -f "$helper"
+        mv "$stub" "$helper"
+    fi
+    if [[ -f "$bak" ]]; then
+        chmod 0644 "$helper" 2>/dev/null || true
+        cp "$bak" "$helper"
+        chmod 0644 "$helper"
+    fi
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+
+    [[ "$status" == "200" ]] || fail "$id" "HTTP $status (esperado 200)"
+    LC_ALL=C rg --fixed-strings --quiet -e 'name="username"' -- "$body" || fail "$id" 'falta input username'
+    LC_ALL=C rg --fixed-strings --quiet -e 'name="password"' -- "$body" || fail "$id" 'falta input password'
+    LC_ALL=C rg --ignore-case --quiet -e 'Fatal error|Uncaught|Stack trace:' -- "$body" && fail "$id" 'error visible en HTML'
+    if [[ "$expect_versioned" == "1" ]]; then
+        LC_ALL=C rg --quiet -e 'assets/css/style\.css\?v=[a-zA-Z0-9]+' -- "$body" || fail "$id" 'esperaba style.css?v='
+    else
+        LC_ALL=C rg --quiet -e 'assets/css/style\.css\?v=' -- "$body" && fail "$id" 'no debía versionar CSS'
+        LC_ALL=C rg --fixed-strings --quiet -e 'assets/css/style.css' -- "$body" || fail "$id" 'falta fallback style.css'
+    fi
+    pass "$id"
+}
+
+run_login_asset_isolated ok H-LOGIN-ASSET-HELPER-OK 1
+run_login_asset_isolated missing H-LOGIN-ASSET-HELPER-MISSING 0
+if [[ "$(id -u)" -eq 0 ]]; then
+    pass H-LOGIN-ASSET-HELPER-UNREADABLE
+else
+    run_login_asset_isolated unreadable H-LOGIN-ASSET-HELPER-UNREADABLE 0
+fi
+run_login_asset_isolated function-missing H-LOGIN-ASSET-FUNCTION-MISSING 0
+
+# Auth still works after degradation probes (helper restored)
+HTTP_COOKIE="$HTTP_TMP/login-asset-auth.cookie"
+: >"$HTTP_COOKIE"
+request GET admin_login.php
+assert_status H-LOGIN-ASSET-AUTH-FORM 200
+assert_body_contains H-LOGIN-ASSET-AUTH-FORM 'name="username"'
+assert_body_contains H-LOGIN-ASSET-AUTH-FORM 'name="password"'
+pass H-LOGIN-ASSET-AUTH-FORM
+request POST admin_login.php --data-urlencode 'username=http-admin' --data-urlencode 'password=not-the-password'
+assert_status H-LOGIN-ASSET-AUTH-BAD 200
+assert_body_contains H-LOGIN-ASSET-AUTH-BAD 'incorrectos'
+pass H-LOGIN-ASSET-AUTH-BAD
+request POST admin_login.php --data-urlencode 'username=http-admin' --data-urlencode "password=$WINNING_PASSWORD"
+assert_status H-LOGIN-ASSET-AUTH-OK 302
+pass H-LOGIN-ASSET-AUTH-OK
+HTTP_COOKIE="$ADMIN_COOKIE"
+
 request GET index.php
 assert_status H-REFINE-ASSETS 200
 assert_body_contains H-REFINE-ASSETS 'assets/css/style.css?v='

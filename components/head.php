@@ -2,11 +2,23 @@
 $storeSettings = get_store_settings();
 require_once __DIR__ . '/../includes/images.php';
 require_once __DIR__ . '/../includes/theme.php';
-require_once __DIR__ . '/../includes/asset_version.php';
+if (!function_exists('cyberleo_safe_asset_url')) {
+    $cyberleoAssetSafeUrl = __DIR__ . '/../includes/asset_safe_url.php';
+    if (is_file($cyberleoAssetSafeUrl) && is_readable($cyberleoAssetSafeUrl)) {
+        require_once $cyberleoAssetSafeUrl;
+    }
+}
+if (!function_exists('cyberleo_safe_asset_url')) {
+    // Extremely defensive fallback if soft helper is absent.
+    function cyberleo_safe_asset_url($relativePath)
+    {
+        return is_string($relativePath) && $relativePath !== '' ? $relativePath : 'assets/css/style.css';
+    }
+}
 $themeSettings = resolve_theme_settings($storeSettings);
 $favicon = $themeSettings['brand_favicon'];
-$styleCss = cyberleo_asset_url('assets/css/style.css');
-$backgroundsCss = cyberleo_asset_url('assets/css/backgrounds.css');
+$styleCss = cyberleo_safe_asset_url('assets/css/style.css');
+$backgroundsCss = cyberleo_safe_asset_url('assets/css/backgrounds.css');
 ?>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">

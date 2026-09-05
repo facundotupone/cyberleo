@@ -5,7 +5,46 @@ require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
 require_once 'includes/theme.php';
-require_once 'includes/asset_version.php';
+
+// Soft-load shared safe resolver when present (partial deploys may omit it).
+if (!function_exists('cyberleo_safe_asset_url')) {
+    $cyberleoAssetSafeUrl = __DIR__ . '/includes/asset_safe_url.php';
+    if (is_file($cyberleoAssetSafeUrl) && is_readable($cyberleoAssetSafeUrl)) {
+        require_once $cyberleoAssetSafeUrl;
+    }
+}
+
+// Last-resort polyfill: login must survive even if both helper files are absent.
+if (!function_exists('cyberleo_safe_asset_url')) {
+    function cyberleo_safe_asset_url($relativePath)
+    {
+        $relativePath = is_string($relativePath) ? trim($relativePath) : '';
+        if ($relativePath === '') {
+            return 'assets/css/style.css';
+        }
+        $helper = __DIR__ . '/includes/asset_version.php';
+        if (!is_file($helper) || !is_readable($helper)) {
+            error_log('cyberleo asset version helper unavailable; using unversioned assets');
+            return $relativePath;
+        }
+        if (!function_exists('cyberleo_asset_url')) {
+            require_once $helper;
+        }
+        if (!function_exists('cyberleo_asset_url')) {
+            error_log('cyberleo asset version function missing; using unversioned assets');
+            return $relativePath;
+        }
+        try {
+            $url = cyberleo_asset_url($relativePath);
+            return (is_string($url) && $url !== '') ? $url : $relativePath;
+        } catch (Throwable $e) {
+            error_log('cyberleo asset version failed; using unversioned assets');
+            return $relativePath;
+        }
+    }
+}
+
+$loginStyleHref = cyberleo_safe_asset_url('assets/css/style.css');
 
 // Si ya está logueado, redirigir al panel de administración
 if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
@@ -56,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login Administrador - <?= htmlspecialchars(STORE_NAME) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="<?= htmlspecialchars(cyberleo_asset_url('assets/css/style.css'), ENT_QUOTES, 'UTF-8') ?>" rel="stylesheet">
+    <link href="<?= htmlspecialchars($loginStyleHref, ENT_QUOTES, 'UTF-8') ?>" rel="stylesheet">
     <style><?php
         $themeSettings = resolve_theme_settings(get_store_settings());
         echo theme_css_custom_properties($themeSettings);
