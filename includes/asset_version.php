@@ -9,25 +9,17 @@ declare(strict_types=1);
 const CYBERLEO_ASSET_VERSION_FALLBACK = 'refinamiento-hotfix-20260905';
 
 /**
- * @var array<string,string>
- */
-function cyberleo_asset_version_cache(): array
-{
-    static $cache = [];
-    return $cache;
-}
-
-/**
  * Short content hash for a public-root-relative asset path.
  */
 function cyberleo_asset_version(string $relativePath): string
 {
+    static $cache = [];
+
     $relativePath = ltrim(str_replace('\\', '/', $relativePath), '/');
     if ($relativePath === '' || str_contains($relativePath, '..')) {
         return CYBERLEO_ASSET_VERSION_FALLBACK;
     }
 
-    $cache = &cyberleo_asset_version_cache();
     if (isset($cache[$relativePath])) {
         return $cache[$relativePath];
     }
