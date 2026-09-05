@@ -50,6 +50,7 @@ FILES=(
     cart.php
     category.php
     components/announcement.php
+    components/admin_nav.php
     components/benefits.php
     components/footer.php
     components/head.php
@@ -62,6 +63,7 @@ FILES=(
     delete_image.php
     forgot_password.php
     get_subcategories.php
+    includes/admin_nav.php
     includes/auth_check.php
     includes/catalog_display.php
     includes/checkout_display.php
@@ -72,6 +74,7 @@ FILES=(
     includes/images.php
     includes/mailer.php
     includes/orders.php
+    includes/public_nav.php
     includes/security.php
     includes/system_health.php
     includes/theme.php
