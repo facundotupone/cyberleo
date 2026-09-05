@@ -66,6 +66,7 @@ FILES=(
     includes/admin_nav.php
     includes/auth_check.php
     includes/catalog_display.php
+    includes/catalog_taxonomy.php
     includes/checkout_display.php
     includes/config.php
     includes/db.php
@@ -80,6 +81,7 @@ FILES=(
     includes/theme.php
     index.php
     logout.php
+    offers.php
     reset_password.php
     search_products.php
 )

@@ -184,9 +184,9 @@ try {
     requireValue(home.activeHrefs.some(h => h === 'index.php' || /index\.php$/.test(String(h))), 'home active missing');
     requireValue(home.footerCols.every(c => !c.empty && c.childCount > 0), 'home footer empty column');
 
-    // Prefer first category link from nav.
+    // Prefer first category link from nav (products dropdown headings).
     const categoryHref = await evaluate(`(() => {
-      const a = document.querySelector('nav.site-navbar a.cyberleo-nav-link[href*="category.php"]');
+      const a = document.querySelector('nav.site-navbar a.site-nav-products-heading[href*="category.php"], nav.site-navbar a[href*="category.php?id="]');
       return a ? a.getAttribute('href') : null;
     })()`);
     requireValue(categoryHref, 'category link missing');
