@@ -9,6 +9,7 @@ require_once 'includes/theme.php';
 require_once 'includes/home_content.php';
 require_once 'includes/catalog_display.php';
 require_once 'includes/checkout_display.php';
+require_once 'includes/asset_version.php';
 
 $defaults = get_store_settings();
 $theme = resolve_theme_settings($defaults);
@@ -277,7 +278,7 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
 <title>Configuración de tienda</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="<?= htmlspecialchars(cyberleo_asset_url('assets/css/style.css'), ENT_QUOTES, 'UTF-8') ?>">
 <style><?= theme_css_custom_properties($theme) ?></style>
 </head>
 <body class="bg-light">
@@ -1210,9 +1211,9 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
 <script>
 window.THEME_PREVIEW_BOOT = <?= json_encode($previewPayload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?>;
 </script>
-<script src="<?= htmlspecialchars('assets/js/theme-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
-<script src="<?= htmlspecialchars('assets/js/home-content-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
-<script src="<?= htmlspecialchars('assets/js/catalog-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
-<script src="<?= htmlspecialchars('assets/js/checkout-preview.js', ENT_QUOTES, 'UTF-8') ?>" defer></script>
+<script src="<?= htmlspecialchars(cyberleo_asset_url('assets/js/theme-preview.js'), ENT_QUOTES, 'UTF-8') ?>" defer></script>
+<script src="<?= htmlspecialchars(cyberleo_asset_url('assets/js/home-content-preview.js'), ENT_QUOTES, 'UTF-8') ?>" defer></script>
+<script src="<?= htmlspecialchars(cyberleo_asset_url('assets/js/catalog-preview.js'), ENT_QUOTES, 'UTF-8') ?>" defer></script>
+<script src="<?= htmlspecialchars(cyberleo_asset_url('assets/js/checkout-preview.js'), ENT_QUOTES, 'UTF-8') ?>" defer></script>
 </body>
 </html>
