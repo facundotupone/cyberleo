@@ -76,6 +76,7 @@ try {
         $defaults['announcement_enabled'] === '0'
         && $defaults['promo_enabled'] === '0'
         && $defaults['benefits_enabled'] === '1'
+        && $defaults['benefits_section_title'] === '¿Por qué elegir CyberLeo?'
         && $defaults['home_section_order'] === 'featured,promo,categories,benefits'
         && $defaults['promo_position'] === 'after_featured'
         && $defaults['footer_show_logo'] === '1',
@@ -257,6 +258,51 @@ try {
         'benefit_2_icon' => 'not-allowed',
     ]));
     hok($benefits['benefit_2_icon'] === 'bi-shield-check', 'HC-26', 'ícono inválido en DB cae a default');
+
+    $titleOk = validate_home_content_setting('benefits_section_title', 'Comprar en CyberLeo');
+    hok($titleOk === 'Comprar en CyberLeo', 'HC-27', 'título de sección de beneficios válido');
+    hok(validate_home_content_setting('benefits_section_title', '') === null, 'HC-28', 'título de sección vacío rechazado');
+    hok(
+        validate_home_content_setting('benefits_section_title', str_repeat('a', 81)) === null
+        || strlen((string) validate_home_content_setting('benefits_section_title', str_repeat('a', 81))) <= 80,
+        'HC-29',
+        'título de sección respeta límite'
+    );
+
+    $collectTitle = collect_home_content_settings_from_post([
+        'announcement_style' => 'primary',
+        'announcement_text' => '',
+        'promo_button_text' => 'Ver más',
+        'promo_button_url' => '#',
+        'home_order_featured' => '1',
+        'home_order_promo' => '2',
+        'home_order_categories' => '3',
+        'home_order_benefits' => '4',
+        'benefits_section_title' => 'Comprar en CyberLeo',
+        'benefit_1_icon' => 'bi-truck',
+        'benefit_1_title' => 'A',
+        'benefit_1_text' => 'B',
+        'benefit_2_icon' => 'bi-shield-check',
+        'benefit_2_title' => 'A',
+        'benefit_2_text' => 'B',
+        'benefit_3_icon' => 'bi-headset',
+        'benefit_3_title' => 'A',
+        'benefit_3_text' => 'B',
+        'footer_description' => 'Desc',
+        'footer_instagram_text' => 'IG',
+        'footer_whatsapp_text' => 'WA',
+    ]);
+    hok(empty($collectTitle['errors']) && ($collectTitle['values']['benefits_section_title'] ?? '') === 'Comprar en CyberLeo', 'HC-30', 'collect guarda título de sección');
+
+    hset($pdo, 'benefits_section_title', 'Título custom');
+    $rTitle = restore_home_content_defaults($pdo);
+    hok($rTitle['restored']['benefits_section_title'] === '¿Por qué elegir CyberLeo?', 'HC-31', 'restore restablece título de beneficios');
+    hok(hget($pdo, 'benefits_section_title') === '¿Por qué elegir CyberLeo?', 'HC-32', 'restore persiste título default');
+
+    $escaped = resolve_home_content_settings([
+        'benefits_section_title' => '<script>alert(1)</script>CyberLeo',
+    ]);
+    hok(!str_contains($escaped['benefits_section_title'], '<script>'), 'HC-33', 'título de beneficios sanitizado');
 
     echo "home_content_settings_test: $passed assertions OK\n";
 } catch (Throwable $e) {

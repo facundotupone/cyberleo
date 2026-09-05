@@ -209,6 +209,7 @@ settings_form() {
         -F 'home_order_categories=3' \
         -F 'home_order_benefits=4' \
         -F 'benefits_enabled=1' \
+        -F 'benefits_section_title=¿Por qué elegir CyberLeo?' \
         -F 'benefit_1_icon=bi-truck' \
         -F 'benefit_1_title=Envíos y entregas' \
         -F 'benefit_1_text=Coordinamos la entrega o retiro de tu compra.' \
@@ -1680,6 +1681,77 @@ pass H-HOME2-RESTORE2
 
 run_home2_chrome restore H-HOME2-CHROME-RESTORE
 run_home2_chrome default H-HOME2-CHROME-DEFAULT
+
+run_nav_unify_chrome() {
+    local mode=$1
+    local id=$2
+    if [[ -z "$CHROME_BIN" ]] || ! command -v node >/dev/null 2>&1; then
+        fail "$id" 'google-chrome o node no están disponibles'
+        return
+    fi
+    local port
+    port="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    local cmd=(env -u DBUS_SESSION_BUS_ADDRESS "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --no-first-run
+        --disable-background-networking --disable-extensions --disable-component-update
+        --disable-dev-shm-usage "--remote-debugging-port=$port" "--remote-allow-origins=*"
+        "--user-data-dir=$HTTP_TMP/chrome-nav-unify-$mode-profile"
+        about:blank)
+    local pid=""
+    setsid "${cmd[@]}" >"$HTTP_TMP/chrome-nav-unify-$mode.out" 2>"$HTTP_TMP/chrome-nav-unify-$mode.log" & pid=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$port/json/list" >/dev/null && break; sleep .05; done
+    if timeout 60 node "$ROOT/tests/helpers/chrome_nav_unify.mjs" \
+        "$port" "$HTTP_BASE_URL" "$mode" >"$HTTP_TMP/chrome-nav-unify-$mode-test.out" 2>>"$HTTP_TMP/chrome-nav-unify-$mode.log"; then
+        sed -n '1,40p' "$HTTP_TMP/chrome-nav-unify-$mode-test.out"
+        pass "$id"
+    else
+        sed -n '1,200p' "$HTTP_TMP/chrome-nav-unify-$mode-test.out" >&2
+        sed -n '1,80p' "$HTTP_TMP/chrome-nav-unify-$mode.log" >&2
+        fail "$id" "Chromium nav unify mode=$mode falló"
+    fi
+    kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+}
+
+# Ensure default Stage-2 footer/benefits for unify checks
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_home_content'
+assert_status H-NAV-UNIFY-RESTORE 302
+pass H-NAV-UNIFY-RESTORE
+
+run_nav_unify_chrome unify H-NAV-UNIFY-DESKTOP
+run_nav_unify_chrome mobile H-NAV-UNIFY-MOBILE
+
+# Footer toggles off: no empty contact column
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+settings_form 'HTTP Test Store' \
+    -F 'footer_show_logo=1' \
+    -F 'footer_description=Tecnología, periféricos y soluciones para tu equipo.' \
+    -F 'footer_instagram_text=Seguinos en Instagram' \
+    -F 'footer_whatsapp_text=Contactar por WhatsApp' \
+    -F 'home_order_featured=1' \
+    -F 'home_order_promo=2' \
+    -F 'home_order_categories=3' \
+    -F 'home_order_benefits=4' \
+    -F 'benefits_enabled=1' \
+    -F 'benefits_section_title=¿Por qué elegir CyberLeo?' \
+    -F 'benefit_1_icon=bi-truck' \
+    -F 'benefit_1_title=Envíos y entregas' \
+    -F 'benefit_1_text=Coordinamos la entrega o retiro de tu compra.' \
+    -F 'benefit_2_icon=bi-shield-check' \
+    -F 'benefit_2_title=Compra segura' \
+    -F 'benefit_2_text=Stock actualizado y pedido confirmado por WhatsApp.' \
+    -F 'benefit_3_icon=bi-headset' \
+    -F 'benefit_3_title=Atención personalizada' \
+    -F 'benefit_3_text=Te asesoramos para elegir la mejor opción.'
+assert_status H-NAV-FOOTER-TOGGLES-SAVE 302
+# Explicitly clear optional footer toggles (unchecked checkboxes omitted)
+sql "UPDATE store_settings SET setting_value='0' WHERE setting_key IN ('footer_show_instagram','footer_show_whatsapp','footer_show_business_hours','footer_show_location')"
+pass H-NAV-FOOTER-TOGGLES-SAVE
+run_nav_unify_chrome footer-toggles H-NAV-FOOTER-TOGGLES
 
 # Error interno no expuesto
 sql "CREATE TRIGGER settings_home_fail BEFORE UPDATE ON store_settings FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='SQLSTATE internal path=/workspace/secret.sql'"

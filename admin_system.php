@@ -29,7 +29,7 @@ $overall = $summary['status'];
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
         body { background: #f3f8fc; }
-        .navbar { background: #071a33; }
+        .admin-navbar { background: #071a33; }
         .status-pill { font-size: .85rem; letter-spacing: .02em; }
         @media (max-width: 420px) {
             h1 { font-size: 1.35rem; }
@@ -38,25 +38,7 @@ $overall = $summary['status'];
     </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark">
-    <div class="container">
-        <a class="navbar-brand fw-bold" href="admin_products.php">
-            <i class="bi bi-box-seam" aria-hidden="true"></i> Panel de Admin
-        </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNavbar" aria-controls="adminNavbar" aria-expanded="false" aria-label="Menú">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="adminNavbar">
-            <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-                <li class="nav-item"><a class="nav-link" href="admin_products.php">Productos</a></li>
-                <li class="nav-item"><a class="nav-link" href="admin_categories.php">Categorías</a></li>
-                <li class="nav-item"><a class="nav-link" href="admin_orders.php">Pedidos</a></li>
-                <li class="nav-item"><a class="nav-link" href="admin_settings.php">Configuración</a></li>
-                <li class="nav-item"><a class="nav-link active" href="admin_system.php" aria-current="page">Sistema</a></li>
-            </ul>
-        </div>
-    </div>
-</nav>
+<?php require_once __DIR__ . '/components/admin_nav.php'; ?>
 
 <div class="container my-4">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">

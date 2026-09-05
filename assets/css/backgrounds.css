@@ -69,7 +69,8 @@ html {
 }
 
 @media print {
-    .navbar,
+    .site-navbar,
+    .admin-navbar,
     .footer,
     .floating-cart {
         display: none !important;
