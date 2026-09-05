@@ -1799,7 +1799,7 @@ request GET admin_settings.php
 CSRF_TOKEN="$(csrf_from_body)"
 request POST admin_settings.php \
     -F "csrf_token=$CSRF_TOKEN" \
-    -F 'settings_action=restore_visual_identity'
+    -F 'settings_action=restore_cyberleo'
 assert_status H-NAV-ALT-THEME-RESTORE 302
 pass H-NAV-ALT-THEME-RESTORE
 

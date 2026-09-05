@@ -209,12 +209,13 @@ try {
         `nav style mismatch on ${key}: home=${home[key]} category=${category[key]} cart=${cart[key]}`);
     }
 
-    // Only one aria-current on category page, and it must match the navigated id.
+    // Only one logical aria-current target on category page (nav + footer may both mark it).
     const catIdMatch = String(categoryHref).match(/[?&]id=(\d+)/);
     requireValue(!!catIdMatch, 'category href missing id');
+    const uniqueCatActive = [...new Set(category.activeHrefs.map(String))];
     requireValue(
-      category.activeHrefs.length === 1
-        && String(category.activeHrefs[0]).includes(`id=${catIdMatch[1]}`),
+      uniqueCatActive.length === 1
+        && uniqueCatActive[0].includes(`id=${catIdMatch[1]}`),
       `category active mismatch: ${JSON.stringify(category.activeHrefs)} vs ${categoryHref}`,
     );
 
