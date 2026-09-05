@@ -37,7 +37,11 @@ $showBrandCol = $showLogo || $footerDescription !== '';
 $showContactCol = $showIg || $showWa || $showHours || $showLocation;
 
 $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
-$activeCategoryId = public_nav_active_category_id($currentScript, $_GET);
+$resolvedCategoryId = null;
+if ($currentScript === 'category.php' && isset($category_id) && is_numeric($category_id) && (int) $category_id > 0) {
+    $resolvedCategoryId = (int) $category_id;
+}
+$activeCategoryId = public_nav_active_category_id($currentScript, $_GET, $resolvedCategoryId);
 $footerNavItems = public_nav_footer_items(
     public_nav_items($categories, $currentScript, $activeCategoryId)
 );
@@ -92,7 +96,7 @@ $colCount = 1 + ($showBrandCol ? 1 : 0) + ($showContactCol ? 1 : 0);
                             class="site-footer-social site-footer-ig"
                             href="<?= htmlspecialchars($storeSettings['instagram_url']) ?>"
                             target="_blank"
-                            rel="noopener"
+                            rel="noopener noreferrer"
                         >
                             <i class="bi bi-instagram" aria-hidden="true"></i>
                             <span><?= htmlspecialchars($igText) ?></span>
@@ -105,7 +109,7 @@ $colCount = 1 + ($showBrandCol ? 1 : 0) + ($showContactCol ? 1 : 0);
                             class="site-footer-social site-footer-wa"
                             href="https://wa.me/<?= htmlspecialchars($storeSettings['whatsapp_number']) ?>?text=<?= urlencode('Hola ' . $storeSettings['store_name'] . ', quisiera hacer una consulta.') ?>"
                             target="_blank"
-                            rel="noopener"
+                            rel="noopener noreferrer"
                         >
                             <i class="bi bi-whatsapp" aria-hidden="true"></i>
                             <span><?= htmlspecialchars($waText) ?></span>

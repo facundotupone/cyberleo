@@ -113,6 +113,14 @@ const measureNav = async () => evaluate(`(() => {
     markup: nav.outerHTML.replace(/\\s+/g, ' ').slice(0, 400),
     activeHrefs: [...nav.querySelectorAll('[aria-current="page"]')].map(a => a.getAttribute('href')),
     footerPresent: !!document.querySelector('footer.site-footer, footer.footer'),
+    footerBg: (() => {
+      const f = document.querySelector('footer.site-footer, footer.footer');
+      return f ? getComputedStyle(f).backgroundColor : '';
+    })(),
+    footerColor: (() => {
+      const f = document.querySelector('footer.site-footer, footer.footer');
+      return f ? getComputedStyle(f).color : '';
+    })(),
     footerCols: [...document.querySelectorAll('.site-footer-col')].map(col => ({
       className: col.className,
       empty: col.textContent.trim() === '',
@@ -194,12 +202,41 @@ try {
     requireValue(cart.footerPresent, 'cart footer missing');
     requireValue(cart.activeHrefs.some(h => h === 'cart.php' || /cart\.php$/.test(String(h))), 'cart active missing');
 
-    for (const key of ['height', 'background', 'logoWidth', 'logoHeight', 'linkFont', 'linkPadding', 'cartDisplay', 'togglerDisplay']) {
+    for (const key of ['height', 'background', 'logoWidth', 'logoHeight', 'linkFont', 'linkPadding', 'cartDisplay', 'togglerDisplay', 'footerBg', 'footerColor']) {
       requireValue(key === 'height' || key === 'logoWidth' || key === 'logoHeight'
         ? near(home[key], category[key]) && near(home[key], cart[key])
         : home[key] === category[key] && home[key] === cart[key],
         `nav style mismatch on ${key}: home=${home[key]} category=${category[key]} cart=${cart[key]}`);
     }
+
+    // Only one aria-current on category page, and it must match the navigated id.
+    const catIdMatch = String(categoryHref).match(/[?&]id=(\d+)/);
+    requireValue(!!catIdMatch, 'category href missing id');
+    requireValue(
+      category.activeHrefs.length === 1
+        && String(category.activeHrefs[0]).includes(`id=${catIdMatch[1]}`),
+      `category active mismatch: ${JSON.stringify(category.activeHrefs)} vs ${categoryHref}`,
+    );
+
+    // Invalid category id should redirect home and only activate Inicio.
+    stage = 'category-invalid';
+    currentUrl = new URL('category.php?id=999999', base).href;
+    await call('Page.navigate', { url: currentUrl });
+    await waitFor(
+      'redirect away from invalid category',
+      `document.readyState === 'complete' && /index\\.php$/.test(location.pathname)`,
+    );
+    currentUrl = await evaluate('location.href');
+    await sleep(250);
+    const invalidPage = await evaluate(`(() => ({
+      path: location.pathname.split('/').pop(),
+      active: [...document.querySelectorAll('[aria-current="page"]')].map(a => a.getAttribute('href')),
+    }))()`);
+    requireValue(invalidPage.path === 'index.php', 'invalid category id did not redirect home');
+    requireValue(
+      invalidPage.active.length === 1 && invalidPage.active[0] === 'index.php',
+      `invalid category left wrong active: ${JSON.stringify(invalidPage.active)}`,
+    );
 
     // Benefits layout on home at desktop.
     await navigate('index.php', 'benefits-desktop');
@@ -217,8 +254,27 @@ try {
     })()`);
     requireValue(benefits && benefits.count === 3, 'expected 3 benefits');
     requireValue(benefits.columns, 'benefits not in columns on desktop');
-    requireValue(/CyberLeo|Beneficio|Comprar|elegir/i.test(benefits.title), 'benefits title missing');
-    requireValue(benefits.iconSize >= 40 && benefits.iconSize <= 52, `icon size out of range: ${benefits.iconSize}`);
+    requireValue(benefits.title.includes('CyberLeo'), 'benefits title missing CyberLeo');
+    requireValue(benefits.iconSize >= 42 && benefits.iconSize <= 48, `icon size out of range: ${benefits.iconSize}`);
+  }
+
+  if (mode === 'benefits-off') {
+    await call('Emulation.setDeviceMetricsOverride', {
+      width: 1440, height: 900, deviceScaleFactor: 1, mobile: false,
+    });
+    await navigate('index.php', 'benefits-off');
+    const probe = await evaluate(`(() => {
+      const section = document.getElementById('beneficios');
+      const featured = document.getElementById('productos-destacados');
+      const footer = document.querySelector('footer.site-footer, footer.footer');
+      return {
+        hasBenefits: !!section,
+        featuredBottom: featured ? featured.getBoundingClientRect().bottom : 0,
+        footerTop: footer ? footer.getBoundingClientRect().top : 0,
+      };
+    })()`);
+    requireValue(!probe.hasBenefits, 'benefits section should be hidden');
+    requireValue(probe.footerTop > probe.featuredBottom, 'layout gap/order broken with benefits off');
   }
 
   if (mode === 'mobile') {
@@ -289,13 +345,16 @@ try {
       const hasContact = !!f.querySelector('.site-footer-contact');
       const hasBrand = !!f.querySelector('.site-footer-brand');
       const hasNav = !!f.querySelector('.site-footer-nav');
+      const grid = f.querySelector('.site-footer-grid');
       return {
         colCount: cols.length,
         emptyCols: cols.filter(c => c.textContent.trim() === '').length,
         hasContact,
         hasBrand,
         hasNav,
+        gridClass: grid ? grid.className : '',
         text: f.textContent,
+        overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
       };
     })()`);
     requireValue(footer, 'footer missing');
@@ -303,6 +362,47 @@ try {
     requireValue(footer.hasNav, 'footer nav column required');
     // When IG/WA/hours/location off, contact column should be absent.
     requireValue(!footer.hasContact, 'contact column should be hidden when toggles off');
+    requireValue(/site-footer-cols-2/.test(footer.gridClass), `expected cols-2 grid, got ${footer.gridClass}`);
+    requireValue(!footer.overflow, 'footer overflow with toggles off');
+  }
+
+  if (mode === 'footer-logo-only') {
+    await call('Emulation.setDeviceMetricsOverride', {
+      width: 1440, height: 900, deviceScaleFactor: 1, mobile: false,
+    });
+    await navigate('index.php', 'footer-logo-only');
+    const footer = await evaluate(`(() => {
+      const f = document.querySelector('footer.site-footer, footer.footer');
+      if (!f) return null;
+      const cols = [...f.querySelectorAll('.site-footer-col')];
+      return {
+        emptyCols: cols.filter(c => c.textContent.trim() === '').length,
+        hasContact: !!f.querySelector('.site-footer-contact'),
+        hasBrand: !!f.querySelector('.site-footer-brand'),
+        hasNav: !!f.querySelector('.site-footer-nav'),
+        hasIg: /instagram/i.test(f.textContent),
+        hasWa: /whatsapp/i.test(f.textContent),
+        gridClass: (f.querySelector('.site-footer-grid') || {}).className || '',
+      };
+    })()`);
+    requireValue(footer && footer.emptyCols === 0, 'logo-only footer empty columns');
+    requireValue(footer.hasBrand && footer.hasNav && !footer.hasContact, 'logo-only should keep brand+nav only');
+    requireValue(!footer.hasIg && !footer.hasWa, 'social links should be hidden');
+    requireValue(/site-footer-cols-2/.test(footer.gridClass), 'logo-only grid should be cols-2');
+  }
+
+  if (mode === 'alt-theme') {
+    await call('Emulation.setDeviceMetricsOverride', {
+      width: 1440, height: 900, deviceScaleFactor: 1, mobile: false,
+    });
+    await navigate('index.php', 'alt-theme-home');
+    const home = await measureNav();
+    await navigate('cart.php', 'alt-theme-cart');
+    const cart = await measureNav();
+    requireValue(home && cart, 'alt theme nav missing');
+    requireValue(home.footerBg === cart.footerBg && home.background === cart.background, 'alt theme header/footer diverge across pages');
+    requireValue(home.activeHrefs.some(h => h === 'index.php'), 'alt theme home active missing');
+    requireValue(cart.activeHrefs.some(h => h === 'cart.php'), 'alt theme cart active missing');
   }
 
   assertNoBrowserErrors();

@@ -65,11 +65,16 @@ function public_nav_items(array $categories, string $currentScript, ?int $active
 
 /**
  * Resolve active category id from request context.
+ * Prefer a page-resolved category id when category.php already computed it
+ * (e.g. via product_id), so aria-current matches the rendered content.
  */
-function public_nav_active_category_id(string $currentScript, array $query): ?int
+function public_nav_active_category_id(string $currentScript, array $query, ?int $resolvedCategoryId = null): ?int
 {
     if ($currentScript !== 'category.php') {
         return null;
+    }
+    if ($resolvedCategoryId !== null && $resolvedCategoryId > 0) {
+        return $resolvedCategoryId;
     }
     if (!isset($query['id']) || !is_numeric($query['id'])) {
         return null;
@@ -79,7 +84,7 @@ function public_nav_active_category_id(string $currentScript, array $query): ?in
 }
 
 /**
- * Footer quick links exclude the cart button chrome but keep the same allowlist hrefs.
+ * Footer quick links reuse the same public allowlist (including Carrito).
  *
  * @param list<array{id:string,label:string,href:string,current:bool,type:string}> $items
  * @return list<array{id:string,label:string,href:string,current:bool,type:string}>

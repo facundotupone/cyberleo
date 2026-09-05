@@ -1753,6 +1753,56 @@ sql "UPDATE store_settings SET setting_value='0' WHERE setting_key IN ('footer_s
 pass H-NAV-FOOTER-TOGGLES-SAVE
 run_nav_unify_chrome footer-toggles H-NAV-FOOTER-TOGGLES
 
+# Footer logo + description + nav only (explicit social off)
+sql "UPDATE store_settings SET setting_value='1' WHERE setting_key='footer_show_logo'"
+sql "UPDATE store_settings SET setting_value='0' WHERE setting_key IN ('footer_show_instagram','footer_show_whatsapp','footer_show_business_hours','footer_show_location')"
+run_nav_unify_chrome footer-logo-only H-NAV-FOOTER-LOGO-ONLY
+
+# Benefits disabled should remove section without breaking layout
+sql "UPDATE store_settings SET setting_value='0' WHERE setting_key='benefits_enabled'"
+run_nav_unify_chrome benefits-off H-NAV-BENEFITS-OFF
+sql "UPDATE store_settings SET setting_value='1' WHERE setting_key='benefits_enabled'"
+
+# Alternate theme still keeps shared header/footer computed styles across pages
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+settings_form 'HTTP Test Store' \
+    -F 'nav_style=navy' \
+    -F 'brand_primary_color=#0b3d91' \
+    -F 'brand_secondary_color=#14b8a6' \
+    -F 'brand_navy_color=#041427' \
+    -F 'brand_background_color=#eef6ff' \
+    -F 'brand_text_color=#0f172a' \
+    -F 'footer_show_logo=1' \
+    -F 'footer_description=Tecnología, periféricos y soluciones para tu equipo.' \
+    -F 'footer_instagram_text=Seguinos en Instagram' \
+    -F 'footer_whatsapp_text=Contactar por WhatsApp' \
+    -F 'home_order_featured=1' \
+    -F 'home_order_promo=2' \
+    -F 'home_order_categories=3' \
+    -F 'home_order_benefits=4' \
+    -F 'benefits_enabled=1' \
+    -F 'benefits_section_title=¿Por qué elegir CyberLeo?' \
+    -F 'benefit_1_icon=bi-truck' \
+    -F 'benefit_1_title=Envíos y entregas' \
+    -F 'benefit_1_text=Coordinamos la entrega o retiro de tu compra.' \
+    -F 'benefit_2_icon=bi-shield-check' \
+    -F 'benefit_2_title=Compra segura' \
+    -F 'benefit_2_text=Stock actualizado y pedido confirmado por WhatsApp.' \
+    -F 'benefit_3_icon=bi-headset' \
+    -F 'benefit_3_title=Atención personalizada' \
+    -F 'benefit_3_text=Te asesoramos para elegir la mejor opción.'
+assert_status H-NAV-ALT-THEME-SAVE 302
+pass H-NAV-ALT-THEME-SAVE
+run_nav_unify_chrome alt-theme H-NAV-ALT-THEME
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_visual_identity'
+assert_status H-NAV-ALT-THEME-RESTORE 302
+pass H-NAV-ALT-THEME-RESTORE
+
 # Error interno no expuesto
 sql "CREATE TRIGGER settings_home_fail BEFORE UPDATE ON store_settings FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='SQLSTATE internal path=/workspace/secret.sql'"
 settings_form 'HTTP Test Store' \

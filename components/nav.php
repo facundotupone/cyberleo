@@ -16,7 +16,11 @@ if (!isset($homeContent)) {
 }
 
 $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
-$activeCategoryId = public_nav_active_category_id($currentScript, $_GET);
+$resolvedCategoryId = null;
+if ($currentScript === 'category.php' && isset($category_id) && is_numeric($category_id) && (int) $category_id > 0) {
+    $resolvedCategoryId = (int) $category_id;
+}
+$activeCategoryId = public_nav_active_category_id($currentScript, $_GET, $resolvedCategoryId);
 $navItems = public_nav_items($categories, $currentScript, $activeCategoryId);
 
 $brandLogoPath = is_safe_brand_logo_path($themeSettings['brand_logo'] ?? '')

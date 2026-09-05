@@ -61,6 +61,18 @@ try {
     nuk($items[1]['id'] === 'category-3' && $items[1]['current'] === true, 'NAV-11', 'categoría activa marcada');
     nuk($items[2]['type'] === 'cart' && $items[2]['href'] === 'cart.php', 'NAV-12', 'carrito al final');
 
+    // Resolved category id (product_id flows) must drive aria-current.
+    $resolved = public_nav_active_category_id('category.php', ['id' => '1', 'product_id' => '99'], 7);
+    nuk($resolved === 7, 'NAV-12b', 'categoría resuelta prioriza id efectivo de página');
+    $fromQuery = public_nav_active_category_id('category.php', ['id' => '4']);
+    nuk($fromQuery === 4, 'NAV-12c', 'sin resolución usa id de query');
+    $invalid = public_nav_active_category_id('category.php', ['id' => '0']);
+    nuk($invalid === null, 'NAV-12d', 'id inválido no activa categoría');
+    $notCategory = public_nav_active_category_id('index.php', ['id' => '4'], 4);
+    nuk($notCategory === null, 'NAV-12e', 'fuera de category.php no hay categoría activa');
+    $mismatchItems = public_nav_items([['id' => 1, 'name' => 'A'], ['id' => 7, 'name' => 'B']], 'category.php', 7);
+    nuk($mismatchItems[1]['current'] === false && $mismatchItems[2]['current'] === true, 'NAV-12f', 'solo la categoría resuelta queda activa');
+
     $adminPages = [
         'admin_products.php',
         'admin_categories.php',

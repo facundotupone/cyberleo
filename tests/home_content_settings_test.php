@@ -262,12 +262,9 @@ try {
     $titleOk = validate_home_content_setting('benefits_section_title', 'Comprar en CyberLeo');
     hok($titleOk === 'Comprar en CyberLeo', 'HC-27', 'título de sección de beneficios válido');
     hok(validate_home_content_setting('benefits_section_title', '') === null, 'HC-28', 'título de sección vacío rechazado');
-    hok(
-        validate_home_content_setting('benefits_section_title', str_repeat('a', 81)) === null
-        || strlen((string) validate_home_content_setting('benefits_section_title', str_repeat('a', 81))) <= 80,
-        'HC-29',
-        'título de sección respeta límite'
-    );
+    $longTitle = validate_home_content_setting('benefits_section_title', str_repeat('a', 81));
+    hok(is_string($longTitle) && strlen($longTitle) === 80, 'HC-29', 'título de sección se trunca a 80');
+    hok(validate_home_content_setting('benefits_section_title', ['x']) === null, 'HC-29b', 'array en título de sección rechazado');
 
     $collectTitle = collect_home_content_settings_from_post([
         'announcement_style' => 'primary',
