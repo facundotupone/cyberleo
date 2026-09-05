@@ -249,12 +249,12 @@ foreach ($products as $product) {
             min-height: 100vh;
         }
 
-        .navbar {
+        .admin-navbar {
             background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
-        .navbar-brand {
+        .admin-navbar-brand, .admin-navbar .navbar-brand {
             font-weight: 700;
             font-size: 1.5rem;
             letter-spacing: 1px;
@@ -623,45 +623,7 @@ foreach ($products as $product) {
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="#">
-                <i class="bi bi-box-seam"></i> Panel de Admin
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNavbar">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="adminNavbar">
-                <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="admin_products.php">
-                            <i class="bi bi-box-seam"></i> Productos
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="admin_categories.php">
-                            <i class="bi bi-tags"></i> Categorías
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="admin_orders.php">
-                            <i class="bi bi-receipt"></i> Pedidos
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="admin_settings.php">
-                            <i class="bi bi-sliders"></i> Configuración
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="admin_system.php">
-                            <i class="bi bi-heartbeat"></i> Sistema
-                        </a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    <?php require_once __DIR__ . '/components/admin_nav.php'; ?>
 
     <div class="container-fluid my-4">
         <div class="d-flex align-items-center gap-3 mb-4">
@@ -1341,6 +1303,6 @@ document.getElementById('searchAdminProducts').addEventListener('input', functio
     });
 });
 </script>
-</body>
 <?php require_once 'components/footer.php'; ?>
+</body>
 </html>

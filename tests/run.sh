@@ -152,6 +152,7 @@ TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=roo
     php "$ROOT/tests/theme_settings_test.php"
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/home_content_settings_test.php"
+php "$ROOT/tests/public_nav_unification_test.php"
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/catalog_display_settings_test.php"
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \

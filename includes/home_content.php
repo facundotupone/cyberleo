@@ -27,6 +27,7 @@ function home_content_default_settings(): array {
         'home_section_order' => 'featured,promo,categories,benefits',
 
         'benefits_enabled' => '1',
+        'benefits_section_title' => '¿Por qué elegir CyberLeo?',
         'benefit_1_icon' => 'bi-truck',
         'benefit_1_title' => 'Envíos y entregas',
         'benefit_1_text' => 'Coordinamos la entrega o retiro de tu compra.',
@@ -334,6 +335,7 @@ function validate_home_content_setting(string $key, $raw): ?string {
         'promo_text' => 240,
         'promo_button_text' => 60,
         'promo_button_url' => 180,
+        'benefits_section_title' => 80,
         'benefit_1_title' => 60,
         'benefit_1_text' => 180,
         'benefit_2_title' => 60,
@@ -360,6 +362,9 @@ function validate_home_content_setting(string $key, $raw): ?string {
             return $text;
         }
         if ($key === 'promo_button_text' && $text === '') {
+            return null;
+        }
+        if ($key === 'benefits_section_title' && $text === '') {
             return null;
         }
         if (str_starts_with($key, 'benefit_') && str_ends_with($key, '_title') && $text === '') {
@@ -528,6 +533,16 @@ function collect_home_content_settings_from_post(array $post): array {
 
     if (($values['promo_enabled'] ?? '0') === '1' && ($values['promo_title'] ?? '') === '' && ($values['promo_text'] ?? '') === '') {
         $errors[] = 'Activaste el banner promocional: completá al menos título o texto.';
+    }
+
+    $sectionTitle = validate_home_content_setting(
+        'benefits_section_title',
+        $post['benefits_section_title'] ?? $defaults['benefits_section_title']
+    );
+    if ($sectionTitle === null) {
+        $errors[] = 'Título de la sección de beneficios inválido.';
+    } else {
+        $values['benefits_section_title'] = $sectionTitle;
     }
 
     for ($i = 1; $i <= 3; $i++) {

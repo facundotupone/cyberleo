@@ -281,16 +281,7 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
 <style><?= theme_css_custom_properties($theme) ?></style>
 </head>
 <body class="bg-light">
-<nav class="navbar navbar-dark" style="background:#071a33">
-    <div class="container">
-        <a class="navbar-brand" href="admin_products.php">Administración</a>
-        <div>
-            <a class="btn btn-outline-light btn-sm" href="admin_products.php">Productos</a>
-            <a class="btn btn-outline-light btn-sm" href="admin_orders.php">Pedidos</a>
-            <a class="btn btn-outline-light btn-sm" href="admin_system.php">Sistema</a>
-        </div>
-    </div>
-</nav>
+<?php require_once __DIR__ . '/components/admin_nav.php'; ?>
 <main class="container py-4" style="max-width:980px">
     <h1 class="h2"><i class="bi bi-sliders" aria-hidden="true"></i> Configuración de la tienda</h1>
     <p class="text-muted">Los cambios se reflejan en el sitio público. La identidad visual y el contenido de portada son opcionales y conservan CyberLeo por defecto.</p>
@@ -599,6 +590,10 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
                         <input class="form-check-input" type="checkbox" id="benefits_enabled" name="benefits_enabled" value="1"<?= $home['benefits_enabled'] === '1' ? ' checked' : '' ?>>
                         <label class="form-check-label" for="benefits_enabled">Mostrar bloque de beneficios</label>
                     </div>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label" for="benefits_section_title">Título de la sección</label>
+                    <input class="form-control" id="benefits_section_title" name="benefits_section_title" maxlength="80" value="<?= htmlspecialchars($home['benefits_section_title']) ?>">
                 </div>
                 <?php for ($i = 1; $i <= 3; $i++): ?>
                 <div class="col-12"><h3 class="h6 mb-0">Beneficio <?= $i ?></h3></div>
@@ -1077,6 +1072,7 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
                     <span class="btn btn-sm btn-light" id="preview-promo-button">Ver más</span>
                 </div>
                 <div id="preview-benefits" class="home-preview-benefits">
+                    <div id="preview-benefits-title" class="home-preview-benefits-title"></div>
                     <?php for ($i = 1; $i <= 3; $i++): ?>
                     <div class="home-preview-benefit">
                         <i id="preview-benefit-<?= $i ?>-icon" class="bi bi-truck" aria-hidden="true"></i>
@@ -1210,6 +1206,7 @@ $logoSrc = is_safe_brand_logo_path($theme['brand_logo']) ? $theme['brand_logo'] 
         </div>
     </section>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 window.THEME_PREVIEW_BOOT = <?= json_encode($previewPayload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) ?>;
 </script>

@@ -261,36 +261,47 @@ try {
     requireValue(announcement && announcement.includes('Aviso Stage2'), 'announcement missing');
   }
 
-  if (mode === 'benefits' || mode === 'mobile') {
+    if (mode === 'benefits' || mode === 'mobile') {
     const benefits = await evaluate(`(() => {
       const section = document.getElementById('beneficios');
       if (!section) return null;
       const blocks = [...section.querySelectorAll('.benefit-block')];
+      const title = ((section.querySelector('#beneficios-heading') || {}).textContent || '').trim();
       return {
         count: blocks.length,
         titles: blocks.map(b => (b.querySelector('.benefit-title') || {}).textContent || '').map(t => String(t).trim()),
+        sectionTitle: title,
         stacked: window.innerWidth <= 400
           ? blocks.every((b, i, arr) => i === 0 || b.getBoundingClientRect().top >= arr[i-1].getBoundingClientRect().bottom - 2)
+          : true,
+        columns: window.innerWidth >= 768
+          ? blocks.length >= 2 && Math.abs(blocks[0].getBoundingClientRect().top - blocks[1].getBoundingClientRect().top) <= 4
           : true,
       };
     })()`);
     requireValue(benefits && benefits.count === 3, 'expected 3 benefit blocks');
     requireValue(benefits.titles.some(t => t.includes('Envíos')), 'benefit titles missing');
     requireValue(benefits.stacked, 'benefits not stacked on mobile');
+    requireValue(benefits.columns, 'benefits not columnar on desktop');
+    requireValue(/CyberLeo|Beneficio|Comprar|elegir/i.test(benefits.sectionTitle), 'benefits section title missing');
   }
 
   if (mode === 'footer' || mode === 'restore') {
     const footer = await evaluate(`(() => {
-      const f = document.querySelector('footer.footer');
+      const f = document.querySelector('footer.site-footer, footer.footer');
       if (!f) return null;
+      const cols = [...f.querySelectorAll('.site-footer-col')];
       return {
         text: f.textContent,
         hasHours: /Lunes a Viernes/.test(f.textContent),
         hasLocation: /Buenos Aires/.test(f.textContent),
         hasIg: /Instagram Stage2|Seguinos en Instagram/.test(f.textContent),
+        emptyCols: cols.filter(c => c.textContent.trim() === '').length,
+        navy: getComputedStyle(f).backgroundColor,
       };
     })()`);
     requireValue(footer, 'footer missing');
+    requireValue(footer.emptyCols === 0, 'footer has empty columns');
     if (mode === 'footer') {
       requireValue(footer.hasHours, 'business hours missing');
       requireValue(footer.hasLocation, 'location missing');

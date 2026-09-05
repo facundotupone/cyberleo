@@ -63,6 +63,7 @@
         var benefits = $('preview-benefits');
         if (benefits) {
             benefits.hidden = !benefitsEnabled;
+            setText('preview-benefits-title', val('benefits_section_title') || '¿Por qué elegir CyberLeo?');
             for (var i = 1; i <= 3; i++) {
                 setIcon('preview-benefit-' + i + '-icon', val('benefit_' + i + '_icon'));
                 setText('preview-benefit-' + i + '-title', val('benefit_' + i + '_title'));
@@ -109,7 +110,7 @@
         var ids = [
             'announcement_enabled', 'announcement_text', 'announcement_url', 'announcement_style',
             'promo_enabled', 'promo_title', 'promo_text', 'promo_button_text', 'promo_button_url',
-            'benefits_enabled',
+            'benefits_enabled', 'benefits_section_title',
             'benefit_1_icon', 'benefit_1_title', 'benefit_1_text',
             'benefit_2_icon', 'benefit_2_title', 'benefit_2_text',
             'benefit_3_icon', 'benefit_3_title', 'benefit_3_text',
