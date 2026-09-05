@@ -1,6 +1,7 @@
-const [port, base, mode = 'desktop'] = process.argv.slice(2);
+const [port, base, mode = 'desktop', scenario = 'home'] = process.argv.slice(2);
 const commandTimeoutMs = 5_000;
 const stageTimeoutMs = 12_000;
+const adminPassword = process.env.HTTP_TEST_ADMIN_PASSWORD || '';
 
 let stage = 'startup';
 let currentUrl = base || '(missing base URL)';
@@ -9,7 +10,7 @@ let nextId = 0;
 const pending = new Map();
 const browserErrors = [];
 
-const context = message => `${message} [mode=${mode} stage=${stage} url=${currentUrl}]`;
+const context = message => `${message} [mode=${mode} scenario=${scenario} stage=${stage} url=${currentUrl}]`;
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 const withTimeout = (promise, milliseconds, description) => {
   let timer;
@@ -97,6 +98,140 @@ const parseRgb = value => {
   return {r: Number(m[1]), g: Number(m[2]), b: Number(m[3])};
 };
 
+const assertNoHorizontalOverflow = async () => {
+  const overflow = await evaluate(`(() => {
+    const doc = document.documentElement;
+    return {
+      scrollWidth: doc.scrollWidth,
+      clientWidth: doc.clientWidth,
+      overflow: doc.scrollWidth > doc.clientWidth + 1,
+    };
+  })()`);
+  requireValue(!overflow.overflow, `horizontal overflow: scroll=${overflow.scrollWidth} client=${overflow.clientWidth}`);
+};
+
+const assertVersionedAssets = async ({expectCatalogJs = false, expectCartJs = false} = {}) => {
+  const assets = await evaluate(`(() => {
+    const hrefs = [...document.querySelectorAll('link[rel="stylesheet"]')].map(el => el.getAttribute('href') || '');
+    const scripts = [...document.querySelectorAll('script[src]')].map(el => el.getAttribute('src') || '');
+    return {hrefs, scripts};
+  })()`);
+  const style = assets.hrefs.find(h => h.includes('assets/css/style.css'));
+  requireValue(!!style, 'missing style.css link');
+  requireValue(/assets\/css\/style\.css\?v=[a-zA-Z0-9]+/.test(style), `style.css missing safe ?v=: ${style}`);
+  requireValue(!/\?v=.*\?/.test(style), `double query on style.css: ${style}`);
+  const cdnBootstrap = assets.hrefs.some(h => /cdn\.jsdelivr.*bootstrap.*\.css/.test(h));
+  requireValue(cdnBootstrap, 'bootstrap CDN css missing');
+  requireValue(!assets.hrefs.some(h => /cdn\.jsdelivr.*bootstrap.*\.css\?v=/.test(h)), 'bootstrap CDN must not be versioned');
+  if (expectCatalogJs) {
+    const js = assets.scripts.find(s => s.includes('catalog-cards.js'));
+    requireValue(!!js && /catalog-cards\.js\?v=[a-zA-Z0-9]+/.test(js), `catalog-cards.js missing ?v=: ${js}`);
+  }
+  if (expectCartJs) {
+    const js = assets.scripts.find(s => s.includes('cart-checkout.js'));
+    requireValue(!!js && /cart-checkout\.js\?v=[a-zA-Z0-9]+/.test(js), `cart-checkout.js missing ?v=: ${js}`);
+  }
+};
+
+const assertFooterNavy = async () => {
+  const probe = await evaluate(`(() => {
+    const footer = document.querySelector('footer.site-footer, footer.footer, footer');
+    if (!footer) return null;
+    const cs = getComputedStyle(footer);
+    return {
+      className: footer.className,
+      bg: cs.backgroundColor,
+      hasBanner: !!document.querySelector('.footer-banner'),
+      emptyCols: [...document.querySelectorAll('.site-footer-col')].filter(c => c.textContent.trim() === '').length,
+      hasGrid: !!document.querySelector('.site-footer-grid'),
+    };
+  })()`);
+  requireValue(!!probe, 'footer missing');
+  requireValue(String(probe.className).includes('site-footer'), `footer missing site-footer: ${probe.className}`);
+  requireValue(!probe.hasBanner, 'legacy .footer-banner still present');
+  requireValue(probe.hasGrid, 'missing .site-footer-grid');
+  requireValue(probe.emptyCols === 0, `empty footer cols: ${probe.emptyCols}`);
+  const rgb = parseRgb(probe.bg);
+  requireValue(!!rgb, `footer bg unparsed: ${probe.bg}`);
+  // Exact target rgb(7, 26, 51) with tiny tolerance for color-mix/gamma.
+  requireValue(
+    Math.abs(rgb.r - 7) <= 2 && Math.abs(rgb.g - 26) <= 2 && Math.abs(rgb.b - 51) <= 2,
+    `footer not rgb(7,26,51): ${probe.bg}`,
+  );
+  return probe;
+};
+
+const assertBenefitsOn = async () => {
+  const probe = await evaluate(`(() => {
+    const block = document.querySelector('.benefit-block');
+    const icon = document.querySelector('.benefit-icon i, .benefit-icon');
+    if (!block) return null;
+    const blockCs = getComputedStyle(block);
+    const iconCs = icon ? getComputedStyle(icon) : null;
+    return {
+      bg: blockCs.backgroundColor,
+      padTop: parseFloat(blockCs.paddingTop),
+      padRight: parseFloat(blockCs.paddingRight),
+      padBottom: parseFloat(blockCs.paddingBottom),
+      padLeft: parseFloat(blockCs.paddingLeft),
+      iconFont: iconCs ? parseFloat(iconCs.fontSize) : 0,
+      sectionPresent: !!document.querySelector('.benefits-section, .benefits-surface'),
+    };
+  })()`);
+  requireValue(!!probe, 'benefit-block missing while benefits expected on');
+  requireValue(probe.sectionPresent, 'benefits section missing');
+  requireValue(!/transparent|rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/i.test(String(probe.bg)), `benefit transparent: ${probe.bg}`);
+  const rgb = parseRgb(probe.bg);
+  requireValue(!!rgb && rgb.r > 240 && rgb.g > 240 && rgb.b > 240, `benefit not white-ish: ${probe.bg}`);
+  for (const [name, value] of Object.entries({
+    padTop: probe.padTop,
+    padRight: probe.padRight,
+    padBottom: probe.padBottom,
+    padLeft: probe.padLeft,
+  })) {
+    requireValue(Math.abs(value - 22) <= 0.5, `benefit ${name} != 22px: ${value}`);
+  }
+  requireValue(probe.iconFont >= 42 && probe.iconFont <= 48.5, `icon size < 42px: ${probe.iconFont}`);
+  return probe;
+};
+
+const assertBenefitsOff = async () => {
+  const present = await evaluate(`!!document.querySelector('.benefits-section, .benefit-block')`);
+  requireValue(!present, 'benefits still visible while disabled');
+};
+
+const assertHeroCaps = async isMobile => {
+  const height = await evaluate(`(() => {
+    const hero = document.querySelector('.hero-section');
+    return hero ? Math.round(hero.getBoundingClientRect().height) : 0;
+  })()`);
+  requireValue(height > 0, 'hero missing');
+  if (isMobile) {
+    requireValue(height <= 350, `mobile hero > 350px: ${height}`);
+    requireValue(height >= 250, `mobile hero too short: ${height}`);
+  } else {
+    requireValue(height <= 480, `desktop hero > 480px: ${height}`);
+    requireValue(height >= 300, `desktop hero too short: ${height}`);
+  }
+  return height;
+};
+
+const assertProductMediaCap = async () => {
+  const media = await evaluate(`(() => {
+    const el = document.querySelector('.product-card .product-media, .card-img-container');
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    return {
+      height: Math.round(rect.height),
+      maxHeight: cs.maxHeight,
+    };
+  })()`);
+  if (!media) return null;
+  requireValue(media.height <= 280, `product media > 280px: ${media.height}`);
+  return media;
+};
+
 try {
   requireValue(port && base, 'port/base required');
   const list = await withTimeout(
@@ -146,69 +281,134 @@ try {
     mobile: isMobile,
   });
 
-  await navigate('index.php', 'home');
+  const summary = {ok: true, mode, scenario, browserErrors: 0, pages: {}};
 
-  const probe = await evaluate(`(() => {
-    const hero = document.querySelector('.hero-section');
-    const footer = document.querySelector('footer');
-    const block = document.querySelector('.benefit-block');
-    const icon = document.querySelector('.benefit-icon i, .benefit-icon');
-    const styleLink = document.querySelector('link[href*="assets/css/style.css"]');
-    const bodyCs = getComputedStyle(document.body);
-    const heroCs = hero ? getComputedStyle(hero) : null;
-    const footerCs = footer ? getComputedStyle(footer) : null;
-    const blockCs = block ? getComputedStyle(block) : null;
-    const iconCs = icon ? getComputedStyle(icon) : null;
-    const padTop = blockCs ? parseFloat(blockCs.paddingTop) : 0;
-    const padRight = blockCs ? parseFloat(blockCs.paddingRight) : 0;
-    const padBottom = blockCs ? parseFloat(blockCs.paddingBottom) : 0;
-    const padLeft = blockCs ? parseFloat(blockCs.paddingLeft) : 0;
-    return {
-      release: document.querySelector('meta[name="cyberleo-release"]')?.content || '',
-      styleHref: styleLink ? styleLink.getAttribute('href') : '',
-      bodyBg: bodyCs.backgroundColor,
-      heroHeight: hero ? Math.round(hero.getBoundingClientRect().height) : 0,
-      footerTag: footer ? footer.tagName.toLowerCase() : '',
-      footerClass: footer ? footer.className : '',
-      footerBg: footerCs ? footerCs.backgroundColor : '',
-      hasFooterBanner: !!document.querySelector('.footer-banner'),
-      hasSiteFooterGrid: !!document.querySelector('.site-footer-grid'),
-      benefitBg: blockCs ? blockCs.backgroundColor : '',
-      benefitBorder: blockCs ? blockCs.borderTopWidth : '',
-      benefitPadMin: Math.min(padTop, padRight, padBottom, padLeft),
-      iconFont: iconCs ? parseFloat(iconCs.fontSize) : 0,
-      emptyFooterCols: [...document.querySelectorAll('.site-footer-col')].filter(c => c.textContent.trim() === '').length,
-    };
-  })()`);
+  const runHome = async ({expectBenefits}) => {
+    await navigate('index.php', 'home');
+    const release = await evaluate(`document.querySelector('meta[name="cyberleo-release"]')?.content || ''`);
+    requireValue(release.includes('refinamiento'), `missing release meta: ${release}`);
+    await assertVersionedAssets({expectCatalogJs: true});
+    const footer = await assertFooterNavy();
+    let benefits = null;
+    let heroHeight = null;
+    let productMedia = null;
+    if (expectBenefits) {
+      benefits = await assertBenefitsOn();
+      heroHeight = await assertHeroCaps(isMobile);
+      productMedia = await assertProductMediaCap();
+    } else {
+      await assertBenefitsOff();
+      heroHeight = await assertHeroCaps(isMobile);
+    }
+    await assertNoHorizontalOverflow();
+    summary.pages.home = {footerBg: footer.bg, benefits, heroHeight, productMedia, release};
+  };
 
-  requireValue(probe.release.includes('refinamiento'), `missing release meta: ${probe.release}`);
-  requireValue(/style\.css\?v=/.test(String(probe.styleHref)), `style.css missing ?v=: ${probe.styleHref}`);
-  requireValue(probe.hasSiteFooterGrid, 'missing .site-footer-grid');
-  requireValue(!probe.hasFooterBanner, 'legacy .footer-banner still present');
-  requireValue(String(probe.footerClass).includes('site-footer'), `footer missing site-footer: ${probe.footerClass}`);
-
-  const footerRgb = parseRgb(probe.footerBg);
-  requireValue(!!footerRgb, `footer bg unparsed: ${probe.footerBg}`);
-  // Navy ~ rgb(7, 26, 51)
-  requireValue(footerRgb.r < 40 && footerRgb.g < 50 && footerRgb.b < 90, `footer not navy: ${probe.footerBg}`);
-
-  const benefitRgb = parseRgb(probe.benefitBg);
-  requireValue(!!benefitRgb, `benefit bg unparsed: ${probe.benefitBg}`);
-  requireValue(!/transparent|rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/i.test(String(probe.benefitBg)),
-    `benefit transparent: ${probe.benefitBg}`);
-  requireValue(benefitRgb.r > 240 && benefitRgb.g > 240 && benefitRgb.b > 240, `benefit not white-ish: ${probe.benefitBg}`);
-  requireValue(probe.benefitPadMin >= 20, `benefit padding < 20px: ${probe.benefitPadMin}`);
-  requireValue(probe.iconFont >= 40 && probe.iconFont <= 48.5, `icon size out of range: ${probe.iconFont}`);
-  requireValue(probe.emptyFooterCols === 0, `empty footer cols: ${probe.emptyFooterCols}`);
-
-  if (!isMobile) {
-    requireValue(probe.heroHeight > 0 && probe.heroHeight < 500, `desktop hero too tall: ${probe.heroHeight}`);
+  if (scenario === 'home' || scenario === 'benefits-on') {
+    await runHome({expectBenefits: true});
+  } else if (scenario === 'benefits-off') {
+    await runHome({expectBenefits: false});
+  } else if (scenario === 'footer-full' || scenario === 'footer-logo-only' || scenario === 'footer-toggles-off') {
+    await runHome({expectBenefits: true});
+  } else if (scenario === 'category') {
+    await navigate('index.php', 'home-for-category');
+    const categoryHref = await evaluate(`(() => {
+      const link = [...document.querySelectorAll('a[href*="category.php"]')].find(a => /category\\.php\\?id=\\d+/.test(a.getAttribute('href') || ''));
+      return link ? link.getAttribute('href') : 'category.php?id=1';
+    })()`);
+    await navigate(categoryHref, 'category');
+    await assertVersionedAssets({expectCatalogJs: true});
+    await assertFooterNavy();
+    await assertProductMediaCap();
+    await assertNoHorizontalOverflow();
+    summary.pages.category = {href: categoryHref};
+  } else if (scenario === 'cart-empty') {
+    await navigate('cart.php', 'cart-empty');
+    await assertVersionedAssets({expectCartJs: true});
+    await assertFooterNavy();
+    await assertNoHorizontalOverflow();
+    const empty = await evaluate(`!!document.querySelector('.cart-empty-state, .alert, .cart-summary-card') || document.body.innerText.toLowerCase().includes('carrito')`);
+    requireValue(empty, 'cart page did not render');
+    summary.pages.cartEmpty = true;
+  } else if (scenario === 'cart-with-items') {
+    await navigate('index.php', 'home-for-cart');
+    await waitFor('add-to-cart button', `!!document.querySelector('.add-to-cart:not([disabled])')`);
+    const added = await evaluate(`(() => {
+      const btn = document.querySelector('.add-to-cart:not([disabled])');
+      if (!btn) return {ok: false, reason: 'no add button'};
+      btn.click();
+      return {ok: true};
+    })()`);
+    requireValue(added && added.ok, `could not add to cart: ${JSON.stringify(added)}`);
+    await sleep(500);
+    await navigate('cart.php', 'cart-with-items');
+    await assertVersionedAssets({expectCartJs: true});
+    await assertFooterNavy();
+    await assertNoHorizontalOverflow();
+    const hasItems = await evaluate(`(() => {
+      try {
+        const raw = localStorage.getItem('cart') || localStorage.getItem('cyberleo_cart') || '[]';
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) && parsed.length > 0;
+      } catch (e) {
+        return document.body.innerText.toLowerCase().includes('total') || !!document.querySelector('.cart-item, .cart-summary-card');
+      }
+    })()`);
+    requireValue(hasItems, 'cart did not retain items after add');
+    summary.pages.cartWithItems = true;
+  } else if (scenario === 'login') {
+    await navigate('admin_login.php', 'login');
+    await assertVersionedAssets();
+    await assertNoHorizontalOverflow();
+    const hasForm = await evaluate(`!!document.querySelector('form input[name="username"], form input[name="password"]')`);
+    requireValue(hasForm, 'login form missing');
+    // Login page may omit public footer; do not require navy footer.
+    summary.pages.login = true;
+  } else if (scenario === 'admin-settings') {
+    requireValue(adminPassword !== '', 'HTTP_TEST_ADMIN_PASSWORD required for admin-settings');
+    await navigate('admin_login.php', 'login-for-admin');
+    await evaluate(`(() => {
+      const user = document.querySelector('input[name="username"]');
+      const pass = document.querySelector('input[name="password"]');
+      if (user) user.value = 'http-admin';
+      if (pass) pass.value = ${JSON.stringify(adminPassword)};
+      const form = document.querySelector('form');
+      if (form) form.submit();
+    })()`);
+    await waitFor('admin redirect', `location.pathname.includes('admin_')`);
+    await navigate('admin_settings.php', 'admin-settings');
+    await assertVersionedAssets();
+    const previewJs = await evaluate(`([...document.querySelectorAll('script[src]')].map(s => s.getAttribute('src') || '')).filter(s => /preview\\.js/.test(s))`);
+    requireValue(previewJs.length >= 1, 'preview scripts missing');
+    requireValue(previewJs.every(s => /\?v=[a-zA-Z0-9]+/.test(s)), `preview js missing ?v=: ${previewJs.join(',')}`);
+    await assertNoHorizontalOverflow();
+    summary.pages.adminSettings = {previewJs};
+  } else if (scenario === 'matrix') {
+    // Full public matrix in one Chromium session (benefits expected on).
+    await runHome({expectBenefits: true});
+    const categoryHref = await evaluate(`(() => {
+      const link = [...document.querySelectorAll('a[href*="category.php"]')].find(a => /category\\.php\\?id=\\d+/.test(a.getAttribute('href') || ''));
+      return link ? link.getAttribute('href') : 'category.php?id=1';
+    })()`);
+    await navigate(categoryHref, 'category');
+    await assertVersionedAssets({expectCatalogJs: true});
+    await assertFooterNavy();
+    await assertProductMediaCap();
+    await assertNoHorizontalOverflow();
+    await navigate('cart.php', 'cart-empty');
+    await assertVersionedAssets({expectCartJs: true});
+    await assertFooterNavy();
+    await assertNoHorizontalOverflow();
+    await navigate('admin_login.php', 'login');
+    await assertVersionedAssets();
+    await assertNoHorizontalOverflow();
+    summary.pages.matrix = true;
   } else {
-    requireValue(probe.heroHeight >= 280 && probe.heroHeight <= 380, `mobile hero out of range: ${probe.heroHeight}`);
+    throw new Error(context(`unknown scenario: ${scenario}`));
   }
 
   assertNoBrowserErrors();
-  console.log(JSON.stringify({ok: true, mode, browserErrors: 0, probe}, null, 2));
+  console.log(JSON.stringify(summary, null, 2));
   ws.close();
   process.exit(0);
 } catch (error) {

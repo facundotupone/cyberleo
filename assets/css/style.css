@@ -382,11 +382,23 @@ button:focus-visible,
 
 @media (max-width: 768px) {
     .hero-section {
-        height: 330px;
-        min-height: 300px;
-        max-height: 360px;
+        height: 320px;
+        min-height: 280px;
+        max-height: 350px;
         border-radius: var(--radius-sm);
         margin-bottom: 0.85rem;
+    }
+
+    .hero-section.hero-height-compact {
+        height: 280px;
+        min-height: 260px;
+        max-height: 320px;
+    }
+
+    .hero-section.hero-height-large {
+        height: 340px;
+        min-height: 300px;
+        max-height: 350px;
     }
 
     .hero-content {
@@ -1063,8 +1075,7 @@ a.btn-success.btn-whatsapp,
 
 /* ---------- Footer ---------- */
 .footer.site-footer,
-footer.site-footer,
-.footer {
+footer.site-footer {
     background: var(--brand-navy) !important;
     background-color: #071a33 !important;
     color: rgba(255, 255, 255, 0.92) !important;

@@ -1727,6 +1727,7 @@ run_nav_unify_chrome mobile H-NAV-UNIFY-MOBILE
 run_refine_publish_chrome() {
     local mode=$1
     local id=$2
+    local scenario=${3:-home}
     if ! command -v google-chrome >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
         fail "$id" 'google-chrome o node no están disponibles'
     fi
@@ -1736,17 +1737,17 @@ import socket
 s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()
 PY
 )"
-    local cmd=(google-chrome --headless=new --disable-gpu --remote-debugging-port="$port" --user-data-dir="$HTTP_TMP/chrome-refine-$mode-profile" about:blank)
-    setsid "${cmd[@]}" >"$HTTP_TMP/chrome-refine-$mode.out" 2>"$HTTP_TMP/chrome-refine-$mode.log" & local pid=$!
+    local cmd=(google-chrome --headless=new --disable-gpu --remote-debugging-port="$port" --user-data-dir="$HTTP_TMP/chrome-refine-$mode-$scenario-profile" about:blank)
+    setsid "${cmd[@]}" >"$HTTP_TMP/chrome-refine-$mode-$scenario.out" 2>"$HTTP_TMP/chrome-refine-$mode-$scenario.log" & local pid=$!
     for _ in {1..100}; do curl -sf "http://127.0.0.1:$port/json/list" >/dev/null && break; sleep .05; done
-    if timeout 60 node "$ROOT/tests/helpers/chrome_refine_publish.mjs" \
-        "$port" "$HTTP_BASE_URL" "$mode" >"$HTTP_TMP/chrome-refine-$mode-test.out" 2>>"$HTTP_TMP/chrome-refine-$mode.log"; then
-        sed -n '1,80p' "$HTTP_TMP/chrome-refine-$mode-test.out"
+    if timeout 90 env HTTP_TEST_ADMIN_PASSWORD="$WINNING_PASSWORD" node "$ROOT/tests/helpers/chrome_refine_publish.mjs" \
+        "$port" "$HTTP_BASE_URL" "$mode" "$scenario" >"$HTTP_TMP/chrome-refine-$mode-$scenario-test.out" 2>>"$HTTP_TMP/chrome-refine-$mode-$scenario.log"; then
+        sed -n '1,120p' "$HTTP_TMP/chrome-refine-$mode-$scenario-test.out"
         pass "$id"
     else
-        sed -n '1,200p' "$HTTP_TMP/chrome-refine-$mode-test.out" >&2
-        sed -n '1,80p' "$HTTP_TMP/chrome-refine-$mode.log" >&2
-        fail "$id" "Chromium refine publish mode=$mode falló"
+        sed -n '1,200p' "$HTTP_TMP/chrome-refine-$mode-$scenario-test.out" >&2
+        sed -n '1,80p' "$HTTP_TMP/chrome-refine-$mode-$scenario.log" >&2
+        fail "$id" "Chromium refine publish mode=$mode scenario=$scenario falló"
     fi
     kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
@@ -1771,8 +1772,42 @@ assert_body_excludes H-REFINE-ASSETS 'footer-banner'
 assert_body_contains H-REFINE-ASSETS 'cyberleo-release'
 pass H-REFINE-ASSETS
 
-run_refine_publish_chrome desktop H-REFINE-PUBLISH-DESKTOP
-run_refine_publish_chrome mobile H-REFINE-PUBLISH-MOBILE
+request GET admin_login.php
+assert_status H-REFINE-ADMIN-LOGIN-ASSETS 200
+assert_body_contains H-REFINE-ADMIN-LOGIN-ASSETS 'assets/css/style.css?v='
+pass H-REFINE-ADMIN-LOGIN-ASSETS
+
+request GET admin_settings.php
+assert_status H-REFINE-ADMIN-SETTINGS-ASSETS 200
+assert_body_contains H-REFINE-ADMIN-SETTINGS-ASSETS 'assets/css/style.css?v='
+assert_body_contains H-REFINE-ADMIN-SETTINGS-ASSETS 'theme-preview.js?v='
+assert_body_contains H-REFINE-ADMIN-SETTINGS-ASSETS 'home-content-preview.js?v='
+pass H-REFINE-ADMIN-SETTINGS-ASSETS
+
+# Cache-bust proof: two style.css contents must change ?v=
+STYLE_V1="$(php -r "require '$ROOT/includes/asset_version.php'; echo cyberleo_asset_version('assets/css/style.css');")"
+STYLE_BACKUP="$HTTP_TMP/style.css.refine-bak"
+cp "$ROOT/assets/css/style.css" "$STYLE_BACKUP"
+printf '\n/* refine-cache-bust-probe */\n' >>"$ROOT/assets/css/style.css"
+STYLE_V2="$(php -r "require '$ROOT/includes/asset_version.php'; echo cyberleo_asset_version('assets/css/style.css');")"
+mv "$STYLE_BACKUP" "$ROOT/assets/css/style.css"
+[[ "$STYLE_V1" =~ ^[a-f0-9]{12}$ ]] || fail H-REFINE-CACHE-BUST "v1 inválido: $STYLE_V1"
+[[ "$STYLE_V2" =~ ^[a-f0-9]{12}$ ]] || fail H-REFINE-CACHE-BUST "v2 inválido: $STYLE_V2"
+[[ "$STYLE_V1" != "$STYLE_V2" ]] || fail H-REFINE-CACHE-BUST "hash no cambió tras modificar style.css"
+request GET index.php
+assert_status H-REFINE-CACHE-BUST 200
+assert_body_contains H-REFINE-CACHE-BUST "assets/css/style.css?v=$STYLE_V1"
+pass H-REFINE-CACHE-BUST
+
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-DESKTOP home
+run_refine_publish_chrome mobile H-REFINE-PUBLISH-MOBILE home
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-MATRIX-DESKTOP matrix
+run_refine_publish_chrome mobile H-REFINE-PUBLISH-MATRIX-MOBILE matrix
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-CATEGORY category
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-CART-EMPTY cart-empty
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-CART-ITEMS cart-with-items
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-LOGIN login
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-ADMIN admin-settings
 
 # Footer toggles off: no empty contact column
 request GET admin_settings.php
@@ -1802,17 +1837,22 @@ assert_status H-NAV-FOOTER-TOGGLES-SAVE 302
 sql "UPDATE store_settings SET setting_value='0' WHERE setting_key IN ('footer_show_instagram','footer_show_whatsapp','footer_show_business_hours','footer_show_location')"
 pass H-NAV-FOOTER-TOGGLES-SAVE
 run_nav_unify_chrome footer-toggles H-NAV-FOOTER-TOGGLES
+run_refine_publish_chrome desktop H-REFINE-FOOTER-TOGGLES footer-toggles-off
+run_refine_publish_chrome mobile H-REFINE-FOOTER-TOGGLES-MOBILE footer-toggles-off
 
 # Footer logo + description + nav only (explicit social off)
 sql "UPDATE store_settings SET setting_value='1' WHERE setting_key='footer_show_logo'"
 sql "UPDATE store_settings SET setting_value='0' WHERE setting_key IN ('footer_show_instagram','footer_show_whatsapp','footer_show_business_hours','footer_show_location')"
 run_nav_unify_chrome footer-logo-only H-NAV-FOOTER-LOGO-ONLY
+run_refine_publish_chrome desktop H-REFINE-FOOTER-LOGO footer-logo-only
 
 # Benefits disabled should remove section without breaking layout
 sql "UPDATE store_settings SET setting_value='0' WHERE setting_key='benefits_enabled'"
 run_nav_unify_chrome benefits-off H-NAV-BENEFITS-OFF
+run_refine_publish_chrome desktop H-REFINE-BENEFITS-OFF benefits-off
+run_refine_publish_chrome mobile H-REFINE-BENEFITS-OFF-MOBILE benefits-off
 sql "UPDATE store_settings SET setting_value='1' WHERE setting_key='benefits_enabled'"
-
+run_refine_publish_chrome desktop H-REFINE-BENEFITS-ON benefits-on
 # Alternate theme still keeps shared header/footer computed styles across pages
 request GET admin_settings.php
 CSRF_TOKEN="$(csrf_from_body)"
