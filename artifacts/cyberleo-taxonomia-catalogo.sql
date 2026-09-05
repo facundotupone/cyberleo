@@ -672,4 +672,3 @@ FROM categories c
 ORDER BY c.name;
 
 COMMIT;
-

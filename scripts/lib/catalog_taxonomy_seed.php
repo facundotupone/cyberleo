@@ -213,4 +213,3 @@ function seed_catalog_taxonomy_run(PDO $pdo, bool $apply): array
 
     return $report;
 }
-
