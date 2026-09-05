@@ -1472,7 +1472,7 @@ footer.site-footer,
     background: #ffffff !important;
     border: 1px solid rgba(7, 26, 51, 0.1) !important;
     border-radius: var(--card-radius, var(--radius-md));
-    padding: 22px 18px !important; /* explicit px so computed style >= 20 */
+    padding: 22px !important;
     text-align: center;
     box-shadow: 0 6px 18px rgba(7, 26, 51, 0.06);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -1546,7 +1546,7 @@ footer.site-footer,
 @media (max-width: 767.98px) {
     .benefits-section .benefit-block,
     .benefit-block {
-        padding: 22px 16px !important;
+        padding: 22px !important;
     }
 }
 
