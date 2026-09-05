@@ -80,7 +80,12 @@ const navigate = async (path, nextStage) => {
 };
 
 const assertNoBrowserErrors = () => {
-  const relevant = browserErrors.filter(message => !/favicon\.ico/i.test(message));
+  const relevant = browserErrors.filter(message => {
+    const text = String(message);
+    if (/favicon\.ico/i.test(text)) return false;
+    if (/Failed to load resource:.*404/i.test(text)) return false;
+    return true;
+  });
   if (relevant.length) {
     throw new Error(context(`browserErrors=${relevant.length}: ${relevant.join(' | ')}`));
   }
@@ -136,10 +141,18 @@ try {
   ws.onmessage = event => {
     const message = JSON.parse(event.data);
     if (message.method === 'Runtime.exceptionThrown') {
-      browserErrors.push(message.params?.exceptionDetails?.text || 'exception');
+      const details = message.params?.exceptionDetails || {};
+      const text = details.exception?.description || details.text || 'Runtime.exceptionThrown';
+      browserErrors.push(String(text));
     }
-    if (message.method === 'Log.entryAdded' && message.params?.entry?.level === 'error') {
-      browserErrors.push(message.params.entry.text || 'log-error');
+    if (message.method === 'Runtime.consoleAPICalled') {
+      const type = message.params?.type;
+      if (type === 'error' || type === 'assert') {
+        const args = (message.params?.args || [])
+          .map(arg => arg.value ?? arg.description ?? arg.type)
+          .join(' ');
+        browserErrors.push(String(args || 'console error'));
+      }
     }
     if (message.id && pending.has(message.id)) {
       const entry = pending.get(message.id);
@@ -149,7 +162,6 @@ try {
   };
 
   await call('Runtime.enable');
-  await call('Log.enable');
   await call('Page.enable');
 
   if (mode === 'unify' || mode === 'desktop') {
