@@ -184,9 +184,9 @@ try {
     requireValue(home.activeHrefs.some(h => h === 'index.php' || /index\.php$/.test(String(h))), 'home active missing');
     requireValue(home.footerCols.every(c => !c.empty && c.childCount > 0), 'home footer empty column');
 
-    // Prefer first category link from nav.
+    // Prefer first category link from nav (products dropdown headings).
     const categoryHref = await evaluate(`(() => {
-      const a = document.querySelector('nav.site-navbar a.cyberleo-nav-link[href*="category.php"]');
+      const a = document.querySelector('nav.site-navbar a.site-nav-products-heading[href*="category.php"], nav.site-navbar a[href*="category.php?id="]');
       return a ? a.getAttribute('href') : null;
     })()`);
     requireValue(categoryHref, 'category link missing');
@@ -309,6 +309,26 @@ try {
       return toggler ? toggler.getAttribute('aria-expanded') : null;
     })()`);
     requireValue(open === 'true', 'aria-expanded should be true when open');
+
+    // Open Productos accordion/dropdown and assert no horizontal overflow.
+    await evaluate(`(() => {
+      const btn = document.querySelector('#navProductsDropdown');
+      if (btn) btn.click();
+      return !!btn;
+    })()`);
+    await sleep(200);
+    const productsMenu = await evaluate(`(() => {
+      const menu = document.querySelector('.site-nav-products-menu');
+      const groups = document.querySelectorAll('.site-nav-products-group');
+      const overflow = document.documentElement.scrollWidth > window.innerWidth + 1;
+      return {
+        open: !!(menu && (menu.classList.contains('show') || getComputedStyle(menu).display !== 'none')),
+        groups: groups.length,
+        overflow,
+      };
+    })()`);
+    requireValue(productsMenu.groups >= 1, 'products menu groups missing on mobile');
+    requireValue(!productsMenu.overflow, 'horizontal overflow with products menu');
 
     const benefits = await evaluate(`(() => {
       const section = document.getElementById('beneficios');

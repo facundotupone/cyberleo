@@ -52,9 +52,30 @@ function get_theme_settings(): array {
 function get_categories() {
     global $pdo;
     try {
+        require_once __DIR__ . '/catalog_taxonomy.php';
         $stmt = $pdo->query("SELECT * FROM categories ORDER BY name");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return catalog_taxonomy_sort_categories($stmt->fetchAll(PDO::FETCH_ASSOC));
     } catch(PDOException $e) {
+        error_log($e->getMessage());
+        return [];
+    }
+}
+
+function get_offer_products() {
+    global $pdo;
+    try {
+        require_once __DIR__ . '/catalog_taxonomy.php';
+        $sql = "
+            SELECT p.id, p.name, p.description, p.price, p.price_sale, p.stock, p.image,
+                   p.is_active, p.category_id, p.subcategory_id, c.name AS category_name
+            FROM products p
+            JOIN categories c ON c.id = p.category_id
+            WHERE " . catalog_offers_sql_predicate('p') . "
+            ORDER BY p.price_sale ASC, p.name ASC
+        ";
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
         error_log($e->getMessage());
         return [];
     }

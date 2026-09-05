@@ -1724,6 +1724,28 @@ pass H-NAV-UNIFY-RESTORE
 run_nav_unify_chrome unify H-NAV-UNIFY-DESKTOP
 run_nav_unify_chrome mobile H-NAV-UNIFY-MOBILE
 
+# Taxonomy / offers public surface
+request GET index.php
+assert_status H-TAX-HOME 200
+assert_body_contains H-TAX-HOME 'Productos'
+assert_body_contains H-TAX-HOME 'Ofertas'
+assert_body_contains H-TAX-HOME 'site-nav-products'
+assert_body_contains H-TAX-HOME 'HTTP fixtures'
+pass H-TAX-HOME
+
+request GET offers.php
+assert_status H-TAX-OFFERS 200
+assert_body_contains H-TAX-OFFERS 'Ofertas'
+assert_body_contains H-TAX-OFFERS 'HTTP offer product'
+assert_body_excludes H-TAX-OFFERS 'HTTP order product'
+assert_body_contains H-TAX-OFFERS 'aria-current="page"'
+pass H-TAX-OFFERS
+
+request GET get_subcategories.php?category_id=1
+assert_status H-TAX-SUBS 200
+assert_body_contains H-TAX-SUBS 'HTTP fixtures'
+pass H-TAX-SUBS
+
 # Footer toggles off: no empty contact column
 request GET admin_settings.php
 CSRF_TOKEN="$(csrf_from_body)"

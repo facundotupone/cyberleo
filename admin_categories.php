@@ -4,6 +4,7 @@ require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';
 require_once 'includes/security.php';
+require_once 'includes/catalog_taxonomy.php';
 
 $message = '';
 $categories = get_categories();
@@ -15,11 +16,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($_POST['action'] === 'add_category') {
             $name = trim($_POST['name']);
             $icon = trim($_POST['icon']);
-            if (!preg_match('/^bi bi-[a-z0-9-]{1,60}$/', $icon)) {
+            if (!preg_match('/^bi bi-[a-z0-9-]{1,60}$/', $icon) && !preg_match('/^bi-[a-z0-9-]{1,60}$/', $icon)) {
                 $message = 'Icono inválido.';
             } elseif (!empty($name)) {
+                $iconToken = catalog_taxonomy_icon_token($icon);
                 $stmt = $pdo->prepare("INSERT INTO categories (name, icon) VALUES (?, ?)");
-                if ($stmt->execute([$name, $icon])) {
+                if ($stmt->execute([$name, $iconToken])) {
                     $message = 'Categoría agregada exitosamente.';
                 } else {
                     $message = 'Error al agregar la categoría.';
@@ -322,7 +324,8 @@ $categories = get_categories();
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <?php if (!empty($category['icon'])): ?>
-                                    <i class="<?php echo htmlspecialchars($category['icon']); ?>"></i>
+                                    <?php $adminIconClass = catalog_taxonomy_icon_class((string) $category['icon']); ?>
+                                    <i class="<?php echo htmlspecialchars($adminIconClass); ?>"></i>
                                     <?php endif; ?>
                                     <strong><?php echo htmlspecialchars($category['name']); ?></strong>
                                 </div>
