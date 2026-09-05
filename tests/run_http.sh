@@ -1724,6 +1724,56 @@ pass H-NAV-UNIFY-RESTORE
 run_nav_unify_chrome unify H-NAV-UNIFY-DESKTOP
 run_nav_unify_chrome mobile H-NAV-UNIFY-MOBILE
 
+run_refine_publish_chrome() {
+    local mode=$1
+    local id=$2
+    if ! command -v google-chrome >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
+        fail "$id" 'google-chrome o node no están disponibles'
+    fi
+    local port
+    port="$(python3 - <<'PY'
+import socket
+s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()
+PY
+)"
+    local cmd=(google-chrome --headless=new --disable-gpu --remote-debugging-port="$port" --user-data-dir="$HTTP_TMP/chrome-refine-$mode-profile" about:blank)
+    setsid "${cmd[@]}" >"$HTTP_TMP/chrome-refine-$mode.out" 2>"$HTTP_TMP/chrome-refine-$mode.log" & local pid=$!
+    for _ in {1..100}; do curl -sf "http://127.0.0.1:$port/json/list" >/dev/null && break; sleep .05; done
+    if timeout 60 node "$ROOT/tests/helpers/chrome_refine_publish.mjs" \
+        "$port" "$HTTP_BASE_URL" "$mode" >"$HTTP_TMP/chrome-refine-$mode-test.out" 2>>"$HTTP_TMP/chrome-refine-$mode.log"; then
+        sed -n '1,80p' "$HTTP_TMP/chrome-refine-$mode-test.out"
+        pass "$id"
+    else
+        sed -n '1,200p' "$HTTP_TMP/chrome-refine-$mode-test.out" >&2
+        sed -n '1,80p' "$HTTP_TMP/chrome-refine-$mode.log" >&2
+        fail "$id" "Chromium refine publish mode=$mode falló"
+    fi
+    kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+}
+
+# Ensure home content restored for refine publish asserts
+request GET admin_settings.php
+CSRF_TOKEN="$(csrf_from_body)"
+request POST admin_settings.php \
+    -F "csrf_token=$CSRF_TOKEN" \
+    -F 'settings_action=restore_home_content'
+assert_status H-REFINE-PUBLISH-RESTORE 302
+pass H-REFINE-PUBLISH-RESTORE
+
+request GET index.php
+assert_status H-REFINE-ASSETS 200
+assert_body_contains H-REFINE-ASSETS 'assets/css/style.css?v='
+assert_body_contains H-REFINE-ASSETS 'assets/css/backgrounds.css?v='
+assert_body_contains H-REFINE-ASSETS 'site-footer-grid'
+assert_body_contains H-REFINE-ASSETS 'benefits-surface'
+assert_body_excludes H-REFINE-ASSETS 'footer-banner'
+assert_body_contains H-REFINE-ASSETS 'cyberleo-release'
+pass H-REFINE-ASSETS
+
+run_refine_publish_chrome desktop H-REFINE-PUBLISH-DESKTOP
+run_refine_publish_chrome mobile H-REFINE-PUBLISH-MOBILE
+
 # Footer toggles off: no empty contact column
 request GET admin_settings.php
 CSRF_TOKEN="$(csrf_from_body)"

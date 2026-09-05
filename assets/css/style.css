@@ -41,7 +41,8 @@ body {
     line-height: 1.6;
     position: relative;
     min-height: 100vh;
-    background-color: var(--brand-light);
+    background-color: #f3f8fc; /* light neutral storefront surface */
+    background-image: none;
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
@@ -277,9 +278,10 @@ button:focus-visible,
 }
 
 .hero-section.hero-height-large {
-    height: 560px;
-    min-height: 520px;
-    max-height: 600px;
+    /* Cap large heroes so the first viewport stays balanced. */
+    height: 470px;
+    min-height: 430px;
+    max-height: 480px;
 }
 
 .hero-section.hero-align-left .hero-content {
@@ -475,6 +477,7 @@ button:focus-visible,
     overflow: hidden;
     border-radius: var(--radius-md) var(--radius-md) 0 0;
     height: 220px;
+    max-height: 280px;
     background: linear-gradient(160deg, #eef5fb 0%, #e2ebf5 100%);
     display: flex;
     align-items: center;
@@ -653,14 +656,17 @@ button:focus-visible,
 
 .product-card.product-height-compact .product-media {
     height: 160px;
+    max-height: 160px;
 }
 
 .product-card.product-height-normal .product-media {
     height: 220px;
+    max-height: 220px;
 }
 
 .product-card.product-height-large .product-media {
     height: 280px;
+    max-height: 280px;
 }
 
 .product-sale-badge {
@@ -780,12 +786,16 @@ button:focus-visible,
 }
 
 .category-card .badge {
-    background: rgba(0, 87, 184, 0.08) !important;
-    color: var(--brand-navy) !important;
-    border: 1px solid rgba(0, 87, 184, 0.14);
-    font-weight: 600;
+    background: #eef5fb !important;
+    color: #071a33 !important;
+    border: 1px solid rgba(0, 87, 184, 0.22);
+    font-weight: 650;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    padding: 0.35rem 0.55rem;
     text-transform: none;
     letter-spacing: 0;
+    white-space: normal;
 }
 
 .badge.bg-warning {
@@ -1053,8 +1063,10 @@ a.btn-success.btn-whatsapp,
 
 /* ---------- Footer ---------- */
 .footer.site-footer,
+footer.site-footer,
 .footer {
     background: var(--brand-navy) !important;
+    background-color: #071a33 !important;
     color: rgba(255, 255, 255, 0.92) !important;
     border-top: none !important;
     box-shadow: none !important;
@@ -1062,6 +1074,11 @@ a.btn-success.btn-whatsapp,
     padding-top: 2.25rem;
     padding-bottom: 0;
     background-image: none !important;
+}
+
+/* Legacy footer-banner markup must not appear with the refined footer. */
+.site-footer .footer-banner {
+    display: none !important;
 }
 
 .site-footer-inner {
@@ -1430,8 +1447,8 @@ a.btn-success.btn-whatsapp,
 }
 
 .benefits-surface {
-    background: #fff;
-    border: 1px solid rgba(var(--brand-blue-rgb, 0, 87, 184), 0.14);
+    background: #ffffff;
+    border: 1px solid rgba(7, 26, 51, 0.1);
     border-radius: calc(var(--card-radius, var(--radius-md)) + 4px);
     box-shadow: 0 10px 28px rgba(7, 26, 51, 0.05);
     padding: 1.35rem 1.15rem 1.25rem;
@@ -1450,42 +1467,49 @@ a.btn-success.btn-whatsapp,
     margin: 0;
 }
 
-.benefits-section .benefit-block {
-    background: rgba(243, 248, 252, 0.92);
-    border: 1px solid rgba(var(--brand-blue-rgb, 0, 87, 184), 0.12);
+.benefits-section .benefit-block,
+.benefit-block {
+    background: #ffffff !important;
+    border: 1px solid rgba(7, 26, 51, 0.1) !important;
     border-radius: var(--card-radius, var(--radius-md));
-    padding: 1.1rem 1rem 1.15rem;
+    padding: 1.25rem 1.1rem !important; /* >= 20px */
     text-align: center;
-    box-shadow: 0 4px 14px rgba(7, 26, 51, 0.04);
+    box-shadow: 0 6px 18px rgba(7, 26, 51, 0.06);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.benefits-section .benefit-block:hover {
+.benefits-section .benefit-block:hover,
+.benefit-block:hover {
     transform: translateY(-2px);
-    box-shadow: 0 10px 22px rgba(7, 26, 51, 0.07);
+    box-shadow: 0 10px 22px rgba(7, 26, 51, 0.08);
 }
 
-.benefits-section .benefit-icon {
-    width: 3.25rem;
-    height: 3.25rem;
+.benefits-section .benefit-icon,
+.benefit-icon {
+    width: 3rem;
+    height: 3rem;
+    min-width: 3rem;
+    min-height: 3rem;
     margin: 0 auto 0.75rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: rgba(var(--brand-cyan-rgb, 0, 174, 239), 0.16);
+    background: rgba(0, 174, 239, 0.14);
     color: var(--brand-cyan);
-    font-size: 2.65rem;
+    font-size: 2.65rem; /* ~42px */
     line-height: 1;
 }
 
-.benefits-section .benefit-icon i {
-    font-size: 2.65rem;
+.benefits-section .benefit-icon i,
+.benefit-icon i {
+    font-size: 2.65rem !important; /* 42px */
     line-height: 1;
-    color: var(--brand-cyan);
+    color: var(--brand-cyan) !important;
 }
 
-.benefits-section .benefit-title {
+.benefits-section .benefit-title,
+.benefit-title {
     color: var(--brand-navy);
     font-size: 1.02rem;
     font-weight: 700;
@@ -1493,7 +1517,8 @@ a.btn-success.btn-whatsapp,
     line-height: 1.3;
 }
 
-.benefits-section .benefit-text {
+.benefits-section .benefit-text,
+.benefit-text {
     color: var(--brand-muted, #64748b);
     font-size: 0.94rem;
     line-height: 1.45;
@@ -1504,20 +1529,24 @@ a.btn-success.btn-whatsapp,
         padding: 1.5rem 1.35rem 1.4rem;
     }
 
-    .benefits-section .benefit-icon {
-        width: 3.5rem;
-        height: 3.5rem;
+    .benefits-section .benefit-icon,
+    .benefit-icon {
+        width: 3.25rem;
+        height: 3.25rem;
     }
 
     .benefits-section .benefit-icon,
-    .benefits-section .benefit-icon i {
-        font-size: 2.85rem;
+    .benefits-section .benefit-icon i,
+    .benefit-icon,
+    .benefit-icon i {
+        font-size: 2.85rem !important; /* ~45.6px, within 42–48 */
     }
 }
 
 @media (max-width: 767.98px) {
-    .benefits-section .benefit-block {
-        padding: 1rem 0.9rem;
+    .benefits-section .benefit-block,
+    .benefit-block {
+        padding: 1.25rem 1rem !important;
     }
 }
 

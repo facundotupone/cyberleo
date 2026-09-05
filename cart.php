@@ -169,10 +169,11 @@ if ((string) $checkout['cart_summary_sticky'] === '1') {
 </div>
 
 <?php require_once 'components/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/asset_version.php'; ?>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script type="application/json" id="cart-products-boot"><?= json_encode($products, $jsonFlags) ?></script>
 <script type="application/json" id="cart-images-boot"><?= json_encode($productImages, $jsonFlags) ?></script>
 <script type="application/json" id="cart-checkout-boot"><?= json_encode($checkoutBoot, $jsonFlags) ?></script>
-<script src="assets/js/cart-checkout.js" defer></script>
+<script src="<?= htmlspecialchars(cyberleo_asset_url('assets/js/cart-checkout.js'), ENT_QUOTES, 'UTF-8') ?>" defer></script>
 </body>
 </html>
