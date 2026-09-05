@@ -1,7 +1,7 @@
 # Despliegue — refinamiento corregido
 
 Paquete: `cyberleo-refinamiento-corregido.zip`  
-Verificar SHA-256 en `SHA256SUMS.txt` (valor actual tras auditoría: `639291e9d28ce3d4a7e4ac45bdabb3e82563150c5309fee4fd241d1ecd1b2810`).
+Verificar SHA-256 en `SHA256SUMS.txt` (valor actual tras auditoría: `9a56b8a107365df81e462aff4f4e7462e077854caab36b29f6e64df1e977296c`).
 
 ## Diagnóstico previo
 
