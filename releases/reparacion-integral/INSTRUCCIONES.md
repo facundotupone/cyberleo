@@ -11,4 +11,4 @@ Mismo contenido que `releases/recuperacion-login/` (árbol público completo).
 
 Si `config_local_present=0` o `db_constants_present=0`, restaurá `includes/config.local.php` desde el backup.
 
-SHA-256: `850753add86b29f2ac1db9c56dcf4352eb331f4a5f93c778a0736873c5b24741` 
+SHA-256: `bafe599a6976ab64a078c095a28e70c4dd1866cfa64d32f1ef21ee76a021e72d`

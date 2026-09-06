@@ -18,10 +18,10 @@ Este paquete es el **árbol público completo** (~57 archivos), igual a la repar
    - **Reiniciar PHP** / OPcache
    - LiteSpeed Cache → **Purge All**
 5. Ventana privada, en este orden:
-   - `/diag_recovery.php?opcache=reset` → `cyberleo_asset_url=1`, `asset_version.php` size > 1000, `config_local_present=1`, `db_constants_present=1`
+   - `/diag_recovery.php?opcache=reset` → `cyberleo_asset_url=1`, `asset_version.php` size > 1000, `config_local_present=1`, `db_constants_present=1`, `index_bootstrap=1` (si es 0, copiá `index_error=`)
    - `/emergency_admin_login.php` → HTTP 200 (anti-OPcache; si este abre, el PHP nuevo está vivo)
    - `/admin_login.php` → HTTP 200
    - `/` → HTTP 200
 6. Cuando esté estable, borrá `diag_recovery.php` y `emergency_admin_login.php`.
 
-SHA-256: `850753add86b29f2ac1db9c56dcf4352eb331f4a5f93c778a0736873c5b24741` 
+SHA-256: `bafe599a6976ab64a078c095a28e70c4dd1866cfa64d32f1ef21ee76a021e72d`
