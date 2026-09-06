@@ -15,18 +15,41 @@ if (function_exists('opcache_invalidate')) {
     }
 }
 
-set_exception_handler(static function (Throwable $e) {
-    http_response_code(500);
-    error_log('cyberleo index uncaught: ' . $e->getMessage());
-    if (!headers_sent()) {
-        header('Content-Type: text/html; charset=UTF-8');
+$cyberleoIndexFail = static function ($detail = '') {
+    if (headers_sent()) {
+        return;
     }
+    http_response_code(500);
+    header('Content-Type: text/html; charset=UTF-8');
     echo '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Error</title></head><body>';
     echo '<h1>No se pudo cargar la portada</h1>';
-    echo '<p>Extrá el ZIP de reparación integral sobre public_html, reiniciá PHP en hPanel y purgá LiteSpeed.</p>';
-    echo '<p><a href="diag_recovery.php">Diagnóstico de recuperación</a> · <a href="admin_login.php">Login admin</a></p>';
+    echo '<p>Extrá el ZIP de recuperación sobre public_html, reiniciá PHP en hPanel y purgá LiteSpeed.</p>';
+    if ($detail !== '') {
+        echo '<p>' . htmlspecialchars($detail, ENT_QUOTES, 'UTF-8') . '</p>';
+    }
+    echo '<p><a href="diag_recovery.php?opcache=reset">Diagnóstico + reset OPcache</a>';
+    echo ' · <a href="emergency_admin_login.php">Login de emergencia</a>';
+    echo ' · <a href="admin_login.php">Login admin</a></p>';
     echo '</body></html>';
     exit;
+};
+
+set_exception_handler(static function (Throwable $e) use ($cyberleoIndexFail) {
+    error_log('cyberleo index uncaught: ' . $e->getMessage());
+    $cyberleoIndexFail();
+});
+
+register_shutdown_function(static function () use ($cyberleoIndexFail) {
+    $err = error_get_last();
+    if ($err === null) {
+        return;
+    }
+    $fatalTypes = array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR);
+    if (!in_array($err['type'], $fatalTypes, true)) {
+        return;
+    }
+    error_log('cyberleo index shutdown: ' . $err['message']);
+    $cyberleoIndexFail('Si el login también falla, usá /emergency_admin_login.php');
 });
 
 require_once 'includes/config.php';

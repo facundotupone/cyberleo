@@ -1919,6 +1919,32 @@ assert_status H-LOGIN-ASSET-AUTH-OK 302
 pass H-LOGIN-ASSET-AUTH-OK
 HTTP_COOKIE="$ADMIN_COOKIE"
 
+# Emergency login (new filename) must work without depending on public chrome.
+HTTP_COOKIE="$HTTP_TMP/emergency-login.cookie"
+: >"$HTTP_COOKIE"
+request GET emergency_admin_login.php
+assert_status H-EMERGENCY-LOGIN-FORM 200
+assert_body_contains H-EMERGENCY-LOGIN-FORM 'name="username"'
+assert_body_contains H-EMERGENCY-LOGIN-FORM 'name="password"'
+assert_body_contains H-EMERGENCY-LOGIN-FORM 'Login de emergencia'
+assert_body_excludes H-EMERGENCY-LOGIN-FORM 'Fatal error'
+pass H-EMERGENCY-LOGIN-FORM
+request POST emergency_admin_login.php --data-urlencode 'username=http-admin' --data-urlencode 'password=not-the-password'
+assert_status H-EMERGENCY-LOGIN-BAD 200
+assert_body_contains H-EMERGENCY-LOGIN-BAD 'incorrectos'
+pass H-EMERGENCY-LOGIN-BAD
+request GET diag_recovery.php
+assert_status H-DIAG-RECOVERY 200
+assert_body_contains H-DIAG-RECOVERY 'cyberleo recovery diag'
+assert_body_contains H-DIAG-RECOVERY 'cyberleo_asset_url=1'
+assert_body_contains H-DIAG-RECOVERY 'emergency_admin_login.php exists=1'
+pass H-DIAG-RECOVERY
+request GET 'diag_recovery.php?opcache=reset'
+assert_status H-DIAG-OPCACHE-RESET 200
+assert_body_contains H-DIAG-OPCACHE-RESET 'opcache_reset='
+pass H-DIAG-OPCACHE-RESET
+HTTP_COOKIE="$ADMIN_COOKIE"
+
 request GET index.php
 assert_status H-REFINE-ASSETS 200
 assert_body_contains H-REFINE-ASSETS 'assets/css/style.css?v='

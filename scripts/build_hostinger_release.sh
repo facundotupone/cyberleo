@@ -32,6 +32,7 @@ FILES=(
     .htaccess
     admin_categories.php
     admin_login.php
+    emergency_admin_login.php
     admin_orders.php
     admin_products.php
     admin_settings.php

@@ -1,7 +1,8 @@
 <?php
 /**
- * Admin login — dependency-light recovery entrypoint.
- * Must keep working even when theme/footer/asset helpers are broken or partial.
+ * Admin login — recovery-hardened entrypoint.
+ * GET must render even when theme/footer/asset helpers/DB are broken.
+ * POST is the only path that touches the database.
  */
 
 if (function_exists('opcache_invalidate')) {
@@ -10,77 +11,103 @@ if (function_exists('opcache_invalidate')) {
         __DIR__ . '/includes/asset_safe_url.php',
         __DIR__ . '/includes/functions.php',
         __DIR__ . '/includes/theme.php',
+        __DIR__ . '/includes/security.php',
+        __DIR__ . '/includes/config.php',
+        __DIR__ . '/includes/db.php',
         __DIR__ . '/components/footer.php',
         __DIR__ . '/components/head.php',
         __FILE__,
     ) as $cyberleoOpcacheFile) {
         if (is_file($cyberleoOpcacheFile)) {
-            opcache_invalidate($cyberleoOpcacheFile, true);
+            @opcache_invalidate($cyberleoOpcacheFile, true);
         }
     }
 }
 
-set_exception_handler(static function (Throwable $e) {
-    http_response_code(500);
-    error_log('cyberleo admin_login uncaught: ' . $e->getMessage());
+$cyberleoLoginFail = static function ($title, $hint) {
     if (!headers_sent()) {
+        http_response_code(500);
         header('Content-Type: text/html; charset=UTF-8');
     }
     echo '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Error</title></head><body>';
-    echo '<h1>No se pudo cargar el login</h1>';
-    echo '<p>Extrá el ZIP de reparación integral sobre public_html y reiniciá PHP en hPanel.</p>';
+    echo '<h1>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h1>';
+    echo '<p>' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8') . '</p>';
+    echo '<p><a href="diag_recovery.php?opcache=reset">Diagnóstico + reset OPcache</a>';
+    echo ' · <a href="emergency_admin_login.php">Login de emergencia</a></p>';
     echo '</body></html>';
     exit;
+};
+
+set_exception_handler(static function (Throwable $e) use ($cyberleoLoginFail) {
+    error_log('cyberleo admin_login uncaught: ' . $e->getMessage());
+    $cyberleoLoginFail(
+        'No se pudo cargar el login',
+        'Extrá el ZIP de recuperación sobre public_html, reiniciá PHP en hPanel y abrí emergency_admin_login.php.'
+    );
 });
 
-require_once 'includes/security.php';
-start_secure_session();
-require_once 'includes/config.php';
-require_once 'includes/db.php';
-require_once 'includes/functions.php';
-
-// Optional theme — never take down login if theme stack is incomplete.
-$brandLogoPath = 'assets/images/brand/cyberleo-logo.png';
-$themeCss = '';
-if (is_file(__DIR__ . '/includes/theme.php') && is_readable(__DIR__ . '/includes/theme.php')) {
-    require_once __DIR__ . '/includes/theme.php';
-    try {
-        if (function_exists('resolve_theme_settings') && function_exists('get_store_settings')) {
-            $themeSettings = resolve_theme_settings(get_store_settings());
-            if (function_exists('theme_css_custom_properties')) {
-                $themeCss = theme_css_custom_properties($themeSettings);
-            }
-            if (function_exists('is_safe_brand_logo_path') && !empty($themeSettings['brand_logo']) && is_safe_brand_logo_path($themeSettings['brand_logo'])) {
-                $brandLogoPath = $themeSettings['brand_logo'];
-            } elseif (defined('THEME_OFFICIAL_LOGO')) {
-                $brandLogoPath = THEME_OFFICIAL_LOGO;
-            }
-        }
-    } catch (Throwable $e) {
-        error_log('cyberleo admin_login theme fallback: ' . $e->getMessage());
+register_shutdown_function(static function () use ($cyberleoLoginFail) {
+    $err = error_get_last();
+    if ($err === null) {
+        return;
     }
-}
+    $fatalTypes = array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR);
+    if (!in_array($err['type'], $fatalTypes, true)) {
+        return;
+    }
+    // Avoid double-output when exception handler already responded.
+    if (headers_sent()) {
+        return;
+    }
+    error_log('cyberleo admin_login shutdown: ' . $err['message']);
+    $cyberleoLoginFail(
+        'No se pudo cargar el login',
+        'Fatal de PHP. Usá /diag_recovery.php?opcache=reset y /emergency_admin_login.php.'
+    );
+});
 
-// CSS: prefer plain local file; never hard-require asset versioning.
+$error = '';
+$brandLogoPath = 'assets/images/brand/cyberleo-logo.png';
 $loginStyleHref = 'assets/css/style.css';
-if (is_file(__DIR__ . '/includes/asset_safe_url.php') && is_readable(__DIR__ . '/includes/asset_safe_url.php')) {
-    require_once __DIR__ . '/includes/asset_safe_url.php';
+$themeCss = '';
+$storeTitle = 'CyberLeo';
+
+// Session only — never pull theme/functions/assets for the form shell.
+$securityFile = __DIR__ . '/includes/security.php';
+if (!is_file($securityFile) || !is_readable($securityFile)) {
+    $cyberleoLoginFail('Falta includes/security.php', 'Subí el ZIP de recuperación completo sobre public_html.');
 }
-if (function_exists('cyberleo_safe_asset_url')) {
-    $loginStyleHref = cyberleo_safe_asset_url('assets/css/style.css');
+require_once $securityFile;
+if (!function_exists('start_secure_session')) {
+    $cyberleoLoginFail('security.php incompleto', 'Subí el ZIP de recuperación completo sobre public_html.');
 }
+start_secure_session();
 
 if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
     header('Location: admin_products.php');
     exit;
 }
 
-$error = '';
+// Soft optional CSS/logo — never fatal.
+if (is_file(__DIR__ . '/includes/asset_safe_url.php') && is_readable(__DIR__ . '/includes/asset_safe_url.php')) {
+    require_once __DIR__ . '/includes/asset_safe_url.php';
+}
+if (function_exists('cyberleo_safe_asset_url')) {
+    $loginStyleHref = cyberleo_safe_asset_url('assets/css/style.css');
+}
+if (is_file(__DIR__ . '/includes/config.php') && is_readable(__DIR__ . '/includes/config.php')) {
+    require_once __DIR__ . '/includes/config.php';
+    if (defined('STORE_NAME') && STORE_NAME !== '') {
+        $storeTitle = STORE_NAME;
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
     try {
+        require_once __DIR__ . '/includes/config.php';
+        require_once __DIR__ . '/includes/db.php';
         $key = enforce_auth_rate_limit($pdo, 'login|' . strtolower($username));
         if ($username !== '' && $password !== '') {
             $stmt = $pdo->prepare('SELECT id, password FROM users WHERE username = ?');
@@ -107,11 +134,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Demasiados intentos. Intentá más tarde.';
     } catch (Throwable $e) {
         error_log($e->getMessage());
-        $error = 'Usuario o contraseña incorrectos';
+        $error = 'No se pudo validar el acceso. Revisá diag_recovery.php y la base de datos.';
     }
 }
-
-$storeTitle = defined('STORE_NAME') ? STORE_NAME : 'CyberLeo';
 ?>
 <!DOCTYPE html>
 <html lang="es">
