@@ -11,4 +11,4 @@ Mismo contenido que `releases/recuperacion-login/` (árbol público completo).
 
 Si `config_local_present=0` o `db_constants_present=0`, restaurá `includes/config.local.php` desde el backup.
 
-SHA-256: (se actualiza al regenerar el ZIP)
+SHA-256: 

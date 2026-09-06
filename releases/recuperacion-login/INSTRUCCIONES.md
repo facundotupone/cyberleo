@@ -24,4 +24,4 @@ Este paquete es el **árbol público completo** (~57 archivos), igual a la repar
    - `/` → HTTP 200
 6. Cuando esté estable, borrá `diag_recovery.php` y `emergency_admin_login.php`.
 
-SHA-256: (se actualiza al regenerar el ZIP)
+SHA-256: 
