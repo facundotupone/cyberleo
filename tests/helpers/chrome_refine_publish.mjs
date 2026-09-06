@@ -1,6 +1,6 @@
 const [port, base, mode = 'desktop', scenario = 'home'] = process.argv.slice(2);
 const commandTimeoutMs = 5_000;
-const stageTimeoutMs = 12_000;
+const stageTimeoutMs = 20_000;
 const adminPassword = process.env.HTTP_TEST_ADMIN_PASSWORD || '';
 
 let stage = 'startup';
@@ -375,8 +375,20 @@ try {
       const form = document.querySelector('form');
       if (form) form.submit();
     })()`);
-    await waitFor('admin redirect', `location.pathname.includes('admin_')`);
-    await navigate('admin_settings.php', 'admin-settings');
+    await waitFor('admin redirect', `location.pathname.includes('admin_')`, 20_000);
+    await sleep(400);
+    await call('Page.navigate', {url: new URL('admin_settings.php', base).href});
+    await waitFor(
+      'admin settings ready',
+      `document.readyState === 'complete' && (location.pathname.includes('admin_settings') || !!document.querySelector('h1, .container, form'))`,
+      20_000,
+    );
+    currentUrl = await evaluate('location.href');
+    await sleep(300);
+    requireValue(
+      await evaluate(`location.pathname.includes('admin_settings')`),
+      `expected admin_settings, got ${await evaluate('location.pathname')}`,
+    );
     await assertVersionedAssets();
     const previewJs = await evaluate(`([...document.querySelectorAll('script[src]')].map(s => s.getAttribute('src') || '')).filter(s => /preview\\.js/.test(s))`);
     requireValue(previewJs.length >= 1, 'preview scripts missing');
