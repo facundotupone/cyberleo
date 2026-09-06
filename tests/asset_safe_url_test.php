@@ -135,12 +135,32 @@ try {
     safe_ok($nofn['style'] === 'assets/css/style.css', 'SAFE-08', 'función ausente → CSS sin ?v=');
     safe_ok($nofn['js'] === 'assets/js/catalog-cards.js', 'SAFE-09', 'función ausente → JS sin ?v=');
 
+    // Empty stub in an isolated directory (avoids opcache of the real helper).
+    $iso = sys_get_temp_dir() . '/cyberleo_empty_stub_iso_' . getmypid();
+    @mkdir($iso, 0755, true);
+    file_put_contents($iso . '/asset_version.php', "<?php\n");
+    copy($safePath, $iso . '/asset_safe_url.php');
+    $stubScript = $iso . '/run.php';
+    file_put_contents($stubScript, '<?php
+require_once ' . var_export($iso . '/asset_safe_url.php', true) . ';
+echo cyberleo_safe_asset_url("assets/css/style.css");
+');
+    $stubRaw = (string) shell_exec(escapeshellarg(PHP_BINARY) . ' -d opcache.enable=0 -d opcache.enable_cli=0 ' . escapeshellarg($stubScript) . ' 2>/dev/null');
+    $stubOut = trim($stubRaw);
+    safe_ok($stubOut === 'assets/css/style.css', 'SAFE-12', 'stub vacío de asset_version → CSS sin ?v= sin fatal');
+    @unlink($stubScript);
+    @unlink($iso . '/asset_safe_url.php');
+    @unlink($iso . '/asset_version.php');
+    @rmdir($iso);
+
     $probeDir = sys_get_temp_dir() . '/cyberleo_login_fatal_' . getmypid();
     @mkdir($probeDir . '/includes', 0755, true);
-    file_put_contents($probeDir . '/probe.php', "<?php\nrequire_once 'includes/asset_version.php';\n");
-    $fatalOut = (string) shell_exec('cd ' . escapeshellarg($probeDir) . ' && php -d display_errors=1 probe.php 2>&1');
-    safe_ok(str_contains($fatalOut, "Failed opening required 'includes/asset_version.php'"), 'SAFE-10', 'fatal reproducible sin secretos');
+    file_put_contents($probeDir . '/probe.php', "<?php\nrequire_once 'includes/asset_version.php';\necho cyberleo_asset_url('assets/css/style.css');\n");
+    file_put_contents($probeDir . '/includes/asset_version.php', "<?php\n");
+    $fatalOut = (string) shell_exec('cd ' . escapeshellarg($probeDir) . ' && php -d display_errors=1 -d opcache.enable=0 -d opcache.enable_cli=0 probe.php 2>&1');
+    safe_ok(str_contains($fatalOut, 'Call to undefined function cyberleo_asset_url()'), 'SAFE-10', 'fatal stub vacío reproducible sin secretos');
     @unlink($probeDir . '/probe.php');
+    @unlink($probeDir . '/includes/asset_version.php');
     @rmdir($probeDir . '/includes');
     @rmdir($probeDir);
 

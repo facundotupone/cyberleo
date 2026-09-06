@@ -1789,6 +1789,9 @@ run_login_asset_isolated() {
             mv "$helper" "$stub"
             printf '<?php\n// stub without cyberleo_asset_url\n' >"$helper"
             ;;
+        empty-stub)
+            printf '<?php\n' >"$helper"
+            ;;
         ok) ;;
         *)
             fail "$id" "escenario desconocido: $scenario"
@@ -1854,6 +1857,47 @@ else
     run_login_asset_isolated unreadable H-LOGIN-ASSET-HELPER-UNREADABLE 0
 fi
 run_login_asset_isolated function-missing H-LOGIN-ASSET-FUNCTION-MISSING 0
+run_login_asset_isolated empty-stub H-LOGIN-ASSET-EMPTY-STUB 0
+
+# Empty stub must not 500 index (isolated 1-worker server; workers never saw the real helper).
+run_index_asset_isolated() {
+    local id=$1
+    local helper="$ROOT/includes/asset_version.php"
+    local bak="$HTTP_TMP/asset_version.index-empty.bak"
+    local port pid base body status
+    port="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    base="http://127.0.0.1:$port"
+    body="$HTTP_TMP/index-empty-stub.body"
+    cp "$helper" "$bak"
+    printf '<?php\n' >"$helper"
+    (
+        cd "$ROOT"
+        exec env \
+            PHP_CLI_SERVER_WORKERS=1 \
+            APP_ENV=test \
+            APP_SECRET='http-suite-secret-that-is-not-used-outside-tests' \
+            SITE_URL="$base" \
+            DB_HOST="localhost;unix_socket=$TEST_DB_SOCKET" \
+            DB_NAME="$TEST_DB_NAME" DB_USER=root DB_PASS='' \
+            MAIL_TRANSPORT=log MAIL_LOG_PATH="$MAIL_LOG" \
+            php -S "127.0.0.1:$port" "$ROOT/tests/helpers/php_server_router.php"
+    ) >"$HTTP_TMP/index-empty-stub.server.log" 2>&1 & pid=$!
+    for _ in {1..80}; do
+        curl --silent --fail --max-time 1 "$base/index.php" >/dev/null 2>&1 && break
+        sleep 0.05
+    done
+    status="$(curl --silent --show-error --max-time 15 --output "$body" --write-out '%{http_code}' "$base/index.php")"
+    cp "$bak" "$helper"
+    chmod 0644 "$helper"
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    [[ "$status" == "200" ]] || fail "$id" "HTTP $status (esperado 200)"
+    LC_ALL=C rg --ignore-case --quiet -e 'Fatal error|Uncaught|Stack trace:' -- "$body" && fail "$id" 'error visible en HTML'
+    LC_ALL=C rg --fixed-strings --quiet -e 'assets/css/style.css' -- "$body" || fail "$id" 'falta style.css'
+    LC_ALL=C rg --quiet -e 'assets/css/style\.css\?v=' -- "$body" && fail "$id" 'stub vacío no debía versionar CSS'
+    pass "$id"
+}
+run_index_asset_isolated H-INDEX-ASSET-EMPTY-STUB
 
 # Auth still works after degradation probes (helper restored)
 HTTP_COOKIE="$HTTP_TMP/login-asset-auth.cookie"
