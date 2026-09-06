@@ -131,8 +131,11 @@ function theme_hex_to_rgb_channels(string $hex): ?string {
     return $r . ', ' . $g . ', ' . $b;
 }
 
-function is_safe_local_theme_url(string $value): bool {
-    $value = trim($value);
+function is_safe_local_theme_url($value): bool {
+    if (!is_string($value) && !is_numeric($value)) {
+        return false;
+    }
+    $value = trim((string) $value);
     if ($value === '' || strlen($value) > 180) return false;
     if (preg_match('/[\x00-\x1F\x7F"\'<>\\\\]|[\r\n]/', $value)) return false;
     if (preg_match('#^(?:https?:|javascript:|data:|file:|vbscript:)#i', $value)) return false;

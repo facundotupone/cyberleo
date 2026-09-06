@@ -82,14 +82,19 @@ function format_price($price) {
 
 function get_featured_products() {
     global $pdo;
-    $stmt = $pdo->query("
-        SELECT p.*, c.name as category_name
-        FROM products p
-        JOIN categories c ON p.category_id = c.id
-        WHERE p.destacados > 0 AND p.is_active = 1
-        ORDER BY p.destacados ASC
-    ");
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    try {
+        $stmt = $pdo->query("
+            SELECT p.*, c.name as category_name
+            FROM products p
+            JOIN categories c ON p.category_id = c.id
+            WHERE p.destacados > 0 AND p.is_active = 1
+            ORDER BY p.destacados ASC
+        ");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log($e->getMessage());
+        return [];
+    }
 }
 
 function get_subcategories($category_id = null) {

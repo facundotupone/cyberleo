@@ -6,6 +6,7 @@
  * @param string $relativePath
  * @return string
  */
+if (!function_exists('cyberleo_safe_asset_url')) {
 function cyberleo_safe_asset_url($relativePath)
 {
     $relativePath = is_string($relativePath) ? trim($relativePath) : '';
@@ -48,4 +49,5 @@ function cyberleo_safe_asset_url($relativePath)
         }
         return $relativePath;
     }
+}
 }

@@ -15,17 +15,30 @@ if (function_exists('opcache_invalidate')) {
     }
 }
 
-$cyberleoIndexFail = static function ($detail = '') {
-    if (headers_sent()) {
+$cyberleoIndexFailed = false;
+$cyberleoSafeErrorText = static function ($raw) {
+    $raw = preg_replace('#(?:[A-Za-z]:)?[\\\\/][^\s:]+#', '[path]', (string) $raw);
+    $raw = preg_replace('/(?i)\b(password|passwd|pwd|secret|token|authorization)=([^\s&]+)/', '$1=[redacted]', (string) $raw);
+    $raw = preg_replace('/\s+/', ' ', (string) $raw);
+    $raw = trim((string) $raw);
+    if (function_exists('mb_substr')) {
+        return mb_substr($raw, 0, 240);
+    }
+    return substr($raw, 0, 240);
+};
+
+$cyberleoIndexFail = static function ($detail = '') use (&$cyberleoIndexFailed, $cyberleoSafeErrorText) {
+    if ($cyberleoIndexFailed || headers_sent()) {
         return;
     }
+    $cyberleoIndexFailed = true;
     http_response_code(500);
     header('Content-Type: text/html; charset=UTF-8');
     echo '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Error</title></head><body>';
     echo '<h1>No se pudo cargar la portada</h1>';
-    echo '<p>Extrá el ZIP de recuperación sobre public_html, reiniciá PHP en hPanel y purgá LiteSpeed.</p>';
+    echo '<p>Los archivos están presentes. Abrí el diagnóstico y enviá la línea <code>index_bootstrap</code> / <code>index_error</code>.</p>';
     if ($detail !== '') {
-        echo '<p>' . htmlspecialchars($detail, ENT_QUOTES, 'UTF-8') . '</p>';
+        echo '<p><strong>Detalle:</strong> ' . htmlspecialchars($cyberleoSafeErrorText($detail), ENT_QUOTES, 'UTF-8') . '</p>';
     }
     echo '<p><a href="diag_recovery.php?opcache=reset">Diagnóstico + reset OPcache</a>';
     echo ' · <a href="emergency_admin_login.php">Login de emergencia</a>';
@@ -36,10 +49,13 @@ $cyberleoIndexFail = static function ($detail = '') {
 
 set_exception_handler(static function (Throwable $e) use ($cyberleoIndexFail) {
     error_log('cyberleo index uncaught: ' . $e->getMessage());
-    $cyberleoIndexFail();
+    $cyberleoIndexFail(get_class($e) . ': ' . $e->getMessage());
 });
 
-register_shutdown_function(static function () use ($cyberleoIndexFail) {
+register_shutdown_function(static function () use ($cyberleoIndexFail, &$cyberleoIndexFailed) {
+    if ($cyberleoIndexFailed) {
+        return;
+    }
     $err = error_get_last();
     if ($err === null) {
         return;
@@ -49,7 +65,7 @@ register_shutdown_function(static function () use ($cyberleoIndexFail) {
         return;
     }
     error_log('cyberleo index shutdown: ' . $err['message']);
-    $cyberleoIndexFail('Si el login también falla, usá /emergency_admin_login.php');
+    $cyberleoIndexFail($err['message']);
 });
 
 require_once 'includes/config.php';
@@ -58,6 +74,12 @@ require_once 'includes/functions.php';
 
 $categories = get_categories();
 $featured_products = get_featured_products();
+if (!is_array($categories)) {
+    $categories = array();
+}
+if (!is_array($featured_products)) {
+    $featured_products = array();
+}
 
 // Optimización: obtener todo lo necesario en bloque para evitar consultas dentro de bucles
 $featured_ids = array_column($featured_products, 'id');
@@ -66,17 +88,27 @@ $featured_ids_str = implode(',', array_map('intval', $featured_ids));
 // 1. Todas las imágenes de productos destacados
 $images_by_product = [];
 if (!empty($featured_ids_str)) {
-    $stmt = $pdo->query("SELECT product_id, image_path FROM product_images WHERE product_id IN ($featured_ids_str) ORDER BY is_main DESC");
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $images_by_product[$row['product_id']][] = $row['image_path'];
+    try {
+        $stmt = $pdo->query("SELECT product_id, image_path FROM product_images WHERE product_id IN ($featured_ids_str) ORDER BY is_main DESC");
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $images_by_product[$row['product_id']][] = $row['image_path'];
+        }
+    } catch (Throwable $e) {
+        error_log('cyberleo index product_images: ' . $e->getMessage());
+        $images_by_product = [];
     }
 }
 
 // 2. Todas las subcategorías de todas las categorías
 $all_subcategories = [];
-$stmt = $pdo->query("SELECT * FROM subcategories ORDER BY category_id, name");
-foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $all_subcategories[$row['category_id']][] = $row;
+try {
+    $stmt = $pdo->query("SELECT * FROM subcategories ORDER BY category_id, name");
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $all_subcategories[$row['category_id']][] = $row;
+    }
+} catch (Throwable $e) {
+    error_log('cyberleo index subcategories: ' . $e->getMessage());
+    $all_subcategories = [];
 }
 ?>
 <!DOCTYPE html>
@@ -123,6 +155,9 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     require_once 'includes/theme.php';
     require_once 'includes/home_content.php';
     require_once 'includes/catalog_display.php';
+    if (!isset($storeSettings) || !is_array($storeSettings)) {
+        $storeSettings = get_store_settings();
+    }
     $themeSettings = resolve_theme_settings($storeSettings);
     $homeContent = resolve_home_content_settings($storeSettings);
     $catalogDisplay = resolve_catalog_display_settings($storeSettings);
@@ -133,8 +168,9 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $heroClasses[] = 'hero-has-image';
         $heroClasses[] = 'hero-overlay-' . $themeSettings['hero_overlay'];
     }
-    $heroButtonUrl = is_safe_local_theme_url($themeSettings['hero_button_url'])
-        ? $themeSettings['hero_button_url']
+    $heroButtonRaw = (string) ($themeSettings['hero_button_url'] ?? '');
+    $heroButtonUrl = is_safe_local_theme_url($heroButtonRaw)
+        ? $heroButtonRaw
         : '#productos-destacados';
     ?>
     <?php require_once 'components/nav.php'; ?>

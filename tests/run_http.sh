@@ -1938,10 +1938,13 @@ assert_status H-DIAG-RECOVERY 200
 assert_body_contains H-DIAG-RECOVERY 'cyberleo recovery diag'
 assert_body_contains H-DIAG-RECOVERY 'cyberleo_asset_url=1'
 assert_body_contains H-DIAG-RECOVERY 'emergency_admin_login.php exists=1'
+assert_body_contains H-DIAG-RECOVERY 'index_bootstrap=1'
+assert_body_contains H-DIAG-RECOVERY 'db_connect=1'
 pass H-DIAG-RECOVERY
 request GET 'diag_recovery.php?opcache=reset'
 assert_status H-DIAG-OPCACHE-RESET 200
 assert_body_contains H-DIAG-OPCACHE-RESET 'opcache_reset='
+assert_body_contains H-DIAG-OPCACHE-RESET 'index_bootstrap=1'
 pass H-DIAG-OPCACHE-RESET
 HTTP_COOKIE="$ADMIN_COOKIE"
 

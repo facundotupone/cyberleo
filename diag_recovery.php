@@ -104,4 +104,70 @@ try {
     $loginProbe = '0';
 }
 echo 'login_session_probe=' . $loginProbe . "\n";
+
+// Probe the same bootstrap path index.php uses (sanitized errors only).
+$cyberleoSanitize = static function ($raw) {
+    $raw = preg_replace('#(?:[A-Za-z]:)?[\\\\/][^\s:]+#', '[path]', (string) $raw);
+    $raw = preg_replace('/(?i)\b(password|passwd|pwd|secret|token|authorization)=([^\s&]+)/', '$1=[redacted]', (string) $raw);
+    $raw = preg_replace('/\s+/', ' ', (string) $raw);
+    return substr(trim((string) $raw), 0, 200);
+};
+
+$indexBootstrap = '0';
+$indexError = '';
+$dbConnect = '0';
+try {
+    if ($dbConsts !== '1') {
+        throw new RuntimeException('db constants missing');
+    }
+    $pdoProbe = new PDO(
+        'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME,
+        DB_USER,
+        DB_PASS,
+        array(PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8', PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION)
+    );
+    $dbConnect = '1';
+    $GLOBALS['pdo'] = $pdoProbe;
+    $pdo = $pdoProbe;
+    require_once __DIR__ . '/includes/functions.php';
+    require_once __DIR__ . '/includes/theme.php';
+    require_once __DIR__ . '/includes/home_content.php';
+    require_once __DIR__ . '/includes/catalog_display.php';
+    $cats = get_categories();
+    $feat = get_featured_products();
+    $settings = get_store_settings();
+    $theme = resolve_theme_settings($settings);
+    $home = resolve_home_content_settings($settings);
+    $catalog = resolve_catalog_display_settings($settings);
+    if (!is_array($cats) || !is_array($feat) || !is_array($settings) || !is_array($theme) || !is_array($home) || !is_array($catalog)) {
+        throw new RuntimeException('bootstrap returned non-array');
+    }
+    // Soft-check optional tables used by index.php
+    try {
+        $pdoProbe->query('SELECT 1 FROM subcategories LIMIT 1');
+        echo "table_subcategories=1\n";
+    } catch (Throwable $e) {
+        echo "table_subcategories=0\n";
+    }
+    try {
+        $pdoProbe->query('SELECT 1 FROM product_images LIMIT 1');
+        echo "table_product_images=1\n";
+    } catch (Throwable $e) {
+        echo "table_product_images=0\n";
+    }
+    try {
+        $pdoProbe->query('SELECT destacados FROM products LIMIT 1');
+        echo "column_products_destacados=1\n";
+    } catch (Throwable $e) {
+        echo "column_products_destacados=0\n";
+    }
+    $indexBootstrap = '1';
+} catch (Throwable $e) {
+    $indexError = $cyberleoSanitize(get_class($e) . ': ' . $e->getMessage());
+}
+echo 'db_connect=' . $dbConnect . "\n";
+echo 'index_bootstrap=' . $indexBootstrap . "\n";
+if ($indexError !== '') {
+    echo 'index_error=' . $indexError . "\n";
+}
 echo "done\n";
