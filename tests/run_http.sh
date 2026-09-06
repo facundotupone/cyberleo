@@ -1906,6 +1906,9 @@ request GET admin_login.php
 assert_status H-LOGIN-ASSET-AUTH-FORM 200
 assert_body_contains H-LOGIN-ASSET-AUTH-FORM 'name="username"'
 assert_body_contains H-LOGIN-ASSET-AUTH-FORM 'name="password"'
+assert_body_excludes H-LOGIN-ASSET-AUTH-FORM 'Fatal error'
+# Login must not depend on public footer during recovery.
+assert_body_excludes H-LOGIN-ASSET-AUTH-FORM 'site-footer-grid'
 pass H-LOGIN-ASSET-AUTH-FORM
 request POST admin_login.php --data-urlencode 'username=http-admin' --data-urlencode 'password=not-the-password'
 assert_status H-LOGIN-ASSET-AUTH-BAD 200

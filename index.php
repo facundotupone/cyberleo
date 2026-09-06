@@ -1,4 +1,34 @@
 <?php
+if (function_exists('opcache_invalidate')) {
+    foreach (array(
+        __DIR__ . '/includes/asset_version.php',
+        __DIR__ . '/includes/asset_safe_url.php',
+        __DIR__ . '/includes/functions.php',
+        __DIR__ . '/components/head.php',
+        __DIR__ . '/components/nav.php',
+        __DIR__ . '/components/footer.php',
+        __FILE__,
+    ) as $cyberleoOpcacheFile) {
+        if (is_file($cyberleoOpcacheFile)) {
+            opcache_invalidate($cyberleoOpcacheFile, true);
+        }
+    }
+}
+
+set_exception_handler(static function (Throwable $e) {
+    http_response_code(500);
+    error_log('cyberleo index uncaught: ' . $e->getMessage());
+    if (!headers_sent()) {
+        header('Content-Type: text/html; charset=UTF-8');
+    }
+    echo '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Error</title></head><body>';
+    echo '<h1>No se pudo cargar la portada</h1>';
+    echo '<p>Extrá el ZIP de reparación integral sobre public_html, reiniciá PHP en hPanel y purgá LiteSpeed.</p>';
+    echo '<p><a href="diag_recovery.php">Diagnóstico de recuperación</a> · <a href="admin_login.php">Login admin</a></p>';
+    echo '</body></html>';
+    exit;
+});
+
 require_once 'includes/config.php';
 require_once 'includes/db.php';
 require_once 'includes/functions.php';

@@ -61,6 +61,7 @@ FILES=(
     components/promo_banner.php
     create_order.php
     delete_image.php
+    diag_recovery.php
     forgot_password.php
     get_subcategories.php
     includes/admin_nav.php
