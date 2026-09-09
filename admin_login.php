@@ -106,7 +106,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
     try {
-        require_once __DIR__ . '/includes/config.php';
         require_once __DIR__ . '/includes/db.php';
         $key = enforce_auth_rate_limit($pdo, 'login|' . strtolower($username));
         if ($username !== '' && $password !== '') {

@@ -98,7 +98,9 @@ register_shutdown_function(static function () use ($cyberleoRenderDegraded, &$cy
 });
 
 try {
-    require_once __DIR__ . '/includes/config.php';
+    // Load db.php only — it pulls config.php via __DIR__.
+    // Do not require config.php separately first: absolute + relative paths can
+    // both execute on Hostinger and redeclare config_value().
     require_once __DIR__ . '/includes/db.php';
     require_once __DIR__ . '/includes/functions.php';
 } catch (Throwable $e) {

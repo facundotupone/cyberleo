@@ -44,7 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!is_file(__DIR__ . '/includes/db.php')) {
             throw new RuntimeException('Missing db.php');
         }
-        require_once __DIR__ . '/includes/config.php';
         require_once __DIR__ . '/includes/db.php';
         if (!isset($pdo) || !($pdo instanceof PDO)) {
             throw new RuntimeException('PDO unavailable');

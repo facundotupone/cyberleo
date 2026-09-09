@@ -1,10 +1,17 @@
 <?php
 $localConfig = __DIR__ . '/config.local.php';
-if (is_file($localConfig)) require_once $localConfig;
-function config_value($name, $default = '') {
-    $value = getenv($name);
-    if ($value !== false && $value !== '') return $value;
-    return defined($name) ? constant($name) : $default;
+if (is_file($localConfig)) {
+    require_once $localConfig;
+}
+if (!function_exists('config_value')) {
+    function config_value($name, $default = '')
+    {
+        $value = getenv($name);
+        if ($value !== false && $value !== '') {
+            return $value;
+        }
+        return defined($name) ? constant($name) : $default;
+    }
 }
 defined('DB_HOST') || define('DB_HOST', config_value('DB_HOST', 'localhost'));
 defined('DB_USER') || define('DB_USER', config_value('DB_USER', ''));
