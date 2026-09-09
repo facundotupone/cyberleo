@@ -29,6 +29,7 @@ try {
         nuk(
             str_contains((string) $src, "require_once 'components/nav.php'")
             || str_contains((string) $src, 'require_once "components/nav.php"')
+            || str_contains((string) $src, "components/nav.php")
             || preg_match("/require(?:_once)?\\s+['\"]components\\/nav\\.php['\"]/", (string) $src) === 1,
             'NAV-01',
             "$page usa components/nav.php"

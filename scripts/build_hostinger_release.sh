@@ -32,6 +32,7 @@ FILES=(
     .htaccess
     admin_categories.php
     admin_login.php
+    emergency_admin_login.php
     admin_orders.php
     admin_products.php
     admin_settings.php
@@ -57,13 +58,17 @@ FILES=(
     components/home_categories.php
     components/home_featured.php
     components/nav.php
+    components/nav_fallback.php
     components/product_card.php
     components/promo_banner.php
     create_order.php
     delete_image.php
+    diag_recovery.php
     forgot_password.php
     get_subcategories.php
     includes/admin_nav.php
+    includes/asset_safe_url.php
+    includes/asset_version.php
     includes/auth_check.php
     includes/catalog_display.php
     includes/checkout_display.php

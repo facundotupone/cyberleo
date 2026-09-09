@@ -153,11 +153,14 @@ TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=roo
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/home_content_settings_test.php"
 php "$ROOT/tests/public_nav_unification_test.php"
+php "$ROOT/tests/asset_version_test.php"
+php "$ROOT/tests/asset_safe_url_test.php"
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/catalog_display_settings_test.php"
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/checkout_display_settings_test.php"
 php "$ROOT/tests/functions_bootstrap_test.php"
+php "$ROOT/tests/config_redeclare_test.php"
 
 printf 'Verificando inventario de imágenes con fixtures...\n'
 INVENTORY_ROOT="$WORK_DIR/image-inventory"
