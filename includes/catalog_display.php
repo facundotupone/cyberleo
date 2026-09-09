@@ -13,8 +13,8 @@ function catalog_display_default_settings(): array {
         'featured_section_title' => 'Productos Destacados',
         'featured_empty_text' => 'No hay productos destacados disponibles.',
         'catalog_empty_text' => 'No hay productos disponibles en esta categoría.',
-        'featured_columns' => '3',
-        'catalog_columns' => '3',
+        'featured_columns' => '4',
+        'catalog_columns' => '4',
         'product_card_style' => 'elevated',
         'product_image_fit' => 'contain',
         'product_image_height' => 'normal',
@@ -250,7 +250,7 @@ function catalog_safe_product_images(array $images): array {
 }
 
 function catalog_column_class(string $columns): string {
-    $n = in_array($columns, ['2', '3', '4'], true) ? $columns : '3';
+    $n = in_array($columns, ['2', '3', '4'], true) ? $columns : '4';
     return 'product-cols-' . $n;
 }
 

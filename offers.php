@@ -23,7 +23,7 @@ if ($productIds) {
     }
 }
 
-$colsClass = catalog_column_class($catalogDisplay['catalog_columns'] ?? '3');
+$colsClass = catalog_column_class($catalogDisplay['catalog_columns'] ?? '4');
 ?>
 <!DOCTYPE html>
 <html lang="es">

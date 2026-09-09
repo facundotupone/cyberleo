@@ -1841,7 +1841,7 @@ printf 'Pruebas HTTP Etapa 3 (catálogo y tarjetas)...\n'
 sql "UPDATE products SET description=CONCAT(COALESCE(description,''), ' ', REPEAT('detalle extendido ', 40)), price_sale=CASE WHEN id=1 THEN ROUND(price*0.8,2) ELSE price_sale END, destacados=IF(id<=2,id,destacados) WHERE id<=2"
 request GET index.php
 assert_status H-CATALOG3-DEFAULT 200
-assert_body_contains H-CATALOG3-DEFAULT 'product-cols-3'
+assert_body_contains H-CATALOG3-DEFAULT 'product-cols-4'
 assert_body_contains H-CATALOG3-DEFAULT 'Productos Destacados'
 assert_body_contains H-CATALOG3-DEFAULT 'product-card-elevated'
 assert_body_contains H-CATALOG3-DEFAULT 'product-fit-contain'

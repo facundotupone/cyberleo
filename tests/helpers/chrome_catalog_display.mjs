@@ -244,10 +244,10 @@ try {
   assertNoBrowserErrors();
 
   if (mode === 'default') {
-    const m = await gridMetrics('.product-grid.product-cols-3');
+    const m = await gridMetrics('.product-grid.product-cols-4');
     requireValue(m && m.count > 0, 'expected featured products');
-    requireValue(m.className.includes('product-cols-3'), 'expected 3 columns class');
-    requireValue(m.firstRowCount >= 2 && m.firstRowCount <= 3, `unexpected first row count ${m.firstRowCount}`);
+    requireValue(m.className.includes('product-cols-4'), 'expected 4 columns class');
+    requireValue(m.firstRowCount >= 2 && m.firstRowCount <= 4, `unexpected first row count ${m.firstRowCount}`);
     requireValue(!m.overflow, 'horizontal overflow');
     requireValue(m.hasDesc, 'description should be visible');
     requireValue(m.hasStock, 'stock should be visible');
