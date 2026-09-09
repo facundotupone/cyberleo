@@ -68,8 +68,8 @@
         var align = pick(ALIGN_ALLOW, val('product_card_alignment'), 'left');
         var descMode = pick(DESC_ALLOW, val('product_description_mode'), 'expandable');
         var descLen = pick(LEN_ALLOW, val('product_description_length'), '200');
-        var featuredCols = pick(COL_ALLOW, val('featured_columns'), '3');
-        var catalogCols = pick(COL_ALLOW, val('catalog_columns'), '3');
+        var featuredCols = pick(COL_ALLOW, val('featured_columns'), '4');
+        var catalogCols = pick(COL_ALLOW, val('catalog_columns'), '4');
 
         var card = $('catalog-preview-card');
         rebuildCardClasses(card, style, align, fit, height);

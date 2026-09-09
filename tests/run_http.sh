@@ -230,8 +230,8 @@ settings_form() {
         -F 'featured_section_title=Productos Destacados' \
         -F 'featured_empty_text=No hay productos destacados disponibles.' \
         -F 'catalog_empty_text=No hay productos disponibles en esta categoría.' \
-        -F 'featured_columns=3' \
-        -F 'catalog_columns=3' \
+        -F 'featured_columns=4' \
+        -F 'catalog_columns=4' \
         -F 'product_card_style=elevated' \
         -F 'product_image_fit=contain' \
         -F 'product_image_height=normal' \
@@ -2127,7 +2127,7 @@ request POST admin_settings.php \
     -F 'settings_action=restore_catalog_display'
 assert_status H-CATALOG3-RESTORE 302
 assert_header_contains H-CATALOG3-RESTORE 'Location: admin_settings.php?catalog_restored=1'
-assert_sql H-CATALOG3-RESTORE '3' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
+assert_sql H-CATALOG3-RESTORE '4' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
 assert_sql H-CATALOG3-RESTORE 'elevated' "SELECT setting_value FROM store_settings WHERE setting_key='product_card_style'"
 assert_sql H-CATALOG3-RESTORE 'Productos Destacados' "SELECT setting_value FROM store_settings WHERE setting_key='featured_section_title'"
 assert_sql H-CATALOG3-RESTORE '#abcdef' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"
