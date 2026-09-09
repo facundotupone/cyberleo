@@ -29,7 +29,9 @@ mkdir($tmp);
 file_put_contents($tmp . '/db.php', "<?php\n\$pdo = null;\n");
 copy($root . '/includes/theme.php', $tmp . '/theme.php');
 $functions = file_get_contents($path);
+// Prefer absolute include; keep replace for older copies still using relative db.php.
 $functions = str_replace("require_once 'db.php';", "require_once __DIR__ . '/db.php';", $functions);
+bok(str_contains($functions, "require_once __DIR__ . '/db.php';"), 'O-04b', 'functions.php usa __DIR__ para db.php');
 file_put_contents($tmp . '/functions.php', $functions);
 
 $runner = $tmp . '/runner.php';

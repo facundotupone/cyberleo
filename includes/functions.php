@@ -1,5 +1,5 @@
 <?php
-require_once 'db.php';
+require_once __DIR__ . '/db.php';
 
 function get_store_settings() {
     global $pdo;
