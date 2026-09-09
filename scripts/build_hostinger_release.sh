@@ -46,6 +46,7 @@ FILES=(
     assets/js/catalog-preview.js
     assets/js/checkout-preview.js
     assets/js/home-content-preview.js
+    assets/js/public-nav.js
     assets/js/theme-preview.js
     cart.php
     category.php
@@ -64,6 +65,8 @@ FILES=(
     forgot_password.php
     get_subcategories.php
     includes/admin_nav.php
+    includes/asset_safe_url.php
+    includes/asset_version.php
     includes/auth_check.php
     includes/catalog_display.php
     includes/checkout_display.php
@@ -80,6 +83,7 @@ FILES=(
     includes/theme.php
     index.php
     logout.php
+    offers.php
     reset_password.php
     search_products.php
 )

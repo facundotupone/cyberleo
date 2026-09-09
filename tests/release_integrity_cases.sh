@@ -30,9 +30,30 @@ check RLS-03 1 "$WORK/03/release"
 
 mkdir -p "$WORK/04/release/assets"
 printf outside >"$WORK/04/outside.webp"
-ln -s "$WORK/04/outside.webp" "$WORK/04/release/assets/image.webp"
-printf 'body{background:url("assets/image.webp")}' >"$WORK/04/release/index.css"
-check RLS-04 1 "$WORK/04/release"
+rls04_link="$WORK/04/release/assets/image.webp"
+rls04_symlink=0
+if ln -s "$WORK/04/outside.webp" "$rls04_link" 2>"$WORK/04.ln.err"; then
+    if [[ -L "$rls04_link" ]]; then
+        rls04_symlink=1
+    fi
+fi
+if [[ "$rls04_symlink" -eq 1 ]]; then
+    printf 'body{background:url("assets/image.webp")}' >"$WORK/04/release/index.css"
+    check RLS-04 1 "$WORK/04/release"
+else
+    case "$(uname -s)" in
+        Linux*|Darwin*)
+            printf 'RLS-04: no se pudo crear un symlink real en %s\n' "$(uname -s)" >&2
+            if [[ -s "$WORK/04.ln.err" ]]; then
+                cat "$WORK/04.ln.err" >&2
+            fi
+            exit 1
+            ;;
+        *)
+            printf 'SKIP RLS-04: symlinks no disponibles en este entorno\n'
+            ;;
+    esac
+fi
 
 mkdir -p "$WORK/05/release/css" "$WORK/05/release/assets"
 printf image >"$WORK/05/release/assets/image.webp"

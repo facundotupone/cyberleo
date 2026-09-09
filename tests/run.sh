@@ -38,9 +38,26 @@ require_command php
 php "$ROOT/tests/htaccess_security_test.php"
 bash "$ROOT/tests/release_integrity_cases.sh"
 
-for command in mysql mysqladmin mariadbd mariadb-install-db; do
-    require_command "$command"
-done
+require_command mysql
+require_command mysqladmin
+
+MYSQLD_BIN="$(command -v mariadbd || true)"
+if [[ -z "$MYSQLD_BIN" ]]; then
+    MYSQLD_BIN="$(command -v mysqld || true)"
+fi
+if [[ -z "$MYSQLD_BIN" ]]; then
+    printf 'Falta el prerrequisito: mariadbd o mysqld\n' >&2
+    exit 1
+fi
+
+INSTALL_DB_BIN="$(command -v mariadb-install-db || true)"
+if [[ -z "$INSTALL_DB_BIN" ]]; then
+    INSTALL_DB_BIN="$(command -v mysql_install_db || true)"
+fi
+if [[ -z "$INSTALL_DB_BIN" ]]; then
+    printf 'Falta el prerrequisito: mariadb-install-db o mysql_install_db\n' >&2
+    exit 1
+fi
 php -r 'exit(extension_loaded("pdo_mysql") ? 0 : 1);' || {
     printf 'Falta la extensión PHP pdo_mysql.\n' >&2
     exit 1
@@ -52,9 +69,13 @@ while IFS= read -r -d '' file; do
 done < <(git -C "$ROOT" ls-files -z '*.php')
 
 mkdir -p "$DATA_DIR"
-mariadb-install-db --no-defaults --datadir="$DATA_DIR" \
-    --auth-root-authentication-method=normal >/dev/null
-mariadbd --no-defaults --datadir="$DATA_DIR" --socket="$SOCKET" \
+if [[ "$(basename "$INSTALL_DB_BIN")" == mariadb-install-db* ]]; then
+    "$INSTALL_DB_BIN" --no-defaults --datadir="$DATA_DIR" \
+        --auth-root-authentication-method=normal >/dev/null
+else
+    "$INSTALL_DB_BIN" --no-defaults --datadir="$DATA_DIR" >/dev/null
+fi
+"$MYSQLD_BIN" --no-defaults --datadir="$DATA_DIR" --socket="$SOCKET" \
     --pid-file="$PID_FILE" --log-error="$LOG_FILE" --skip-networking &
 SERVER_PID=$!
 
@@ -158,6 +179,8 @@ TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=roo
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/checkout_display_settings_test.php"
 php "$ROOT/tests/functions_bootstrap_test.php"
+php "$ROOT/tests/asset_safe_url_test.php"
+php "$ROOT/tests/asset_version_test.php"
 
 printf 'Verificando inventario de imágenes con fixtures...\n'
 INVENTORY_ROOT="$WORK_DIR/image-inventory"
