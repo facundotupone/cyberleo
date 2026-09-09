@@ -58,6 +58,7 @@ FILES=(
     components/home_categories.php
     components/home_featured.php
     components/nav.php
+    components/nav_fallback.php
     components/product_card.php
     components/promo_banner.php
     create_order.php
