@@ -71,8 +71,8 @@ try {
         $defaults['featured_section_title'] === 'Productos Destacados'
         && $defaults['featured_empty_text'] === 'No hay productos destacados disponibles.'
         && $defaults['catalog_empty_text'] === 'No hay productos disponibles en esta categoría.'
-        && $defaults['featured_columns'] === '3'
-        && $defaults['catalog_columns'] === '3'
+        && $defaults['featured_columns'] === '4'
+        && $defaults['catalog_columns'] === '4'
         && $defaults['product_card_style'] === 'elevated'
         && $defaults['product_image_fit'] === 'contain'
         && $defaults['product_image_height'] === 'normal'
@@ -162,8 +162,8 @@ try {
             'featured_section_title' => 'Título',
             'featured_empty_text' => 'Vacío dest',
             'catalog_empty_text' => 'Vacío cat',
-            'featured_columns' => '3',
-            'catalog_columns' => '3',
+            'featured_columns' => '4',
+            'catalog_columns' => '4',
             'product_card_style' => 'elevated',
             'product_image_fit' => 'contain',
             'product_image_height' => 'normal',
@@ -217,7 +217,7 @@ try {
         'product_show_stock' => 'yes',
     ]);
     cdok(
-        $corrupt['featured_columns'] === '3'
+        $corrupt['featured_columns'] === '4'
         && $corrupt['product_card_style'] === 'elevated'
         && $corrupt['product_show_stock'] === '1',
         'CD-16',
@@ -230,15 +230,15 @@ try {
     cdset($pdo, 'announcement_enabled', '1');
     cdset($pdo, 'whatsapp_number', '5491199999999');
     cdset($pdo, 'payment_methods', 'Efectivo, Mercado Pago');
-    cdset($pdo, 'featured_columns', '4');
+    cdset($pdo, 'featured_columns', '2');
     cdset($pdo, 'product_card_style', 'minimal');
     cdset($pdo, 'product_add_button_text', 'Comprar ya');
     $stockBefore = (int) $pdo->query('SELECT stock FROM products WHERE id=1')->fetchColumn();
     $nameBefore = (string) $pdo->query('SELECT name FROM products WHERE id=1')->fetchColumn();
 
     $r1 = restore_catalog_display_defaults($pdo);
-    cdok($r1['restored']['featured_columns'] === '3' && $r1['restored']['product_card_style'] === 'elevated', 'CD-17', 'restauración independiente');
-    cdok(cdget($pdo, 'featured_columns') === '3', 'CD-17b', 'DB featured_columns default');
+    cdok($r1['restored']['featured_columns'] === '4' && $r1['restored']['product_card_style'] === 'elevated', 'CD-17', 'restauración independiente');
+    cdok(cdget($pdo, 'featured_columns') === '4', 'CD-17b', 'DB featured_columns default');
     cdok(cdget($pdo, 'product_add_button_text') === 'Agregar al carrito', 'CD-17c', 'DB botón default');
 
     $r2 = restore_catalog_display_defaults($pdo);

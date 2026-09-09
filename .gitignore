@@ -7,3 +7,7 @@
 *.log
 /logs/
 /tmp/
+
+# Paquetes descargables versionados para Hostinger
+!/releases/
+!/releases/**

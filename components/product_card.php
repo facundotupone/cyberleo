@@ -32,7 +32,12 @@ $price = (float) ($product['price'] ?? 0);
 $priceSale = isset($product['price_sale']) && $product['price_sale'] !== null && $product['price_sale'] !== ''
     ? (float) $product['price_sale']
     : 0.0;
-$hasSale = $priceSale > 0;
+require_once __DIR__ . '/../includes/catalog_taxonomy.php';
+$hasSale = catalog_product_is_offer([
+    'is_active' => $product['is_active'] ?? 1,
+    'price' => $price,
+    'price_sale' => $product['price_sale'] ?? null,
+]);
 $effectivePrice = $hasSale ? $priceSale : $price;
 $categoryId = (int) ($product['category_id'] ?? 0);
 

@@ -42,8 +42,11 @@ if ($currentScript === 'category.php' && isset($category_id) && is_numeric($cate
     $resolvedCategoryId = (int) $category_id;
 }
 $activeCategoryId = public_nav_active_category_id($currentScript, $_GET, $resolvedCategoryId);
+if (!isset($navSubcategoriesByCategory) || !is_array($navSubcategoriesByCategory)) {
+    $navSubcategoriesByCategory = public_nav_subcategories_by_category();
+}
 $footerNavItems = public_nav_footer_items(
-    public_nav_items($categories, $currentScript, $activeCategoryId)
+    public_nav_items($categories, $currentScript, $activeCategoryId, $navSubcategoriesByCategory)
 );
 
 $colCount = 1 + ($showBrandCol ? 1 : 0) + ($showContactCol ? 1 : 0);

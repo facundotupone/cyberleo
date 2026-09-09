@@ -230,8 +230,8 @@ settings_form() {
         -F 'featured_section_title=Productos Destacados' \
         -F 'featured_empty_text=No hay productos destacados disponibles.' \
         -F 'catalog_empty_text=No hay productos disponibles en esta categoría.' \
-        -F 'featured_columns=3' \
-        -F 'catalog_columns=3' \
+        -F 'featured_columns=4' \
+        -F 'catalog_columns=4' \
         -F 'product_card_style=elevated' \
         -F 'product_image_fit=contain' \
         -F 'product_image_height=normal' \
@@ -1724,6 +1724,28 @@ pass H-NAV-UNIFY-RESTORE
 run_nav_unify_chrome unify H-NAV-UNIFY-DESKTOP
 run_nav_unify_chrome mobile H-NAV-UNIFY-MOBILE
 
+# Taxonomy / offers public surface
+request GET index.php
+assert_status H-TAX-HOME 200
+assert_body_contains H-TAX-HOME 'Productos'
+assert_body_contains H-TAX-HOME 'Ofertas'
+assert_body_contains H-TAX-HOME 'site-nav-products'
+assert_body_contains H-TAX-HOME 'HTTP fixtures'
+pass H-TAX-HOME
+
+request GET offers.php
+assert_status H-TAX-OFFERS 200
+assert_body_contains H-TAX-OFFERS 'Ofertas'
+assert_body_contains H-TAX-OFFERS 'HTTP offer product'
+assert_body_excludes H-TAX-OFFERS 'HTTP order product'
+assert_body_contains H-TAX-OFFERS 'aria-current="page"'
+pass H-TAX-OFFERS
+
+request GET get_subcategories.php?category_id=1
+assert_status H-TAX-SUBS 200
+assert_body_contains H-TAX-SUBS 'HTTP fixtures'
+pass H-TAX-SUBS
+
 # Footer toggles off: no empty contact column
 request GET admin_settings.php
 CSRF_TOKEN="$(csrf_from_body)"
@@ -1816,10 +1838,11 @@ sql 'DROP TRIGGER IF EXISTS settings_home_fail'
 pass H-HOME2-INTERNAL
 
 printf 'Pruebas HTTP Etapa 3 (catálogo y tarjetas)...\n'
+sql "DELETE FROM store_settings WHERE setting_key IN ('featured_columns','catalog_columns')"
 sql "UPDATE products SET description=CONCAT(COALESCE(description,''), ' ', REPEAT('detalle extendido ', 40)), price_sale=CASE WHEN id=1 THEN ROUND(price*0.8,2) ELSE price_sale END, destacados=IF(id<=2,id,destacados) WHERE id<=2"
 request GET index.php
 assert_status H-CATALOG3-DEFAULT 200
-assert_body_contains H-CATALOG3-DEFAULT 'product-cols-3'
+assert_body_contains H-CATALOG3-DEFAULT 'product-cols-4'
 assert_body_contains H-CATALOG3-DEFAULT 'Productos Destacados'
 assert_body_contains H-CATALOG3-DEFAULT 'product-card-elevated'
 assert_body_contains H-CATALOG3-DEFAULT 'product-fit-contain'
@@ -2105,7 +2128,7 @@ request POST admin_settings.php \
     -F 'settings_action=restore_catalog_display'
 assert_status H-CATALOG3-RESTORE 302
 assert_header_contains H-CATALOG3-RESTORE 'Location: admin_settings.php?catalog_restored=1'
-assert_sql H-CATALOG3-RESTORE '3' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
+assert_sql H-CATALOG3-RESTORE '4' "SELECT setting_value FROM store_settings WHERE setting_key='featured_columns'"
 assert_sql H-CATALOG3-RESTORE 'elevated' "SELECT setting_value FROM store_settings WHERE setting_key='product_card_style'"
 assert_sql H-CATALOG3-RESTORE 'Productos Destacados' "SELECT setting_value FROM store_settings WHERE setting_key='featured_section_title'"
 assert_sql H-CATALOG3-RESTORE '#abcdef' "SELECT setting_value FROM store_settings WHERE setting_key='brand_primary_color'"

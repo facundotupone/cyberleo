@@ -21,7 +21,8 @@ INSERT INTO products
     (id, name, description, price, price_sale, stock, image, is_active, category_id, subcategory_id, destacados)
 VALUES
     (1, 'HTTP order product', 'Order fixture', 125.50, NULL, 8, NULL, 1, 1, 1, 1),
-    (2, '<script>globalThis.xssExecuted=1;document.title="XSS_EXECUTED"</script>', '"><img src=x onerror=globalThis.xssExecuted=2>', 20.00, NULL, 2, NULL, 1, 1, 1, 2);
+    (2, '<script>globalThis.xssExecuted=1;document.title="XSS_EXECUTED"</script>', '"><img src=x onerror=globalThis.xssExecuted=2>', 20.00, NULL, 2, NULL, 1, 1, 1, 2),
+    (3, 'HTTP offer product', 'Offer fixture', 100.00, 70.00, 5, NULL, 1, 1, 1, 0);
 INSERT INTO store_settings (setting_key, setting_value) VALUES
     ('store_name', 'HTTP Test Store'),
     ('whatsapp_number', '5491100000000'),

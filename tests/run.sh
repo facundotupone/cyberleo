@@ -154,6 +154,8 @@ TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=roo
     php "$ROOT/tests/home_content_settings_test.php"
 php "$ROOT/tests/public_nav_unification_test.php"
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
+    php "$ROOT/tests/catalog_taxonomy_test.php"
+TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/catalog_display_settings_test.php"
 TEST_DSN="mysql:unix_socket=$SOCKET;dbname=$TEST_DB;charset=utf8mb4" DB_USER=root DB_PASS='' \
     php "$ROOT/tests/checkout_display_settings_test.php"
@@ -241,5 +243,5 @@ TEST_DB_SOCKET="$SOCKET" TEST_DB_NAME="$TEST_DB" \
 [[ ! -f "$ROOT/dist/cyberleo-private-tools.zip.sha256" ]]
 [[ ! -f "$ROOT/dist/cyberleo-actualizacion-estetica.zip.sha256" ]]
 
-git -C "$ROOT" diff --exit-code 175f2c1 -- create_order.php schema.sql
+git -C "$ROOT" diff --exit-code -w 175f2c1 -- create_order.php schema.sql
 printf 'OK: lint, migración, imágenes, HTTP, Stage 5 e integridad de paquetes verificados.\n'

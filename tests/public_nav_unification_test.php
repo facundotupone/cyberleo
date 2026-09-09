@@ -22,7 +22,7 @@ function nuk(bool $v, string $id, string $text): void
 $root = dirname(__DIR__);
 
 try {
-    $publicPages = ['index.php', 'category.php', 'cart.php'];
+    $publicPages = ['index.php', 'category.php', 'cart.php', 'offers.php'];
     foreach ($publicPages as $page) {
         $src = file_get_contents($root . '/' . $page);
         nuk($src !== false, 'NAV-01a', "lee $page");
@@ -46,20 +46,74 @@ try {
     nuk(is_string($navComponent) && str_contains($navComponent, 'data-cyberleo-nav="public"'), 'NAV-04', 'nav público canónico marcado');
     nuk(str_contains((string) $navComponent, 'public_nav_items'), 'NAV-05', 'nav usa allowlist pública');
     nuk(str_contains((string) $navComponent, 'cyberleo-nav-link'), 'NAV-06', 'nav usa clase específica CyberLeo');
+    nuk(str_contains((string) $navComponent, 'site-nav-products'), 'NAV-06b', 'nav incluye menú Productos');
+    nuk(str_contains((string) $navComponent, 'data-cyberleo-products-mega'), 'NAV-06c', 'nav incluye mega menú de dos paneles');
+    nuk(str_contains((string) $navComponent, 'assets/js/public-nav.js'), 'NAV-06d', 'nav carga public-nav.js');
 
     $footer = file_get_contents($root . '/components/footer.php');
     nuk(is_string($footer) && str_contains($footer, 'public_nav_items'), 'NAV-07', 'footer reutiliza allowlist pública');
     nuk(str_contains((string) $footer, 'site-footer-grid'), 'NAV-08', 'footer usa layout de columnas');
 
     $items = public_nav_items(
-        [['id' => 3, 'name' => 'Notebooks'], ['id' => 0, 'name' => 'Ignorar'], ['id' => 5, 'name' => '']],
+        [
+            ['id' => 3, 'name' => 'Notebooks y PC', 'icon' => 'bi-laptop'],
+            ['id' => 0, 'name' => 'Ignorar', 'icon' => 'bi-cpu'],
+            ['id' => 5, 'name' => '', 'icon' => 'bi-cpu'],
+            ['id' => 8, 'name' => 'Sin subs', 'icon' => 'bi-box'],
+        ],
         'category.php',
-        3
+        3,
+        [
+            3 => [
+                ['id' => 30, 'name' => 'Notebooks', 'category_id' => 3],
+                ['id' => 31, 'name' => 'Monitores', 'category_id' => 3],
+            ],
+        ]
     );
-    nuk(count($items) === 3, 'NAV-09', 'allowlist filtra categorías inválidas');
+    nuk(count($items) === 4, 'NAV-09', 'allowlist Inicio/Productos/Ofertas/Carrito');
     nuk($items[0]['id'] === 'home' && $items[0]['current'] === false, 'NAV-10', 'inicio no activo en categoría');
-    nuk($items[1]['id'] === 'category-3' && $items[1]['current'] === true, 'NAV-11', 'categoría activa marcada');
-    nuk($items[2]['type'] === 'cart' && $items[2]['href'] === 'cart.php', 'NAV-12', 'carrito al final');
+    nuk($items[1]['type'] === 'products_menu' && $items[1]['current'] === true, 'NAV-11', 'Productos activo en categoría');
+    nuk($items[1]['children'][0]['current'] === true, 'NAV-11b', 'categoría activa dentro del menú');
+    nuk($items[1]['children'][0]['selected'] === true, 'NAV-11b2', 'categoría seleccionada en panel');
+    nuk(count($items[1]['children']) === 2, 'NAV-11b3', 'incluye categoría sin subcategorías');
+    nuk($items[2]['id'] === 'offers', 'NAV-11c', 'Ofertas presente');
+    nuk($items[3]['type'] === 'cart' && $items[3]['href'] === 'cart.php', 'NAV-12', 'carrito al final');
+
+    $emptyTaxonomy = public_nav_items([], 'index.php', null, []);
+    nuk(
+        count($emptyTaxonomy) === 4 && $emptyTaxonomy[1]['type'] === 'products_menu',
+        'NAV-09b',
+        'Productos permanece aunque no haya categorías'
+    );
+
+    $footerCompact = public_nav_footer_items($items);
+    nuk(count($footerCompact) === 4, 'NAV-09c', 'footer compacto con 4 enlaces');
+    nuk(
+        array_values(array_map(static fn($i) => $i['id'], $footerCompact)) === ['home', 'products', 'offers', 'cart'],
+        'NAV-09d',
+        'footer no expande categorías'
+    );
+
+    $withSub = public_nav_items(
+        [
+            ['id' => 3, 'name' => 'Notebooks y PC', 'icon' => 'bi-laptop'],
+        ],
+        'category.php',
+        3,
+        [
+            3 => [
+                ['id' => 30, 'name' => 'Notebooks', 'category_id' => 3],
+                ['id' => 31, 'name' => 'Monitores', 'category_id' => 3],
+            ],
+        ],
+        31
+    );
+    nuk(
+        $withSub[1]['children'][0]['current'] === false
+        && $withSub[1]['children'][0]['children'][1]['current'] === true,
+        'NAV-11d',
+        'solo la subcategoría activa tiene aria-current'
+    );
 
     // Resolved category id (product_id flows) must drive aria-current.
     $resolved = public_nav_active_category_id('category.php', ['id' => '1', 'product_id' => '99'], 7);
@@ -70,8 +124,27 @@ try {
     nuk($invalid === null, 'NAV-12d', 'id inválido no activa categoría');
     $notCategory = public_nav_active_category_id('index.php', ['id' => '4'], 4);
     nuk($notCategory === null, 'NAV-12e', 'fuera de category.php no hay categoría activa');
-    $mismatchItems = public_nav_items([['id' => 1, 'name' => 'A'], ['id' => 7, 'name' => 'B']], 'category.php', 7);
-    nuk($mismatchItems[1]['current'] === false && $mismatchItems[2]['current'] === true, 'NAV-12f', 'solo la categoría resuelta queda activa');
+    $subResolved = public_nav_active_subcategory_id('category.php', ['sub' => '9'], 12);
+    nuk($subResolved === 12, 'NAV-12e2', 'subcategoría resuelta');
+    $mismatchItems = public_nav_items(
+        [
+            ['id' => 1, 'name' => 'A', 'icon' => 'bi-cpu'],
+            ['id' => 7, 'name' => 'B', 'icon' => 'bi-cpu'],
+        ],
+        'category.php',
+        7,
+        [
+            1 => [['id' => 1, 'name' => 'S1', 'category_id' => 1]],
+            7 => [['id' => 7, 'name' => 'S7', 'category_id' => 7]],
+        ]
+    );
+    nuk(
+        $mismatchItems[1]['children'][0]['current'] === false
+        && $mismatchItems[1]['children'][1]['current'] === true
+        && $mismatchItems[1]['children'][1]['selected'] === true,
+        'NAV-12f',
+        'solo la categoría resuelta queda activa'
+    );
 
     $adminPages = [
         'admin_products.php',

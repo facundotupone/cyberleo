@@ -65,7 +65,7 @@ if ($productIds) {
     }
 }
 
-$colsClass = catalog_column_class($catalogDisplay['catalog_columns'] ?? '3');
+$colsClass = catalog_column_class($catalogDisplay['catalog_columns'] ?? '4');
 $showBreadcrumbs = ($catalogDisplay['catalog_show_breadcrumbs'] ?? '1') === '1';
 $showCount = ($catalogDisplay['catalog_show_product_count'] ?? '1') === '1';
 $showFilter = ($catalogDisplay['catalog_show_subcategory_filter'] ?? '1') === '1';

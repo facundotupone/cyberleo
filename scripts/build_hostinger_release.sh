@@ -44,6 +44,7 @@ FILES=(
     assets/js/cart-checkout.js
     assets/js/catalog-cards.js
     assets/js/catalog-preview.js
+    assets/js/public-nav.js
     assets/js/checkout-preview.js
     assets/js/home-content-preview.js
     assets/js/theme-preview.js
@@ -66,6 +67,7 @@ FILES=(
     includes/admin_nav.php
     includes/auth_check.php
     includes/catalog_display.php
+    includes/catalog_taxonomy.php
     includes/checkout_display.php
     includes/config.php
     includes/db.php
@@ -80,6 +82,7 @@ FILES=(
     includes/theme.php
     index.php
     logout.php
+    offers.php
     reset_password.php
     search_products.php
 )
