@@ -47,6 +47,8 @@ try {
     nuk(str_contains((string) $navComponent, 'public_nav_items'), 'NAV-05', 'nav usa allowlist pública');
     nuk(str_contains((string) $navComponent, 'cyberleo-nav-link'), 'NAV-06', 'nav usa clase específica CyberLeo');
     nuk(str_contains((string) $navComponent, 'site-nav-products'), 'NAV-06b', 'nav incluye menú Productos');
+    nuk(str_contains((string) $navComponent, 'data-cyberleo-products-mega'), 'NAV-06c', 'nav incluye mega menú de dos paneles');
+    nuk(str_contains((string) $navComponent, 'assets/js/public-nav.js'), 'NAV-06d', 'nav carga public-nav.js');
 
     $footer = file_get_contents($root . '/components/footer.php');
     nuk(is_string($footer) && str_contains($footer, 'public_nav_items'), 'NAV-07', 'footer reutiliza allowlist pública');
@@ -57,6 +59,7 @@ try {
             ['id' => 3, 'name' => 'Notebooks y PC', 'icon' => 'bi-laptop'],
             ['id' => 0, 'name' => 'Ignorar', 'icon' => 'bi-cpu'],
             ['id' => 5, 'name' => '', 'icon' => 'bi-cpu'],
+            ['id' => 8, 'name' => 'Sin subs', 'icon' => 'bi-box'],
         ],
         'category.php',
         3,
@@ -71,8 +74,46 @@ try {
     nuk($items[0]['id'] === 'home' && $items[0]['current'] === false, 'NAV-10', 'inicio no activo en categoría');
     nuk($items[1]['type'] === 'products_menu' && $items[1]['current'] === true, 'NAV-11', 'Productos activo en categoría');
     nuk($items[1]['children'][0]['current'] === true, 'NAV-11b', 'categoría activa dentro del menú');
+    nuk($items[1]['children'][0]['selected'] === true, 'NAV-11b2', 'categoría seleccionada en panel');
+    nuk(count($items[1]['children']) === 2, 'NAV-11b3', 'incluye categoría sin subcategorías');
     nuk($items[2]['id'] === 'offers', 'NAV-11c', 'Ofertas presente');
     nuk($items[3]['type'] === 'cart' && $items[3]['href'] === 'cart.php', 'NAV-12', 'carrito al final');
+
+    $emptyTaxonomy = public_nav_items([], 'index.php', null, []);
+    nuk(
+        count($emptyTaxonomy) === 4 && $emptyTaxonomy[1]['type'] === 'products_menu',
+        'NAV-09b',
+        'Productos permanece aunque no haya categorías'
+    );
+
+    $footerCompact = public_nav_footer_items($items);
+    nuk(count($footerCompact) === 4, 'NAV-09c', 'footer compacto con 4 enlaces');
+    nuk(
+        array_values(array_map(static fn($i) => $i['id'], $footerCompact)) === ['home', 'products', 'offers', 'cart'],
+        'NAV-09d',
+        'footer no expande categorías'
+    );
+
+    $withSub = public_nav_items(
+        [
+            ['id' => 3, 'name' => 'Notebooks y PC', 'icon' => 'bi-laptop'],
+        ],
+        'category.php',
+        3,
+        [
+            3 => [
+                ['id' => 30, 'name' => 'Notebooks', 'category_id' => 3],
+                ['id' => 31, 'name' => 'Monitores', 'category_id' => 3],
+            ],
+        ],
+        31
+    );
+    nuk(
+        $withSub[1]['children'][0]['current'] === false
+        && $withSub[1]['children'][0]['children'][1]['current'] === true,
+        'NAV-11d',
+        'solo la subcategoría activa tiene aria-current'
+    );
 
     // Resolved category id (product_id flows) must drive aria-current.
     $resolved = public_nav_active_category_id('category.php', ['id' => '1', 'product_id' => '99'], 7);
@@ -83,6 +124,8 @@ try {
     nuk($invalid === null, 'NAV-12d', 'id inválido no activa categoría');
     $notCategory = public_nav_active_category_id('index.php', ['id' => '4'], 4);
     nuk($notCategory === null, 'NAV-12e', 'fuera de category.php no hay categoría activa');
+    $subResolved = public_nav_active_subcategory_id('category.php', ['sub' => '9'], 12);
+    nuk($subResolved === 12, 'NAV-12e2', 'subcategoría resuelta');
     $mismatchItems = public_nav_items(
         [
             ['id' => 1, 'name' => 'A', 'icon' => 'bi-cpu'],
@@ -97,7 +140,8 @@ try {
     );
     nuk(
         $mismatchItems[1]['children'][0]['current'] === false
-        && $mismatchItems[1]['children'][1]['current'] === true,
+        && $mismatchItems[1]['children'][1]['current'] === true
+        && $mismatchItems[1]['children'][1]['selected'] === true,
         'NAV-12f',
         'solo la categoría resuelta queda activa'
     );

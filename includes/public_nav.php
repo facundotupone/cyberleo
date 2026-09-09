@@ -32,7 +32,8 @@ function public_nav_items(
     array $categories,
     string $currentScript,
     ?int $activeCategoryId = null,
-    array $subcategoriesByCategory = []
+    array $subcategoriesByCategory = [],
+    ?int $activeSubcategoryId = null
 ): array {
     $categories = catalog_taxonomy_sort_categories($categories);
     $items = [];
@@ -45,6 +46,7 @@ function public_nav_items(
     ];
 
     $productChildren = [];
+    $selectedCategoryId = null;
     foreach ($categories as $category) {
         $id = (int) ($category['id'] ?? 0);
         if ($id <= 0) {
@@ -62,38 +64,58 @@ function public_nav_items(
             if ($sid <= 0 || $sname === '') {
                 continue;
             }
+            $isSubCurrent = $currentScript === 'category.php'
+                && $activeSubcategoryId !== null
+                && $activeSubcategoryId === $sid
+                && $activeCategoryId === $id;
             $subs[] = [
                 'id' => 'sub-' . $sid,
+                'subcategory_id' => $sid,
                 'label' => $sname,
                 'href' => 'category.php?id=' . $id . '&sub=' . $sid,
-                'current' => false,
+                'current' => $isSubCurrent,
             ];
         }
-        // Skip empty category groups in the Products menu.
-        if ($subs === []) {
-            continue;
+
+        $isCategoryPage = $currentScript === 'category.php' && $activeCategoryId === $id;
+        // aria-current only on the deepest match: subcategory XOR category "Ver todos".
+        $categoryCurrent = $isCategoryPage && ($activeSubcategoryId === null || $activeSubcategoryId <= 0);
+
+        if ($isCategoryPage) {
+            $selectedCategoryId = $id;
         }
+
         $productChildren[] = [
             'id' => 'category-' . $id,
+            'category_id' => $id,
             'label' => $name,
             'href' => 'category.php?id=' . $id,
             'icon' => catalog_taxonomy_icon_class((string) ($category['icon'] ?? '')),
-            'current' => $currentScript === 'category.php' && $activeCategoryId === $id,
+            'current' => $categoryCurrent,
+            'selected' => false,
             'type' => 'category',
             'children' => $subs,
         ];
     }
 
-    if ($productChildren !== []) {
-        $items[] = [
-            'id' => 'products',
-            'label' => 'Productos',
-            'href' => 'index.php#categorias',
-            'current' => $currentScript === 'category.php',
-            'type' => 'products_menu',
-            'children' => $productChildren,
-        ];
+    if ($selectedCategoryId === null && $productChildren !== []) {
+        $selectedCategoryId = (int) ($productChildren[0]['category_id'] ?? 0);
     }
+    foreach ($productChildren as &$child) {
+        $child['selected'] = ((int) ($child['category_id'] ?? 0)) === $selectedCategoryId;
+    }
+    unset($child);
+
+    // Always expose Productos even if taxonomy failed to load (empty children).
+    $items[] = [
+        'id' => 'products',
+        'label' => 'Productos',
+        'href' => 'index.php#categorias',
+        'current' => $currentScript === 'category.php',
+        'type' => 'products_menu',
+        'selected_category_id' => $selectedCategoryId,
+        'children' => $productChildren,
+    ];
 
     $items[] = [
         'id' => 'offers',
@@ -135,7 +157,26 @@ function public_nav_active_category_id(string $currentScript, array $query, ?int
 }
 
 /**
- * Footer quick links: flatten Productos into category links + Ofertas/Inicio/Carrito.
+ * Resolve active subcategory id from the public catalog query string.
+ */
+function public_nav_active_subcategory_id(string $currentScript, array $query, ?int $resolvedSubcategoryId = null): ?int
+{
+    if ($currentScript !== 'category.php') {
+        return null;
+    }
+    if ($resolvedSubcategoryId !== null && $resolvedSubcategoryId > 0) {
+        return $resolvedSubcategoryId;
+    }
+    if (!isset($query['sub']) || !is_numeric($query['sub'])) {
+        return null;
+    }
+    $id = (int) $query['sub'];
+    return $id > 0 ? $id : null;
+}
+
+/**
+ * Footer quick links: compact Inicio · Productos · Ofertas · Carrito
+ * (never expand the 10 categories or 69 subcategories).
  *
  * @param list<array<string,mixed>> $items
  * @return list<array{id:string,label:string,href:string,current:bool,type:string}>
@@ -146,15 +187,14 @@ function public_nav_footer_items(array $items): array
     foreach ($items as $item) {
         $type = (string) ($item['type'] ?? 'link');
         if ($type === 'products_menu') {
-            foreach ($item['children'] ?? [] as $child) {
-                $out[] = [
-                    'id' => (string) ($child['id'] ?? ''),
-                    'label' => (string) ($child['label'] ?? ''),
-                    'href' => (string) ($child['href'] ?? '#'),
-                    'current' => !empty($child['current']),
-                    'type' => 'link',
-                ];
-            }
+            $out[] = [
+                'id' => (string) ($item['id'] ?? 'products'),
+                'label' => (string) ($item['label'] ?? 'Productos'),
+                'href' => (string) ($item['href'] ?? 'index.php#categorias'),
+                // Compact footer never competes with category/sub aria-current.
+                'current' => false,
+                'type' => 'link',
+            ];
             continue;
         }
         $out[] = [
@@ -170,18 +210,26 @@ function public_nav_footer_items(array $items): array
 
 /**
  * Load subcategories grouped by category_id for navigation menus.
+ * Single query via get_subcategories(); never N+1.
  *
  * @return array<int,list<array<string,mixed>>>
  */
 function public_nav_subcategories_by_category(): array
 {
     $grouped = [];
-    foreach (get_subcategories() as $row) {
-        $cid = (int) ($row['category_id'] ?? 0);
-        if ($cid <= 0) {
-            continue;
+    try {
+        if (!function_exists('get_subcategories')) {
+            return $grouped;
         }
-        $grouped[$cid][] = $row;
+        foreach (get_subcategories() as $row) {
+            $cid = (int) ($row['category_id'] ?? 0);
+            if ($cid <= 0) {
+                continue;
+            }
+            $grouped[$cid][] = $row;
+        }
+    } catch (Throwable $e) {
+        return [];
     }
     return $grouped;
 }

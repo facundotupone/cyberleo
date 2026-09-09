@@ -184,9 +184,9 @@ try {
     requireValue(home.activeHrefs.some(h => h === 'index.php' || /index\.php$/.test(String(h))), 'home active missing');
     requireValue(home.footerCols.every(c => !c.empty && c.childCount > 0), 'home footer empty column');
 
-    // Prefer first category link from nav (products dropdown headings).
+    // Prefer first category link from products mega-menu ("Ver todos").
     const categoryHref = await evaluate(`(() => {
-      const a = document.querySelector('nav.site-navbar a.site-nav-products-heading[href*="category.php"], nav.site-navbar a[href*="category.php?id="]');
+      const a = document.querySelector('nav.site-navbar a.site-nav-products-all[href*="category.php"], nav.site-navbar a.site-nav-products-sub[href*="category.php"]');
       return a ? a.getAttribute('href') : null;
     })()`);
     requireValue(categoryHref, 'category link missing');
@@ -319,14 +319,15 @@ try {
     await sleep(200);
     const productsMenu = await evaluate(`(() => {
       const menu = document.querySelector('.site-nav-products-menu');
-      const groups = document.querySelectorAll('.site-nav-products-group');
+      const groups = document.querySelectorAll('.site-nav-products-acc');
       const overflow = document.documentElement.scrollWidth > window.innerWidth + 1;
       return {
-        open: !!(menu && (menu.classList.contains('show') || getComputedStyle(menu).display !== 'none')),
+        open: !!(menu && !menu.hidden && (menu.classList.contains('show') || getComputedStyle(menu).display !== 'none')),
         groups: groups.length,
         overflow,
       };
     })()`);
+    requireValue(productsMenu.open, 'products menu should open on mobile');
     requireValue(productsMenu.groups >= 1, 'products menu groups missing on mobile');
     requireValue(!productsMenu.overflow, 'horizontal overflow with products menu');
 

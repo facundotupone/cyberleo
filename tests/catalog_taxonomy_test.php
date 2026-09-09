@@ -177,7 +177,7 @@ try {
         }
     }
     tax_ok(in_array('<script>x</script>', $labels, true), 'TAX-31', 'helper no escapa (escape en vista)');
-    // Empty groups skipped
+    // Empty subcategory lists are still shown (with Ver todos).
     $emptySkip = public_nav_items(
         [['id' => 9, 'name' => 'Vacía', 'icon' => 'bi-cpu']],
         'index.php',
@@ -185,9 +185,11 @@ try {
         []
     );
     tax_ok(
-        !isset($emptySkip[1]) || ($emptySkip[1]['type'] ?? '') !== 'products_menu',
+        ($emptySkip[1]['type'] ?? '') === 'products_menu'
+        && count($emptySkip[1]['children'] ?? []) === 1
+        && ($emptySkip[1]['children'][0]['children'] ?? null) === [],
         'TAX-32',
-        'sin grupos vacíos en Productos'
+        'categoría sin subcategorías sigue en Productos'
     );
 
     // Suggestions never invent brand categories

@@ -44,6 +44,7 @@ FILES=(
     assets/js/cart-checkout.js
     assets/js/catalog-cards.js
     assets/js/catalog-preview.js
+    assets/js/public-nav.js
     assets/js/checkout-preview.js
     assets/js/home-content-preview.js
     assets/js/theme-preview.js
