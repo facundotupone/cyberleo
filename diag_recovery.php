@@ -52,7 +52,7 @@ $checks = array(
 );
 
 echo "cyberleo recovery diag\n";
-echo 'package_build=index-resilient-20260909' . "\n";
+echo 'package_build=cwd-includes-boot-20260909' . "\n";
 echo 'php=' . PHP_VERSION . "\n";
 echo 'opcache=' . (function_exists('opcache_get_status') ? 'yes' : 'no') . "\n";
 if (function_exists('opcache_get_status')) {
@@ -87,6 +87,14 @@ $expected = array(
 echo 'fingerprint_index=' . $expected['index.php'] . "\n";
 echo 'fingerprint_functions=' . $expected['includes/functions.php'] . "\n";
 echo 'fingerprint_diag=' . $expected['diag_recovery.php'] . "\n";
+echo 'root_config_php=' . (is_file(__DIR__ . '/config.php') ? '1' : '0') . "\n";
+if ($expected['includes/functions.php'] > 0 && $expected['includes/functions.php'] < 4700) {
+    echo "warning_functions_stale=1\n";
+}
+if (is_file(__DIR__ . '/includes/db.php')) {
+    $dbSrc = (string) @file_get_contents(__DIR__ . '/includes/db.php');
+    echo 'db_uses_dir_config=' . (strpos($dbSrc, "__DIR__") !== false ? '1' : '0') . "\n";
+}
 
 $configOk = '0';
 $dbConsts = '0';

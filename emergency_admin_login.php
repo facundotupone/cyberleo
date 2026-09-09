@@ -41,10 +41,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
     try {
-        if (!is_file(__DIR__ . '/includes/db.php')) {
-            throw new RuntimeException('Missing db.php');
+        $cyberleoPrevCwd = getcwd();
+        if (!is_string($cyberleoPrevCwd) || $cyberleoPrevCwd === '') {
+            $cyberleoPrevCwd = __DIR__;
         }
-        require_once __DIR__ . '/includes/db.php';
+        if (!@chdir(__DIR__ . '/includes')) {
+            throw new RuntimeException('No se pudo abrir includes/');
+        }
+        try {
+            require_once 'db.php';
+        } finally {
+            @chdir($cyberleoPrevCwd);
+        }
         if (!isset($pdo) || !($pdo instanceof PDO)) {
             throw new RuntimeException('PDO unavailable');
         }

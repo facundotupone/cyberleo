@@ -98,11 +98,27 @@ register_shutdown_function(static function () use ($cyberleoRenderDegraded, &$cy
 });
 
 try {
-    // Load db.php only — it pulls config.php via __DIR__.
-    // Do not require config.php separately first: absolute + relative paths can
-    // both execute on Hostinger and redeclare config_value().
-    require_once __DIR__ . '/includes/db.php';
-    require_once __DIR__ . '/includes/functions.php';
+    // Hostinger CWD is public_html. Legacy db.php does require_once 'config.php'
+    // (CWD-relative), so from public_html it never loads includes/config.local.php
+    // and DB_* stay empty → "El servicio no está configurado".
+    // Chdir into includes/ first so relative requires resolve to the real files.
+    $cyberleoPrevCwd = getcwd();
+    if (!is_string($cyberleoPrevCwd) || $cyberleoPrevCwd === '') {
+        $cyberleoPrevCwd = __DIR__;
+    }
+    $cyberleoIncludes = __DIR__ . '/includes';
+    if (!is_dir($cyberleoIncludes) || !@chdir($cyberleoIncludes)) {
+        throw new RuntimeException('No se pudo abrir includes/');
+    }
+    try {
+        require_once 'db.php';
+        require_once 'functions.php';
+    } finally {
+        @chdir($cyberleoPrevCwd);
+    }
+    if (!isset($pdo) || !($pdo instanceof PDO)) {
+        throw new RuntimeException('PDO no inicializado tras bootstrap');
+    }
 } catch (Throwable $e) {
     $cyberleoIndexFail(get_class($e) . ': ' . $e->getMessage());
 }

@@ -96,7 +96,19 @@ if (function_exists('cyberleo_safe_asset_url')) {
     $loginStyleHref = cyberleo_safe_asset_url('assets/css/style.css');
 }
 if (is_file(__DIR__ . '/includes/config.php') && is_readable(__DIR__ . '/includes/config.php')) {
-    require_once __DIR__ . '/includes/config.php';
+    $cyberleoPrevCwd = getcwd();
+    if (!is_string($cyberleoPrevCwd) || $cyberleoPrevCwd === '') {
+        $cyberleoPrevCwd = __DIR__;
+    }
+    if (@chdir(__DIR__ . '/includes')) {
+        try {
+            require_once 'config.php';
+        } finally {
+            @chdir($cyberleoPrevCwd);
+        }
+    } else {
+        require_once __DIR__ . '/includes/config.php';
+    }
     if (defined('STORE_NAME') && STORE_NAME !== '') {
         $storeTitle = STORE_NAME;
     }
@@ -106,7 +118,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
     try {
-        require_once __DIR__ . '/includes/db.php';
+        $cyberleoPrevCwd = getcwd();
+        if (!is_string($cyberleoPrevCwd) || $cyberleoPrevCwd === '') {
+            $cyberleoPrevCwd = __DIR__;
+        }
+        if (!@chdir(__DIR__ . '/includes')) {
+            throw new RuntimeException('No se pudo abrir includes/');
+        }
+        try {
+            if (!defined('DB_HOST')) {
+                require_once 'config.php';
+            }
+            require_once 'db.php';
+        } finally {
+            @chdir($cyberleoPrevCwd);
+        }
         $key = enforce_auth_rate_limit($pdo, 'login|' . strtolower($username));
         if ($username !== '' && $password !== '') {
             $stmt = $pdo->prepare('SELECT id, password FROM users WHERE username = ?');
