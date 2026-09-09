@@ -12,4 +12,4 @@ desde el CWD y deja la DB sin usuario/nombre.
 5. Diag: `package_build=cwd-includes-boot-20260909` y `root_config_php=0`
 6. Abrí `/`
 
-SHA-256: `4c07c76eaeba76b2465a44a5b807092e967b59cfa7fad1bdebeebb7102dd58ad`
+SHA-256: `fb94f88034b0294afd0bf292de8d85f0577eb5238cd7350fe69380f3f3be9916`
