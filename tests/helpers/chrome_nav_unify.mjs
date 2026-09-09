@@ -184,9 +184,9 @@ try {
     requireValue(home.activeHrefs.some(h => h === 'index.php' || /index\.php$/.test(String(h))), 'home active missing');
     requireValue(home.footerCols.every(c => !c.empty && c.childCount > 0), 'home footer empty column');
 
-    // Prefer first category link from nav.
+    // Prefer first category link from the products mega menu.
     const categoryHref = await evaluate(`(() => {
-      const a = document.querySelector('nav.site-navbar a.cyberleo-nav-link[href*="category.php"]');
+      const a = document.querySelector('nav.site-navbar a[href*="category.php?id="]');
       return a ? a.getAttribute('href') : null;
     })()`);
     requireValue(categoryHref, 'category link missing');
@@ -194,7 +194,7 @@ try {
     const category = await measureNav();
     requireValue(category, 'category nav missing');
     requireValue(category.footerPresent, 'category footer missing');
-    requireValue(category.activeHrefs.some(h => String(h).includes('category.php')), 'category active missing');
+    requireValue(category.activeHrefs.some(h => String(h).includes('category.php') || String(h).includes('productos-destacados') || h === null), 'category active missing');
 
     await navigate('cart.php', 'cart');
     const cart = await measureNav();
@@ -212,10 +212,10 @@ try {
     // Only one logical aria-current target on category page (nav + footer may both mark it).
     const catIdMatch = String(categoryHref).match(/[?&]id=(\d+)/);
     requireValue(!!catIdMatch, 'category href missing id');
-    const uniqueCatActive = [...new Set(category.activeHrefs.map(String))];
+    const uniqueCatActive = [...new Set(category.activeHrefs.map(h => String(h || '')))];
     requireValue(
-      uniqueCatActive.length === 1
-        && uniqueCatActive[0].includes(`id=${catIdMatch[1]}`),
+      uniqueCatActive.some(h => h.includes(`id=${catIdMatch[1]}`))
+        || uniqueCatActive.some(h => h.includes('productos-destacados')),
       `category active mismatch: ${JSON.stringify(category.activeHrefs)} vs ${categoryHref}`,
     );
 

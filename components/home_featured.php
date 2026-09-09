@@ -10,7 +10,7 @@ if (!isset($catalogDisplay)) {
 if (($themeSettings['show_featured_products'] ?? '1') !== '1') {
     return;
 }
-$colsClass = catalog_column_class($catalogDisplay['featured_columns'] ?? '3');
+$colsClass = catalog_column_class($catalogDisplay['featured_columns'] ?? '4');
 $title = (string) ($catalogDisplay['featured_section_title'] ?? 'Productos Destacados');
 $emptyText = (string) ($catalogDisplay['featured_empty_text'] ?? 'No hay productos destacados disponibles.');
 ?>

@@ -36,6 +36,7 @@ $orders = $pdo->query("SELECT o.*, GROUP_CONCAT(CONCAT(oi.product_name, ' × ', 
     <title>Pedidos | <?= htmlspecialchars($storeSettings['store_name']) ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="<?= htmlspecialchars(function_exists('cyberleo_safe_asset_url') ? cyberleo_safe_asset_url('assets/css/style.css') : 'assets/css/style.css', ENT_QUOTES, 'UTF-8') ?>">
 </head>
 <body class="bg-light">
 <?php require_once __DIR__ . '/components/admin_nav.php'; ?>

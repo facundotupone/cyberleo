@@ -22,7 +22,7 @@ function nuk(bool $v, string $id, string $text): void
 $root = dirname(__DIR__);
 
 try {
-    $publicPages = ['index.php', 'category.php', 'cart.php'];
+    $publicPages = ['index.php', 'category.php', 'cart.php', 'offers.php'];
     foreach ($publicPages as $page) {
         $src = file_get_contents($root . '/' . $page);
         nuk($src !== false, 'NAV-01a', "lee $page");
@@ -56,10 +56,13 @@ try {
         'category.php',
         3
     );
-    nuk(count($items) === 3, 'NAV-09', 'allowlist filtra categorías inválidas');
+    nuk(count($items) === 4, 'NAV-09', 'barra compacta: inicio, productos, ofertas, carrito');
     nuk($items[0]['id'] === 'home' && $items[0]['current'] === false, 'NAV-10', 'inicio no activo en categoría');
-    nuk($items[1]['id'] === 'category-3' && $items[1]['current'] === true, 'NAV-11', 'categoría activa marcada');
-    nuk($items[2]['type'] === 'cart' && $items[2]['href'] === 'cart.php', 'NAV-12', 'carrito al final');
+    nuk($items[1]['id'] === 'products' && $items[1]['current'] === true && $items[1]['type'] === 'products', 'NAV-11', 'productos activo en categoría');
+    $taxonomy = $items[1]['taxonomy'] ?? [];
+    nuk(count($taxonomy) === 1 && (int) $taxonomy[0]['id'] === 3, 'NAV-11b', 'taxonomía filtra categorías inválidas');
+    nuk($items[2]['id'] === 'offers' && $items[2]['href'] === 'offers.php', 'NAV-11c', 'enlace de ofertas');
+    nuk($items[3]['type'] === 'cart' && $items[3]['href'] === 'cart.php', 'NAV-12', 'carrito al final');
 
     // Resolved category id (product_id flows) must drive aria-current.
     $resolved = public_nav_active_category_id('category.php', ['id' => '1', 'product_id' => '99'], 7);
@@ -71,7 +74,8 @@ try {
     $notCategory = public_nav_active_category_id('index.php', ['id' => '4'], 4);
     nuk($notCategory === null, 'NAV-12e', 'fuera de category.php no hay categoría activa');
     $mismatchItems = public_nav_items([['id' => 1, 'name' => 'A'], ['id' => 7, 'name' => 'B']], 'category.php', 7);
-    nuk($mismatchItems[1]['current'] === false && $mismatchItems[2]['current'] === true, 'NAV-12f', 'solo la categoría resuelta queda activa');
+    nuk($mismatchItems[1]['type'] === 'products' && $mismatchItems[1]['current'] === true, 'NAV-12f', 'productos queda activo en categoría resuelta');
+    nuk((int) ($mismatchItems[1]['activeCategoryId'] ?? 0) === 7, 'NAV-12g', 'categoría activa es la resuelta');
 
     $adminPages = [
         'admin_products.php',
@@ -92,8 +96,12 @@ try {
 
     $adminNav = file_get_contents($root . '/components/admin_nav.php');
     nuk(is_string($adminNav) && str_contains($adminNav, 'admin-navbar'), 'NAV-15', 'admin nav con clase específica');
-    nuk(count(admin_nav_items()) === 5, 'NAV-16', 'allowlist admin con 5 enlaces');
+    nuk(count(admin_nav_items()) === 6, 'NAV-16', 'allowlist admin con 6 enlaces incluyendo logout');
     nuk(admin_nav_current_id('admin_settings.php') === 'settings', 'NAV-17', 'current id admin settings');
+    $adminIds = array_column(admin_nav_items(), 'id');
+    nuk($adminIds === ['orders', 'products', 'categories', 'settings', 'system', 'logout'], 'NAV-17b', 'orden admin unificado');
+    $logoutItem = array_values(array_filter(admin_nav_items(), static fn(array $item): bool => $item['id'] === 'logout'))[0] ?? null;
+    nuk(is_array($logoutItem) && $logoutItem['href'] === 'logout.php', 'NAV-17c', 'logout usa mecanismo existente');
 
     $benefits = file_get_contents($root . '/components/benefits.php');
     nuk(is_string($benefits) && str_contains($benefits, 'benefits_section_title'), 'NAV-18', 'beneficios usan título administrable');

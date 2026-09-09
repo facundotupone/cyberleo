@@ -66,29 +66,13 @@ $categories = get_categories();
     <!-- Bootstrap + Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="<?= htmlspecialchars(function_exists('cyberleo_safe_asset_url') ? cyberleo_safe_asset_url('assets/css/style.css') : 'assets/css/style.css', ENT_QUOTES, 'UTF-8') ?>">
 
     <!-- MISMO ESTILO QUE admin_products.php -->
     <style>
         body {
             background: linear-gradient(135deg, #f3f8fc 0%, #dceaf8 100%);
             min-height: 100vh;
-        }
-
-        .admin-navbar {
-            background: linear-gradient(135deg, #0057b8 0%, #071a33 100%);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        .admin-navbar-brand, .admin-navbar .navbar-brand {
-            font-weight: 700;
-            font-size: 1.5rem;
-            letter-spacing: 1px;
-        }
-
-        .nav-link.active {
-            color: #fff !important;
-            border-bottom: 3px solid #00aeef;
-            padding-bottom: 0.5rem;
         }
 
         .container {
@@ -571,7 +555,6 @@ document.getElementById("iconInput").addEventListener("input", function(){
 });
 
 </script>
-<?php require_once 'components/footer.php'; ?>
 </body>
 
 </html>

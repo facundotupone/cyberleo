@@ -13,18 +13,76 @@ function public_nav_static_links(): array
 {
     return [
         ['id' => 'home', 'label' => 'Inicio', 'href' => 'index.php'],
+        ['id' => 'products', 'label' => 'Productos', 'href' => 'index.php#productos-destacados'],
+        ['id' => 'offers', 'label' => 'Ofertas', 'href' => 'offers.php'],
         ['id' => 'cart', 'label' => 'Carrito', 'href' => 'cart.php'],
     ];
 }
 
 /**
- * Build the public primary navigation items (Inicio, categories, Carrito).
+ * Categories with nested subcategories (two queries total).
  *
  * @param list<array<string,mixed>> $categories
- * @return list<array{id:string,label:string,href:string,current:bool,type:string}>
+ * @return list<array{id:int,name:string,href:string,children:list<array{id:int,name:string,href:string}>}>
  */
-function public_nav_items(array $categories, string $currentScript, ?int $activeCategoryId = null): array
+function public_nav_taxonomy(array $categories): array
 {
+    $grouped = [];
+    if (function_exists('get_subcategories')) {
+        foreach (get_subcategories() as $sub) {
+            $categoryId = (int) ($sub['category_id'] ?? 0);
+            $subId = (int) ($sub['id'] ?? 0);
+            $name = trim((string) ($sub['name'] ?? ''));
+            if ($categoryId <= 0 || $subId <= 0 || $name === '') {
+                continue;
+            }
+            $grouped[$categoryId][] = [
+                'id' => $subId,
+                'name' => $name,
+                'href' => 'category.php?id=' . $categoryId . '&sub=' . $subId,
+            ];
+        }
+    }
+
+    $tree = [];
+    foreach ($categories as $category) {
+        $id = (int) ($category['id'] ?? 0);
+        $name = trim((string) ($category['name'] ?? ''));
+        if ($id <= 0 || $name === '') {
+            continue;
+        }
+        $tree[] = [
+            'id' => $id,
+            'name' => $name,
+            'href' => 'category.php?id=' . $id,
+            'children' => $grouped[$id] ?? [],
+        ];
+    }
+
+    return $tree;
+}
+
+/**
+ * Build the public primary navigation items.
+ *
+ * @param list<array<string,mixed>> $categories
+ * @param list<array{id:int,name:string,href:string,children:list<array{id:int,name:string,href:string}>}>|null $taxonomy
+ * @return list<array<string,mixed>>
+ */
+function public_nav_items(
+    array $categories,
+    string $currentScript,
+    ?int $activeCategoryId = null,
+    ?int $activeSubcategoryId = null,
+    ?array $taxonomy = null
+): array {
+    if ($taxonomy === null) {
+        $taxonomy = public_nav_taxonomy($categories);
+    }
+
+    $onCategory = $currentScript === 'category.php';
+    $onOffers = $currentScript === 'offers.php';
+
     $items = [];
     $items[] = [
         'id' => 'home',
@@ -34,23 +92,24 @@ function public_nav_items(array $categories, string $currentScript, ?int $active
         'type' => 'link',
     ];
 
-    foreach ($categories as $category) {
-        $id = (int) ($category['id'] ?? 0);
-        if ($id <= 0) {
-            continue;
-        }
-        $name = trim((string) ($category['name'] ?? ''));
-        if ($name === '') {
-            continue;
-        }
-        $items[] = [
-            'id' => 'category-' . $id,
-            'label' => $name,
-            'href' => 'category.php?id=' . $id,
-            'current' => $currentScript === 'category.php' && $activeCategoryId === $id,
-            'type' => 'link',
-        ];
-    }
+    $items[] = [
+        'id' => 'products',
+        'label' => 'Productos',
+        'href' => 'index.php#productos-destacados',
+        'current' => $onCategory,
+        'type' => 'products',
+        'taxonomy' => $taxonomy,
+        'activeCategoryId' => $onCategory ? $activeCategoryId : null,
+        'activeSubcategoryId' => $onCategory ? $activeSubcategoryId : null,
+    ];
+
+    $items[] = [
+        'id' => 'offers',
+        'label' => 'Ofertas',
+        'href' => 'offers.php',
+        'current' => $onOffers,
+        'type' => 'link',
+    ];
 
     $items[] = [
         'id' => 'cart',
@@ -65,8 +124,6 @@ function public_nav_items(array $categories, string $currentScript, ?int $active
 
 /**
  * Resolve active category id from request context.
- * Prefer a page-resolved category id when category.php already computed it
- * (e.g. via product_id), so aria-current matches the rendered content.
  */
 function public_nav_active_category_id(string $currentScript, array $query, ?int $resolvedCategoryId = null): ?int
 {
@@ -83,13 +140,49 @@ function public_nav_active_category_id(string $currentScript, array $query, ?int
     return $id > 0 ? $id : null;
 }
 
+function public_nav_active_subcategory_id(string $currentScript, array $query, ?int $resolvedSubcategoryId = null): ?int
+{
+    if ($currentScript !== 'category.php') {
+        return null;
+    }
+    if ($resolvedSubcategoryId !== null && $resolvedSubcategoryId > 0) {
+        return $resolvedSubcategoryId;
+    }
+    if (!isset($query['sub']) || !is_numeric($query['sub'])) {
+        return null;
+    }
+    $id = (int) $query['sub'];
+    return $id > 0 ? $id : null;
+}
+
 /**
- * Footer quick links reuse the same public allowlist (including Carrito).
+ * Footer quick links: same allowlist, without expanding every category.
  *
- * @param list<array{id:string,label:string,href:string,current:bool,type:string}> $items
+ * @param list<array<string,mixed>> $items
  * @return list<array{id:string,label:string,href:string,current:bool,type:string}>
  */
 function public_nav_footer_items(array $items): array
 {
-    return $items;
+    $footer = [];
+    foreach ($items as $item) {
+        $type = (string) ($item['type'] ?? 'link');
+        if ($type === 'products') {
+            $footer[] = [
+                'id' => 'products',
+                'label' => (string) ($item['label'] ?? 'Productos'),
+                'href' => (string) ($item['href'] ?? 'index.php#productos-destacados'),
+                'current' => !empty($item['current']),
+                'type' => 'link',
+            ];
+            continue;
+        }
+        $footer[] = [
+            'id' => (string) ($item['id'] ?? ''),
+            'label' => (string) ($item['label'] ?? ''),
+            'href' => (string) ($item['href'] ?? '#'),
+            'current' => !empty($item['current']),
+            'type' => $type === 'cart' ? 'cart' : 'link',
+        ];
+    }
+    return $footer;
 }

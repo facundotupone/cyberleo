@@ -71,8 +71,8 @@ try {
         $defaults['featured_section_title'] === 'Productos Destacados'
         && $defaults['featured_empty_text'] === 'No hay productos destacados disponibles.'
         && $defaults['catalog_empty_text'] === 'No hay productos disponibles en esta categoría.'
-        && $defaults['featured_columns'] === '3'
-        && $defaults['catalog_columns'] === '3'
+        && $defaults['featured_columns'] === '4'
+        && $defaults['catalog_columns'] === '4'
         && $defaults['product_card_style'] === 'elevated'
         && $defaults['product_image_fit'] === 'contain'
         && $defaults['product_image_height'] === 'normal'
@@ -217,7 +217,7 @@ try {
         'product_show_stock' => 'yes',
     ]);
     cdok(
-        $corrupt['featured_columns'] === '3'
+        $corrupt['featured_columns'] === '4'
         && $corrupt['product_card_style'] === 'elevated'
         && $corrupt['product_show_stock'] === '1',
         'CD-16',
@@ -237,8 +237,8 @@ try {
     $nameBefore = (string) $pdo->query('SELECT name FROM products WHERE id=1')->fetchColumn();
 
     $r1 = restore_catalog_display_defaults($pdo);
-    cdok($r1['restored']['featured_columns'] === '3' && $r1['restored']['product_card_style'] === 'elevated', 'CD-17', 'restauración independiente');
-    cdok(cdget($pdo, 'featured_columns') === '3', 'CD-17b', 'DB featured_columns default');
+    cdok($r1['restored']['featured_columns'] === '4' && $r1['restored']['product_card_style'] === 'elevated', 'CD-17', 'restauración independiente');
+    cdok(cdget($pdo, 'featured_columns') === '4', 'CD-17b', 'DB featured_columns default');
     cdok(cdget($pdo, 'product_add_button_text') === 'Agregar al carrito', 'CD-17c', 'DB botón default');
 
     $r2 = restore_catalog_display_defaults($pdo);

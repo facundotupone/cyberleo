@@ -37,14 +37,20 @@ $showBrandCol = $showLogo || $footerDescription !== '';
 $showContactCol = $showIg || $showWa || $showHours || $showLocation;
 
 $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
-$resolvedCategoryId = null;
-if ($currentScript === 'category.php' && isset($category_id) && is_numeric($category_id) && (int) $category_id > 0) {
-    $resolvedCategoryId = (int) $category_id;
+if (!isset($navItems) || !is_array($navItems)) {
+    $resolvedCategoryId = null;
+    $resolvedSubcategoryId = null;
+    if ($currentScript === 'category.php' && isset($category_id) && is_numeric($category_id) && (int) $category_id > 0) {
+        $resolvedCategoryId = (int) $category_id;
+    }
+    if ($currentScript === 'category.php' && isset($subcategory_id) && is_numeric($subcategory_id) && (int) $subcategory_id > 0) {
+        $resolvedSubcategoryId = (int) $subcategory_id;
+    }
+    $activeCategoryId = public_nav_active_category_id($currentScript, $_GET, $resolvedCategoryId);
+    $activeSubcategoryId = public_nav_active_subcategory_id($currentScript, $_GET, $resolvedSubcategoryId);
+    $navItems = public_nav_items($categories, $currentScript, $activeCategoryId, $activeSubcategoryId);
 }
-$activeCategoryId = public_nav_active_category_id($currentScript, $_GET, $resolvedCategoryId);
-$footerNavItems = public_nav_footer_items(
-    public_nav_items($categories, $currentScript, $activeCategoryId)
-);
+$footerNavItems = public_nav_footer_items($navItems);
 
 $colCount = 1 + ($showBrandCol ? 1 : 0) + ($showContactCol ? 1 : 0);
 ?>

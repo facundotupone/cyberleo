@@ -12,10 +12,10 @@ $adminCurrentId = admin_nav_current_id($adminCurrentScript);
 $adminNavItems = admin_nav_items();
 $adminBrandLabel = trim((string) ($storeSettings['store_name'] ?? 'CyberLeo')) . ' · Administración';
 ?>
-<nav class="navbar navbar-expand-lg navbar-dark admin-navbar" aria-label="Navegación administrativa">
+<nav class="navbar navbar-expand-lg navbar-dark admin-navbar" aria-label="Navegación administrativa" data-cyberleo-nav="admin">
     <div class="container">
-        <a class="navbar-brand admin-navbar-brand fw-bold" href="admin_products.php">
-            <i class="bi bi-box-seam" aria-hidden="true"></i>
+        <a class="navbar-brand admin-navbar-brand fw-bold" href="admin_orders.php">
+            <i class="bi bi-shield-lock" aria-hidden="true"></i>
             <?= htmlspecialchars($adminBrandLabel) ?>
         </a>
         <button
@@ -32,10 +32,13 @@ $adminBrandLabel = trim((string) ($storeSettings['store_name'] ?? 'CyberLeo')) .
         <div class="collapse navbar-collapse" id="adminNavbar">
             <ul class="navbar-nav ms-auto mb-2 mb-lg-0 admin-navbar-links">
                 <?php foreach ($adminNavItems as $item): ?>
-                    <?php $isCurrent = $adminCurrentId === $item['id']; ?>
+                    <?php
+                    $isCurrent = $adminCurrentId === $item['id'];
+                    $isLogout = ($item['type'] ?? '') === 'logout';
+                    ?>
                     <li class="nav-item">
                         <a
-                            class="nav-link admin-nav-link<?= $isCurrent ? ' active' : '' ?>"
+                            class="nav-link admin-nav-link<?= $isCurrent ? ' active' : '' ?><?= $isLogout ? ' admin-nav-logout' : '' ?>"
                             href="<?= htmlspecialchars($item['href'], ENT_QUOTES, 'UTF-8') ?>"
                             <?= $isCurrent ? ' aria-current="page"' : '' ?>
                         >

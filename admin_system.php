@@ -27,9 +27,9 @@ $overall = $summary['status'];
     <title>Sistema | <?= htmlspecialchars((string) ($storeSettings['store_name'] ?? 'CyberLeo'), ENT_QUOTES, 'UTF-8') ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="<?= htmlspecialchars(function_exists('cyberleo_safe_asset_url') ? cyberleo_safe_asset_url('assets/css/style.css') : 'assets/css/style.css', ENT_QUOTES, 'UTF-8') ?>">
     <style>
         body { background: #f3f8fc; }
-        .admin-navbar { background: #071a33; }
         .status-pill { font-size: .85rem; letter-spacing: .02em; }
         @media (max-width: 420px) {
             h1 { font-size: 1.35rem; }
