@@ -1,24 +1,17 @@
-# Recuperación portada — deploy parcial / query featured
+# Fix redeclaración config_value + portada completa
 
-## Qué pasaba
-Tu diag anterior mostraba archivos OK, pero tamaños viejos en `functions.php` (4631)
-mientras `index.php` ya era nuevo (13562). Deploy parcial.
+## Causa del modo seguro
+`Cannot redeclare config_value()`: `index.php` cargaba `config.php` por ruta absoluta y luego `db.php` lo volvía a cargar por ruta relativa.
 
-## Este ZIP
-Árbol público completo. La portada ahora:
-- atrapa fallos de productos destacados
-- no depende de subir functions.php nuevo para dejar de dar 500
-- degrada a HTML usable en vez de HTTP 500
+## Importante al subir
+- **SÍ** sobrescribí `includes/config.php` (el del ZIP es seguro; credenciales van en `config.local.php`)
+- **NO** borres `includes/config.local.php`
+- Confirmá en diag: `functions.php size=4778` (si sigue 4631, el ZIP no se extrajo completo)
 
 ## Pasos
-1. Backup (conservá `includes/config.local.php`)
-2. Extraé este ZIP **directo sobre** public_html (sobrescribir TODO)
-3. hPanel → Reiniciar PHP + Purge LiteSpeed
-4. Abrí `/diag_recovery.php?opcache=reset`
-   - debe decir `package_build=index-resilient-20260909`
-   - `done` al final
-   - `index.php size` y `functions.php size` según fingerprint
-5. Abrí `/` → debe cargar (aunque sea modo seguro)
-6. Borrá diag_recovery.php y emergency_admin_login.php al estabilizar
+1. Extraé el ZIP directo sobre public_html
+2. Reiniciar PHP + Purge LiteSpeed
+3. `/diag_recovery.php?opcache=reset` → `package_build=index-resilient-20260909`, `done`, `functions.php` size 4778
+4. `/` debe abrir sin modo seguro
 
-SHA-256: `4166b1c2d44fb4ed71b2c0af6ccbae29970af3b7360cb9350f021d4d34dda079`
+SHA-256: `95ccdab16fdf79ada040d4400962de70d31e753de90c5ef2212000e1c130f190`
