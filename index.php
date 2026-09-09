@@ -98,9 +98,9 @@ register_shutdown_function(static function () use ($cyberleoRenderDegraded, &$cy
 });
 
 try {
-    // Hostinger CWD is public_html. Legacy db.php does require_once 'config.php'
-    // (CWD-relative), so a polluted public_html/config.php yields empty DB_*.
-    // Chdir into includes/ before loading db.php so that relative require finds
+    // Hostinger CWD is public_html. Legacy db.php loads config via a bare relative
+    // require, so a polluted public_html config file yields empty DB credentials.
+    // Chdir into includes/ before loading db.php so relative requires resolve to
     // includes/config.php + config.local.php.
     $cyberleoPrevCwd = getcwd();
     if (!is_string($cyberleoPrevCwd) || $cyberleoPrevCwd === '') {
