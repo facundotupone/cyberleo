@@ -276,7 +276,7 @@ try {
     }
 } catch (Throwable $e) {
     error_log('cyberleo index nav: ' . $e->getMessage());
-    echo '<nav class="navbar navbar-light bg-light mb-3"><div class="container"><a class="navbar-brand" href="index.php">'
+    echo '<nav class="navbar navbar-expand-lg site-navbar sticky-top mb-3" data-cyberleo-nav="public"><div class="container"><a class="navbar-brand" href="index.php">'
         . htmlspecialchars((string) $storeSettings['store_name'], ENT_QUOTES, 'UTF-8')
         . '</a><a class="nav-link" href="cart.php">Carrito</a></div></nav>';
 }
