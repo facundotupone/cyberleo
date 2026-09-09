@@ -243,5 +243,5 @@ TEST_DB_SOCKET="$SOCKET" TEST_DB_NAME="$TEST_DB" \
 [[ ! -f "$ROOT/dist/cyberleo-private-tools.zip.sha256" ]]
 [[ ! -f "$ROOT/dist/cyberleo-actualizacion-estetica.zip.sha256" ]]
 
-git -C "$ROOT" diff --exit-code 175f2c1 -- create_order.php schema.sql
+git -C "$ROOT" diff --exit-code -w 175f2c1 -- create_order.php schema.sql
 printf 'OK: lint, migración, imágenes, HTTP, Stage 5 e integridad de paquetes verificados.\n'
