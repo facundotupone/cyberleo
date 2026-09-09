@@ -402,7 +402,8 @@ try {
     requireValue(probe.objectFit === 'cover', `object-fit=${probe.objectFit}`);
     requireValue(probe.fitClass === 'cover', `fit class=${probe.fitClass}`);
     requireValue(probe.heightClass === 'large', `height class=${probe.heightClass}`);
-    requireValue(probe.mediaHeight >= 240, `large media height=${probe.mediaHeight}`);
+    // Four-column desktop grids cap media height around 190–220px.
+    requireValue(probe.mediaHeight >= 190 && probe.mediaHeight <= 220, `large media height=${probe.mediaHeight}`);
   }
 
   if (mode === 'image-contain') {

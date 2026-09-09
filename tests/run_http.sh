@@ -1838,6 +1838,7 @@ sql 'DROP TRIGGER IF EXISTS settings_home_fail'
 pass H-HOME2-INTERNAL
 
 printf 'Pruebas HTTP Etapa 3 (catálogo y tarjetas)...\n'
+sql "DELETE FROM store_settings WHERE setting_key IN ('featured_columns','catalog_columns')"
 sql "UPDATE products SET description=CONCAT(COALESCE(description,''), ' ', REPEAT('detalle extendido ', 40)), price_sale=CASE WHEN id=1 THEN ROUND(price*0.8,2) ELSE price_sale END, destacados=IF(id<=2,id,destacados) WHERE id<=2"
 request GET index.php
 assert_status H-CATALOG3-DEFAULT 200
