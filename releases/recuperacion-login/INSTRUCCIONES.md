@@ -1,27 +1,24 @@
-# Recuperación total — index + login HTTP 500
+# Recuperación portada — deploy parcial / query featured
 
-## Importante
-Si el ZIP anterior **no alcanzó**, usá **este** (SHA abajo). El PR viejo apuntaba a un SHA distinto.
+## Qué pasaba
+Tu diag anterior mostraba archivos OK, pero tamaños viejos en `functions.php` (4631)
+mientras `index.php` ya era nuevo (13562). Deploy parcial.
 
-Este paquete es el **árbol público completo** (~57 archivos), igual a la reparación integral.
+## Este ZIP
+Árbol público completo. La portada ahora:
+- atrapa fallos de productos destacados
+- no depende de subir functions.php nuevo para dejar de dar 500
+- degrada a HTML usable en vez de HTTP 500
 
-## Causa típica
-1. `asset_version.php` ausente/vacío + código viejo que llama `cyberleo_asset_url()` → fatal → HTTP 500
-2. OPcache de Hostinger sigue sirviendo el PHP viejo aunque el ZIP esté bien
-3. Falta `includes/config.local.php` (credenciales) → la portada no conecta a la DB
+## Pasos
+1. Backup (conservá `includes/config.local.php`)
+2. Extraé este ZIP **directo sobre** public_html (sobrescribir TODO)
+3. hPanel → Reiniciar PHP + Purge LiteSpeed
+4. Abrí `/diag_recovery.php?opcache=reset`
+   - debe decir `package_build=index-resilient-20260909`
+   - `done` al final
+   - `index.php size` y `functions.php size` según fingerprint
+5. Abrí `/` → debe cargar (aunque sea modo seguro)
+6. Borrá diag_recovery.php y emergency_admin_login.php al estabilizar
 
-## Pasos exactos
-1. Backup de `public_html` (**no borres** `includes/config.local.php`).
-2. Subí `cyberleo-recuperacion-login.zip` y extraélo **directo sobre** `public_html` (sobrescribir).
-3. Confirmá que **no** quedó `public_html/alguna-carpeta/index.php`.
-4. En hPanel Hostinger:
-   - **Reiniciar PHP** / OPcache
-   - LiteSpeed Cache → **Purge All**
-5. Ventana privada, en este orden:
-   - `/diag_recovery.php?opcache=reset` → `cyberleo_asset_url=1`, `asset_version.php` size > 1000, `config_local_present=1`, `db_constants_present=1`, `index_bootstrap=1` (si es 0, copiá `index_error=`)
-   - `/emergency_admin_login.php` → HTTP 200 (anti-OPcache; si este abre, el PHP nuevo está vivo)
-   - `/admin_login.php` → HTTP 200
-   - `/` → HTTP 200
-6. Cuando esté estable, borrá `diag_recovery.php` y `emergency_admin_login.php`.
-
-SHA-256: `bafe599a6976ab64a078c095a28e70c4dd1866cfa64d32f1ef21ee76a021e72d`
+SHA-256: `4166b1c2d44fb4ed71b2c0af6ccbae29970af3b7360cb9350f021d4d34dda079`
