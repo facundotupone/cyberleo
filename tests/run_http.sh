@@ -1899,6 +1899,56 @@ run_index_asset_isolated() {
 }
 run_index_asset_isolated H-INDEX-ASSET-EMPTY-STUB
 
+# Featured query throw (old functions.php) must NOT 500 the homepage.
+run_index_featured_throw_isolated() {
+    local id=$1
+    local functions="$ROOT/includes/functions.php"
+    local bak="$HTTP_TMP/functions.featured-throw.bak"
+    local port pid base body status
+    port="$(php -r '$s=stream_socket_server("tcp://127.0.0.1:0",$e,$m); echo parse_url(stream_socket_get_name($s,false),PHP_URL_PORT); fclose($s);')"
+    base="http://127.0.0.1:$port"
+    body="$HTTP_TMP/index-featured-throw.body"
+    cp "$functions" "$bak"
+    # Simulate pre-recovery functions.php that lets PDOException escape.
+    php -r '
+      $p=$argv[1];
+      $s=file_get_contents($p);
+      $s=preg_replace(
+        "/function get_featured_products\(\) \{.*?^\}\n/ms",
+        "function get_featured_products() {\n    global \$pdo;\n    throw new PDOException(\"Simulated featured failure\");\n}\n",
+        $s
+      );
+      file_put_contents($p, $s);
+    ' "$functions"
+    (
+        cd "$ROOT"
+        exec env \
+            PHP_CLI_SERVER_WORKERS=1 \
+            APP_ENV=test \
+            APP_SECRET='http-suite-secret-that-is-not-used-outside-tests' \
+            SITE_URL="$base" \
+            DB_HOST="localhost;unix_socket=$TEST_DB_SOCKET" \
+            DB_NAME="$TEST_DB_NAME" DB_USER=root DB_PASS='' \
+            MAIL_TRANSPORT=log MAIL_LOG_PATH="$MAIL_LOG" \
+            php -S "127.0.0.1:$port" "$ROOT/tests/helpers/php_server_router.php"
+    ) >"$HTTP_TMP/index-featured-throw.server.log" 2>&1 & pid=$!
+    for _ in {1..80}; do
+        curl --silent --fail --max-time 1 "$base/index.php" >/dev/null 2>&1 && break
+        sleep 0.05
+    done
+    status="$(curl --silent --show-error --max-time 15 --output "$body" --write-out '%{http_code}' "$base/index.php")"
+    cp "$bak" "$functions"
+    chmod 0644 "$functions"
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    [[ "$status" == "200" ]] || fail "$id" "HTTP $status (esperado 200 degradado)"
+    LC_ALL=C rg --ignore-case --quiet -e 'Fatal error|Uncaught|Stack trace:' -- "$body" && fail "$id" 'error visible en HTML'
+    LC_ALL=C rg --fixed-strings --quiet -e 'cyberleo-release' -- "$body" || fail "$id" 'falta meta release'
+    LC_ALL=C rg --fixed-strings --quiet -e 'No se pudo cargar la portada' -- "$body" && fail "$id" 'no debía mostrar 500 de portada'
+    pass "$id"
+}
+run_index_featured_throw_isolated H-INDEX-FEATURED-THROW-DEGRADED
+
 # Auth still works after degradation probes (helper restored)
 HTTP_COOKIE="$HTTP_TMP/login-asset-auth.cookie"
 : >"$HTTP_COOKIE"
