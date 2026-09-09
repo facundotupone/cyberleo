@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new RuntimeException('No se pudo abrir includes/');
         }
         try {
-            require_once 'db.php';
+            require_once __DIR__ . '/includes/db.php';
         } finally {
             @chdir($cyberleoPrevCwd);
         }

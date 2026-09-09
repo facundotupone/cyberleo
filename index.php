@@ -99,9 +99,9 @@ register_shutdown_function(static function () use ($cyberleoRenderDegraded, &$cy
 
 try {
     // Hostinger CWD is public_html. Legacy db.php does require_once 'config.php'
-    // (CWD-relative), so from public_html it never loads includes/config.local.php
-    // and DB_* stay empty → "El servicio no está configurado".
-    // Chdir into includes/ first so relative requires resolve to the real files.
+    // (CWD-relative), so a polluted public_html/config.php yields empty DB_*.
+    // Chdir into includes/ before loading db.php so that relative require finds
+    // includes/config.php + config.local.php.
     $cyberleoPrevCwd = getcwd();
     if (!is_string($cyberleoPrevCwd) || $cyberleoPrevCwd === '') {
         $cyberleoPrevCwd = __DIR__;
@@ -111,8 +111,8 @@ try {
         throw new RuntimeException('No se pudo abrir includes/');
     }
     try {
-        require_once 'db.php';
-        require_once 'functions.php';
+        require_once __DIR__ . '/includes/db.php';
+        require_once __DIR__ . '/includes/functions.php';
     } finally {
         @chdir($cyberleoPrevCwd);
     }

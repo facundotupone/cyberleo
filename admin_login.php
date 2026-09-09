@@ -96,19 +96,7 @@ if (function_exists('cyberleo_safe_asset_url')) {
     $loginStyleHref = cyberleo_safe_asset_url('assets/css/style.css');
 }
 if (is_file(__DIR__ . '/includes/config.php') && is_readable(__DIR__ . '/includes/config.php')) {
-    $cyberleoPrevCwd = getcwd();
-    if (!is_string($cyberleoPrevCwd) || $cyberleoPrevCwd === '') {
-        $cyberleoPrevCwd = __DIR__;
-    }
-    if (@chdir(__DIR__ . '/includes')) {
-        try {
-            require_once 'config.php';
-        } finally {
-            @chdir($cyberleoPrevCwd);
-        }
-    } else {
-        require_once __DIR__ . '/includes/config.php';
-    }
+    require_once __DIR__ . '/includes/config.php';
     if (defined('STORE_NAME') && STORE_NAME !== '') {
         $storeTitle = STORE_NAME;
     }
@@ -126,10 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new RuntimeException('No se pudo abrir includes/');
         }
         try {
-            if (!defined('DB_HOST')) {
-                require_once 'config.php';
-            }
-            require_once 'db.php';
+            require_once __DIR__ . '/includes/db.php';
         } finally {
             @chdir($cyberleoPrevCwd);
         }
