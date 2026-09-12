@@ -10,7 +10,13 @@ $pdo = new PDO(
     getenv('DB_PASS') ?: '',
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
 );
-$root = sys_get_temp_dir() . '/cyberleo-theme-' . bin2hex(random_bytes(5));
+$pdo->exec('SET SESSION innodb_lock_wait_timeout=5');
+$pdo->exec('SET SESSION lock_wait_timeout=5');
+$workBase = getenv('TEST_WORK_DIR');
+if (!is_string($workBase) || $workBase === '' || !is_dir($workBase)) {
+    $workBase = sys_get_temp_dir();
+}
+$root = $workBase . '/cyberleo-theme-' . bin2hex(random_bytes(5));
 mkdir($root . '/assets/images/products', 0700, true);
 mkdir($root . '/assets/images/settings', 0700, true);
 mkdir($root . '/assets/images/brand', 0700, true);
@@ -41,8 +47,16 @@ function tok(bool $v, string $id, string $text): void {
 }
 
 function treset(PDO $pdo): void {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     $pdo->exec('DROP TRIGGER IF EXISTS theme_fail');
-    $pdo->exec('SET FOREIGN_KEY_CHECKS=0; TRUNCATE store_settings; TRUNCATE product_images; TRUNCATE products; TRUNCATE categories; SET FOREIGN_KEY_CHECKS=1');
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+    $pdo->exec('DELETE FROM store_settings');
+    $pdo->exec('DELETE FROM product_images');
+    $pdo->exec('DELETE FROM products');
+    $pdo->exec('DELETE FROM categories');
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
     $pdo->exec("INSERT INTO categories(id,name,icon) VALUES(1,'T','bi-cpu')");
 }
 
@@ -218,7 +232,13 @@ try {
         );
     } catch (Throwable) {
         $failed = true;
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
     } finally {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $pdo->exec('DROP TRIGGER IF EXISTS theme_fail');
     }
     tok(
@@ -379,6 +399,9 @@ try {
             $pdo->rollBack();
         }
     } finally {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         $pdo->exec('DROP TRIGGER IF EXISTS theme_fail');
     }
     tok(

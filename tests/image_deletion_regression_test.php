@@ -3,7 +3,13 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/includes/images.php';
 
 $pdo = new PDO((string)getenv('TEST_DSN'), getenv('DB_USER') ?: 'root', getenv('DB_PASS') ?: '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$root = sys_get_temp_dir() . '/cyberleo-regression-' . bin2hex(random_bytes(6));
+$pdo->exec('SET SESSION innodb_lock_wait_timeout=5');
+$pdo->exec('SET SESSION lock_wait_timeout=5');
+$workBase = getenv('TEST_WORK_DIR');
+if (!is_string($workBase) || $workBase === '' || !is_dir($workBase)) {
+    $workBase = sys_get_temp_dir();
+}
+$root = $workBase . '/cyberleo-regression-' . bin2hex(random_bytes(6));
 mkdir($root . '/assets/images/products', 0700, true);
 $passed = 0;
 
@@ -13,7 +19,15 @@ function ok(bool $condition, string $id, string $text): void {
     $passed++; echo "$id PASS - $text\n";
 }
 function resetDb(PDO $pdo): void {
-    $pdo->exec('SET FOREIGN_KEY_CHECKS=0; TRUNCATE product_images; TRUNCATE products; TRUNCATE categories; TRUNCATE store_settings; SET FOREIGN_KEY_CHECKS=1');
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+    $pdo->exec('DELETE FROM product_images');
+    $pdo->exec('DELETE FROM products');
+    $pdo->exec('DELETE FROM categories');
+    $pdo->exec('DELETE FROM store_settings');
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
     $pdo->exec("INSERT INTO categories(id,name,icon) VALUES(1,'Test','bi-cpu')");
 }
 function pathN(string $char): string { return 'assets/images/products/' . str_repeat($char, 32) . '.jpg'; }
@@ -77,8 +91,12 @@ try {
     try {
         $result=delete_product_record($pdo,$pid);
         cleanup_product_images_after_commit($pdo,$result['paths'],$root,function()use(&$cleanupCalls){$cleanupCalls++;return true;});
-    } catch (PDOException $e) { $thrown=true; }
-    finally { $pdo->exec('DROP TRIGGER IF EXISTS regression_block_product'); $triggerDropped=true; }
+    } catch (PDOException $e) { $thrown=true; if ($pdo->inTransaction()) { $pdo->rollBack(); } }
+    finally {
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
+        $pdo->exec('DROP TRIGGER IF EXISTS regression_block_product');
+        $triggerDropped=true;
+    }
     $rows=(int)$pdo->query("SELECT COUNT(*) FROM products WHERE id=$pid")->fetchColumn();
     $images=(int)$pdo->query("SELECT COUNT(*) FROM product_images WHERE product_id=$pid")->fetchColumn();
     ok($thrown && $triggerDropped && $rows===1 && $images===1 && is_file(disk($root,$a)) && $cleanupCalls===0 && !$pdo->inTransaction(), 'R-05', 'SQL failure rolls back without filesystem cleanup');

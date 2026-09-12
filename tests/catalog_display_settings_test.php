@@ -37,7 +37,12 @@ function cdok(bool $v, string $id, string $text): void {
 }
 
 function cdreset(PDO $pdo): void {
-    $pdo->exec('SET FOREIGN_KEY_CHECKS=0; TRUNCATE store_settings; TRUNCATE product_images; TRUNCATE products; TRUNCATE categories; SET FOREIGN_KEY_CHECKS=1');
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+    $pdo->exec('DELETE FROM store_settings');
+    $pdo->exec('DELETE FROM product_images');
+    $pdo->exec('DELETE FROM products');
+    $pdo->exec('DELETE FROM categories');
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
     $pdo->exec("INSERT INTO categories(id,name,icon) VALUES(1,'Notebooks','bi-laptop')");
     $pdo->exec("INSERT INTO products(id,name,description,price,price_sale,stock,image,category_id,is_active,destacados) VALUES(1,'Prod','Desc larga',100,80,5,'',1,1,1)");
 }

@@ -11,7 +11,11 @@ if (!is_string($dsn) || $dsn === '') {
 $pdo = new PDO($dsn, getenv('DB_USER') ?: 'root', getenv('DB_PASS') ?: '', [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
 ]);
-$root = sys_get_temp_dir() . '/cyberleo-images-' . bin2hex(random_bytes(8));
+$workBase = getenv('TEST_WORK_DIR');
+if (!is_string($workBase) || $workBase === '' || !is_dir($workBase)) {
+    $workBase = sys_get_temp_dir();
+}
+$root = $workBase . '/cyberleo-images-' . bin2hex(random_bytes(8));
 mkdir($root . '/assets/images/products', 0700, true);
 
 function check(bool $condition, string $id, string $description): void {
@@ -19,17 +23,46 @@ function check(bool $condition, string $id, string $description): void {
     printf("%s PASS - %s\n", $id, $description);
 }
 function reset_database(PDO $pdo): void {
-    $pdo->exec('SET FOREIGN_KEY_CHECKS=0; TRUNCATE product_images; TRUNCATE products; TRUNCATE categories; SET FOREIGN_KEY_CHECKS=1');
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+    $pdo->exec('DELETE FROM product_images');
+    $pdo->exec('DELETE FROM products');
+    $pdo->exec('DELETE FROM categories');
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
     $pdo->exec("INSERT INTO categories (id, name, icon) VALUES (1, 'Tests', 'bi-cpu')");
 }
 function path_for(string $hex): string {
     return "assets/images/products/$hex.jpg";
 }
 function file_for(string $root, string $path): string {
-    return product_image_directory($root) . '/' . basename($path);
+    $full = product_image_directory($root) . DIRECTORY_SEPARATOR . basename($path);
+    if (is_file($full) || is_link($full)) {
+        $real = realpath($full);
+        if (is_string($real) && $real !== '') {
+            return $real;
+        }
+    }
+    return $full;
 }
 function write_image(string $root, string $path): void {
     file_put_contents(file_for($root, $path), 'test image');
+}
+function skip_or_fail_missing_symlink(string $id): void {
+    if (PHP_OS_FAMILY === 'Linux' || PHP_OS_FAMILY === 'Darwin') {
+        throw new RuntimeException("$id: no se pudo crear un symlink real en " . PHP_OS_FAMILY);
+    }
+    echo "SKIP $id: symlinks no disponibles en este entorno\n";
+}
+function environment_can_create_symlink(string $root): bool {
+    $probe = $root . DIRECTORY_SEPARATOR . 'symlink-probe-' . bin2hex(random_bytes(4));
+    $created = @symlink(__FILE__, $probe);
+    $isLink = $created && is_link($probe);
+    if (file_exists($probe) || is_link($probe)) {
+        @unlink($probe);
+    }
+    return $isLink;
 }
 function product(PDO $pdo, ?string $image = null): int {
     $statement = $pdo->prepare(
@@ -62,17 +95,45 @@ try {
     check(resolve_safe_product_image_path('../secret.jpg', $root)['status'] === 'unsafe_path', 'D-01', 'rechaza rutas fuera del directorio de productos');
     write_image($root, $one);
     $resolved = resolve_safe_product_image_path($one, $root);
-    check($resolved['status'] === 'resolved' && $resolved['path'] === file_for($root, $one), 'D-02', 'resuelve una imagen de producto válida');
+    $expectedFile = file_for($root, $one);
+    if (!($resolved['status'] === 'resolved' && $resolved['path'] === $expectedFile)) {
+        fwrite(
+            STDERR,
+            'D-02 diagnostic status=' . $resolved['status']
+            . ' path=' . (string) ($resolved['path'] ?? 'null')
+            . ' expected=' . $expectedFile
+            . "\n"
+        );
+    }
+    check($resolved['status'] === 'resolved' && $resolved['path'] === $expectedFile, 'D-02', 'resuelve una imagen de producto válida');
     check(resolve_safe_product_image_path($two, $root)['status'] === 'missing_file', 'D-03', 'informa un archivo válido ausente');
 
-    symlink('/etc/passwd', file_for($root, $two));
-    check(resolve_safe_product_image_path($two, $root)['status'] === 'symlink_path', 'D-04', 'rechaza enlaces simbólicos de archivos');
-    unlink(file_for($root, $two));
+    $canSymlink = environment_can_create_symlink($root);
+    $twoFile = file_for($root, $two);
+    $outside = $root . DIRECTORY_SEPARATOR . 'outside-secret.txt';
+    file_put_contents($outside, 'secret');
+    $fileSymlink = $canSymlink && @symlink($outside, $twoFile) === true && is_link($twoFile);
+    if (!$fileSymlink) {
+        if (file_exists($twoFile) || is_link($twoFile)) {
+            @unlink($twoFile);
+        }
+        skip_or_fail_missing_symlink('D-04');
+    } else {
+        check(resolve_safe_product_image_path($two, $root)['status'] === 'symlink_path', 'D-04', 'rechaza enlaces simbólicos de archivos');
+        unlink($twoFile);
+    }
     $linkRoot = "$root/link-root";
     mkdir("$linkRoot/assets/images", 0700, true);
-    symlink(product_image_directory($root), "$linkRoot/assets/images/products");
-    check(resolve_safe_product_image_path($one, $linkRoot)['status'] === 'symlink_path', 'D-05', 'rechaza enlaces simbólicos en directorios');
-    remove_tree($linkRoot);
+    $dirSymlink = $canSymlink
+        && @symlink(product_image_directory($root), "$linkRoot/assets/images/products") === true
+        && is_link("$linkRoot/assets/images/products");
+    if (!$dirSymlink) {
+        skip_or_fail_missing_symlink('D-05');
+        remove_tree($linkRoot);
+    } else {
+        check(resolve_safe_product_image_path($one, $linkRoot)['status'] === 'symlink_path', 'D-05', 'rechaza enlaces simbólicos en directorios');
+        remove_tree($linkRoot);
+    }
 
     reset_database($pdo);
     $called = false;
