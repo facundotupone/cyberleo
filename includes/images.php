@@ -63,12 +63,33 @@ function store_safe_image(
     return $relativePath;
 }
 
+function cyberleo_test_trace(string $stage): void {
+    if (getenv('TEST_UPLOAD_TRACE') !== '1') {
+        return;
+    }
+    static $origin = null;
+    if ($origin === null) {
+        $origin = hrtime(true);
+    }
+    $ms = (hrtime(true) - $origin) / 1e6;
+    fprintf(STDERR, "[img pid=%d +%.1fms] %s\n", getmypid(), $ms, $stage);
+}
+
 function remove_image_file(string $path, ?callable $deleteFile = null): bool {
-    if (!is_file($path) || is_link($path)) return false;
+    cyberleo_test_trace('remove_image_file:begin');
+    cyberleo_test_trace('remove_image_file:is_file');
+    if (!is_file($path) || is_link($path)) {
+        cyberleo_test_trace('remove_image_file:skip');
+        return false;
+    }
     try {
-        return ($deleteFile !== null ? $deleteFile($path) : @unlink($path)) === true;
+        cyberleo_test_trace($deleteFile !== null ? 'remove_image_file:callback' : 'remove_image_file:unlink');
+        $ok = ($deleteFile !== null ? $deleteFile($path) : @unlink($path)) === true;
+        cyberleo_test_trace('remove_image_file:end');
+        return $ok;
     } catch (Throwable $e) {
         error_log('Could not remove image file: ' . $e->getMessage());
+        cyberleo_test_trace('remove_image_file:exception');
         return false;
     }
 }
@@ -115,12 +136,17 @@ function resolve_safe_stored_image_path($path, ?string $root = null, ?string $sc
 
     $directory = $isProduct ? product_image_directory($root) : settings_image_directory($root);
     $candidate = $directory . DIRECTORY_SEPARATOR . basename($path);
+    cyberleo_test_trace('resolve:path_has_symlink');
     // Check links before realpath(), which otherwise resolves an escaped target.
     if (path_has_symlink($directory) || is_link($candidate)) return ['status' => 'symlink_path', 'path' => null];
+    cyberleo_test_trace('resolve:is_file');
     if (!is_file($candidate)) return ['status' => 'missing_file', 'path' => null];
 
+    cyberleo_test_trace('resolve:realpath directory');
     $realDirectory = realpath($directory);
+    cyberleo_test_trace('resolve:realpath candidate');
     $realCandidate = realpath($candidate);
+    cyberleo_test_trace('resolve:realpath done');
     if ($realDirectory === false || $realCandidate === false
         || !str_starts_with($realCandidate, $realDirectory . DIRECTORY_SEPARATOR)) {
         return ['status' => 'unsafe_path', 'path' => null];
@@ -139,22 +165,38 @@ function delete_unreferenced_product_image(PDO $pdo, $path, ?string $root = null
 }
 
 function delete_unreferenced_image(PDO $pdo, $path, ?string $root = null, ?callable $deleteFile = null): string {
+    cyberleo_test_trace('delete_unreferenced_image:begin');
     if ($pdo->inTransaction()) throw new LogicException('Image deletion requires a committed database transaction.');
 
+    cyberleo_test_trace('delete_unreferenced_image:resolve');
     $resolved = resolve_safe_stored_image_path($path, $root);
-    if ($resolved['status'] !== 'resolved') return $resolved['status'];
+    if ($resolved['status'] !== 'resolved') {
+        cyberleo_test_trace('delete_unreferenced_image:status=' . $resolved['status']);
+        return $resolved['status'];
+    }
+    cyberleo_test_trace('delete_unreferenced_image:prepare count');
     $check = $pdo->prepare(
         'SELECT (SELECT COUNT(*) FROM products WHERE image = ?) + '
         . '(SELECT COUNT(*) FROM product_images WHERE image_path = ?) + '
         . '(SELECT COUNT(*) FROM store_settings WHERE setting_value = ?)'
     );
+    cyberleo_test_trace('delete_unreferenced_image:execute count');
     $check->execute([$path, $path, $path]);
-    if ((int) $check->fetchColumn() > 0) return 'still_referenced';
+    cyberleo_test_trace('delete_unreferenced_image:fetchColumn');
+    $count = (int) $check->fetchColumn();
+    $check->closeCursor();
+    if ($count > 0) {
+        cyberleo_test_trace('delete_unreferenced_image:still_referenced');
+        return 'still_referenced';
+    }
 
+    cyberleo_test_trace('delete_unreferenced_image:remove_file');
     if (!remove_image_file($resolved['path'], $deleteFile)) {
         error_log('Could not delete unreferenced product image.');
+        cyberleo_test_trace('delete_unreferenced_image:deletion_failed');
         return 'deletion_failed';
     }
+    cyberleo_test_trace('delete_unreferenced_image:deleted');
     return 'deleted';
 }
 
@@ -185,6 +227,7 @@ function normalize_upload_batch(array $files): array {
     return $batch;
 }
 function store_image_batch(array $uploads, string $scope, ?string $root = null, ?callable $moveFile = null, ?callable $deleteFile = null): array {
+    cyberleo_test_trace('store_image_batch:begin');
     $created = [];
     try {
         foreach ($uploads as $upload) {
@@ -193,8 +236,10 @@ function store_image_batch(array $uploads, string $scope, ?string $root = null, 
             if ($error !== UPLOAD_ERR_OK) throw new RuntimeException('Falló una imagen del lote.');
             $created[] = store_safe_image($upload['tmp_name'] ?? '', $error, $upload['size'] ?? 0, 'assets/images/' . $scope, $root, $moveFile, $deleteFile);
         }
+        cyberleo_test_trace('store_image_batch:end');
         return $created;
     } catch (Throwable $e) {
+        cyberleo_test_trace('store_image_batch:cleanup');
         cleanup_stored_images($created, $root, $deleteFile);
         throw $e;
     }
@@ -253,12 +298,16 @@ function save_settings_with_images(
         }
     }
 
+    cyberleo_test_trace('save_settings_with_images:begin');
     $pdo->beginTransaction();
+    cyberleo_test_trace('save_settings_with_images:after beginTransaction');
     try {
         $select = $pdo->prepare('SELECT setting_value FROM store_settings WHERE setting_key = ? FOR UPDATE');
         foreach ($imageKeys as $key) {
+            cyberleo_test_trace('save_settings_with_images:select '.$key);
             $select->execute([$key]);
             $old = $select->fetchColumn();
+            $select->closeCursor();
             $old = is_string($old) ? $old : '';
             $oldPaths[$key] = $old;
             $upload = $uploads[$key] ?? null;
@@ -292,6 +341,7 @@ function save_settings_with_images(
             }
         }
 
+        cyberleo_test_trace('save_settings_with_images:theme_allowed_setting_keys');
         $upsert = $pdo->prepare(
             'INSERT INTO store_settings (setting_key, setting_value) VALUES (?, ?) '
             . 'ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
@@ -302,10 +352,15 @@ function save_settings_with_images(
             if (!isset($allowed[(string) $key])) {
                 continue;
             }
+            cyberleo_test_trace('save_settings_with_images:upsert '.$key);
             $upsert->execute([(string) $key, (string) $value]);
         }
+        $upsert->closeCursor();
+        cyberleo_test_trace('save_settings_with_images:commit');
         $pdo->commit();
+        cyberleo_test_trace('save_settings_with_images:committed');
     } catch (Throwable $e) {
+        cyberleo_test_trace('save_settings_with_images:rollback');
         if ($pdo->inTransaction()) $pdo->rollBack();
         cleanup_stored_images($newPaths, $root, $deleteFile);
         throw $e;
@@ -315,9 +370,11 @@ function save_settings_with_images(
     foreach ($imageKeys as $key) {
         $old = $oldPaths[$key];
         if ($old !== '' && $old !== $images[$key] && is_safe_settings_image_path($old)) {
+            cyberleo_test_trace('save_settings_with_images:cleanup '.$key);
             $cleanup[$old] = delete_unreferenced_image($pdo, $old, $root, $deleteFile);
         }
     }
+    cyberleo_test_trace('save_settings_with_images:end');
     return ['backgrounds' => $images, 'cleanup' => $cleanup];
 }
 
